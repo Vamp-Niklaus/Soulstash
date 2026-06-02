@@ -1,0 +1,49 @@
+{
+  "name": "soulstash-movie-app",
+  "version": "1.0.0",
+  "description": "Movie streaming app with collections",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "vite build --configLoader native",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node server.js",
+    "dev:client": "vite --configLoader native",
+    "dev:full": "npm run dev",
+    "postinstall": "npx playwright install chromium",
+    "render-build": "npm install --include=dev && npx playwright install chromium && npm run build"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/screen-orientation": "^8.0.1",
+    "@videojs/react": "^10.0.0-beta.5",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.2.1",
+    "fetch": "^1.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.1.0",
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^8.0.0",
+    "playwright": "^1.59.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-masonry-css": "^1.0.16",
+    "react-router-dom": "^7.14.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^8.2.2",
+    "vite": "^8.0.7"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}

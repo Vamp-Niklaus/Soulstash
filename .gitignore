@@ -1,0 +1,39 @@
+
+node_modules/
+android/
+archive/
+MCP/
+.env
+.env.*
+*.log
+.cache/
+.vite/
+dist/
+spa/dist/
+public/sw.js
+.DS_Store
+Thumbs.db
+%USERPROFILE%/
+Dragon Ball_ 1x1 _ Multimovies.html
+Multimovies _ Game Changer.html
+zz.html
+Multimovies _ Game Changer_files/
+Dragon Ball_ 1x1 _ Multimovies_files/
+Multimovies _ Balls Up.html
+Multimovies _ Balls Up_files/
+dropIndexScript.js
+fix_tvshows_db.js
+fixdb.js
+.env2
+environment
+
+
+# AI and Readmes
+CLAUDE_CONTEXT.md
+SPA-README.md
+
+# Unnecessary Configs
+render.yaml
+.render.yml
+requirements.txt
+
