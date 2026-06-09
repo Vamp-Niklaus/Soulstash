@@ -941,13 +941,6 @@ function buildVideasyHindiAttemptUrl({ mediaType, tmdbId, seasonNumber, episodeN
 
 
 
-function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
-  const type = String(mediaType || '').toLowerCase();
-  return type === 'movie'
-    ? `https://www.vidfast.net/movie/${tmdbId}`
-    : `https://www.vidfast.net/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
-}
-
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
 
@@ -958,15 +951,6 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       label: 'VIDEASY',
       url: buildVideasyHindiAttemptUrl(input),
       urls: [buildVideasyHindiAttemptUrl(input)],
-      embeddable: true,
-      fallback: true
-    },
-    {
-      id: 'legacy-vidfast',
-      key: 'legacy-vidfast',
-      label: 'vidfast',
-      url: buildVidfastUrl(input),
-      urls: [buildVidfastUrl(input)],
       embeddable: true,
       fallback: true
     }
