@@ -679,6 +679,201 @@ async function fetchUserCollectionsWithVersion(cached) {
   const version = Number.isFinite(Number(versionHeader)) ? Number(versionHeader) : (cached?.version || 0);
   updateCollectionsCache(data, version);
   return { collections: data, version };
+  const response = await fetch(path, { ...options, headers });
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      clearAuthSession();
+      if (!['/login', '/register'].includes(window.location.pathname)) {
+        navigateWithoutReload('/login', { replace: true });
+      }
+    }
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || `Request failed with status ${response.status}`);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  return response.json();
+}
+
+async function streamApiFetch(path, options = {}) {
+  const token = getToken();
+  const headers = {
+    ...(options.headers || {})
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const { signal, onEvent } = options;
+  const response = await fetch(path, { signal, headers });
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      clearAuthSession();
+      if (!['/login', '/register'].includes(window.location.pathname)) {
+        navigateWithoutReload('/login', { replace: true });
+      }
+    }
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || `Request failed with status ${response.status}`);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.trim()) {
+          try {
+            const parsed = JSON.parse(line);
+            onEvent?.(parsed);
+          } catch (e) {
+            console.warn('Failed to parse streaming line:', line, e);
+          }
+        }
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) {
+      try {
+        onEvent?.(JSON.parse(buffer.trim()));
+      } catch (e) {
+        console.warn('Failed to parse streaming line:', buffer, e);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function cachedApiFetch(path, options = {}, ttl = API_CACHE_TTL) {
+  const method = String(options.method || 'GET').toUpperCase();
+  if (method !== 'GET') {
+    return apiFetch(path, options);
+  }
+
+  const cacheKey = `${method}:${path}`;
+  const now = Date.now();
+  const cached = apiResponseCache.get(cacheKey);
+
+  if (cached?.data && cached.expiresAt > now) {
+    return cached.data;
+  }
+
+  if (cached?.promise) {
+    return cached.promise;
+  }
+
+  const request = apiFetch(path, options)
+    .then((data) => {
+      apiResponseCache.set(cacheKey, {
+        data,
+        expiresAt: Date.now() + ttl
+      });
+      return data;
+    })
+    .finally(() => {
+      const latest = apiResponseCache.get(cacheKey);
+      if (latest?.promise) {
+        apiResponseCache.set(cacheKey, {
+          data: latest.data,
+          expiresAt: latest.expiresAt || 0
+        });
+      }
+    });
+
+  apiResponseCache.set(cacheKey, {
+    promise: request,
+    data: cached?.data || null,
+    expiresAt: cached?.expiresAt || 0
+  });
+
+  return request;
+}
+
+function optimisticSetCollectionMembership(collectionName, item, shouldInclude, options = {}) {
+  const current = normalizeCollections(getCachedUserCollections());
+  const targetId = String(collectionName);
+  const itemContentId = contentIdFromItem(item);
+  const exclusiveCollections = shouldInclude ? new Set(options.exclusiveCollections || []) : new Set();
+  const next = current.map((collection) => {
+    const collectionId = String(collection._id || collection.name);
+    const movies = Array.isArray(collection.movies) ? collection.movies : [];
+    const hasItem = movies.some((entry) => contentIdFromItem(entry) === itemContentId);
+
+    if (collectionId === targetId || String(collection.name) === targetId) {
+      if (shouldInclude) {
+        if (hasItem) return collection;
+        const updated = [...movies, item];
+        return { ...collection, movies: updated, movieCount: updated.length };
+      }
+      if (!hasItem) return collection;
+      const updated = movies.filter((entry) => contentIdFromItem(entry) !== itemContentId);
+      return { ...collection, movies: updated, movieCount: updated.length };
+    }
+
+    if (!exclusiveCollections.has(collection.name) || !hasItem) return collection;
+    const updated = movies.filter((entry) => contentIdFromItem(entry) !== itemContentId);
+    return { ...collection, movies: updated, movieCount: updated.length };
+  });
+  broadcastCollections(next, lastKnownCollectionVersion);
+  return current;
+}
+
+async function refreshCollectionsView() {
+  const latestCollections = normalizeCollections(await loadUserCollections());
+  window.dispatchEvent(
+    new CustomEvent(window.CollectionStore?.COLLECTIONS_UPDATED_EVENT || 'soulstash:collections-updated', {
+      detail: { collections: latestCollections }
+    })
+  );
+  return latestCollections;
+}
+
+async function fetchUserCollectionsWithVersion(cached) {
+  const token = getToken();
+  if (!token) {
+    return { collections: [], version: 0 };
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`
+  };
+  if (cached?.version != null) {
+    headers['X-Collection-Version'] = String(cached.version);
+  }
+
+  const response = await fetch('/api/user/collections', { headers });
+  if (response.status === 304 && cached) {
+    return { collections: cached.collections, version: cached.version, fromCache: true };
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error || `Request failed with status ${response.status}`);
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  const data = await response.json();
+  const versionHeader = response.headers.get('x-collection-version');
+  const version = Number.isFinite(Number(versionHeader)) ? Number(versionHeader) : (cached?.version || 0);
+  updateCollectionsCache(data, version);
+  return { collections: data, version };
 }
 
 async function loadTrendingHome(force = false) {
@@ -696,9 +891,10 @@ async function loadTrendingHome(force = false) {
   const timeout = window.setTimeout(() => controller.abort(), 7000);
   const request = apiFetch('/api/trending?limit=18', { signal: controller.signal })
     .then((data) => {
-      homeTrendingCache.data = data;
+      const arr = Array.isArray(data?.movies) ? data.movies : (Array.isArray(data) ? data : []);
+      homeTrendingCache.data = arr;
       homeTrendingCache.expiresAt = Date.now() + HOME_TRENDING_TTL;
-      return data;
+      return arr;
     })
     .catch((error) => {
       if (homeTrendingCache.data) return homeTrendingCache.data;
@@ -1050,7 +1246,7 @@ async function enrichCollectionRatingsInBackground(collection, logPrefix = '[Sou
       (getValidImdbRating(item?.imdb_rating) == null || getValidVoteAverage(item?.vote_average) == null)
   );
   if (!needsEnrich.length) {
-    console.log(`${logPrefix} enrichCollectionRatingsInBackground SKIP â€” all ratings present collection="${collection.name}"`);
+    console.log(`${logPrefix} enrichCollectionRatingsInBackground SKIP — all ratings present collection="${collection.name}"`);
     return null;
   }
 
@@ -1092,7 +1288,7 @@ async function enrichCollectionRatingsInBackground(collection, logPrefix = '[Sou
       // Prefer vote_average from backend response (Ratings table), fall back to existing item value
       const vote_average = getValidVoteAverage(ratingMatch?.vote_average) ?? getValidVoteAverage(item?.vote_average);
 
-      console.log(`${logPrefix}   "${item.title || item.name}" (${mediaType}:${contentId}) imdb_rating: ${item.imdb_rating} â†’ ${imdb_rating} | vote_average: ${item.vote_average} â†’ ${vote_average} | source=${ratingMatch?.source}`);
+      console.log(`${logPrefix}   "${item.title || item.name}" (${mediaType}:${contentId}) imdb_rating: ${item.imdb_rating} → ${imdb_rating} | vote_average: ${item.vote_average} → ${vote_average} | source=${ratingMatch?.source}`);
 
       return {
         contentId,
@@ -1114,7 +1310,7 @@ async function enrichCollectionRatingsInBackground(collection, logPrefix = '[Sou
     return null;
   }
 
-  console.log(`${logPrefix} enrichCollectionRatingsInBackground â†’ /enrich-metadata collection="${collection.name}" itemCount=${items.length}`);
+  console.log(`${logPrefix} enrichCollectionRatingsInBackground → /enrich-metadata collection="${collection.name}" itemCount=${items.length}`);
 
   const response = await apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/enrich-metadata`, {
     method: 'POST',
@@ -2130,7 +2326,7 @@ function CollectionFilterControls({
     };
   }, [animeMenuOpen, sortMenuOpen]);
 
-  // Close on outside click â€” but ignore clicks on the trigger itself (handled by toggle)
+  // Close on outside click — but ignore clicks on the trigger itself (handled by toggle)
   useEffect(() => {
     if (!animeMenuOpen && !sortMenuOpen) return undefined;
 
@@ -3053,11 +3249,11 @@ function UserCollectionsPage() {
       return !enrichedCollectionIdsRef.current.has(key);
     });
     if (!pending.length) {
-      console.log('[Soulstash][React][CollectionsPage] enrichment effect â€” all needy collections already attempted, skipping');
+      console.log('[Soulstash][React][CollectionsPage] enrichment effect — all needy collections already attempted, skipping');
       return undefined;
     }
 
-    console.log(`[Soulstash][React][CollectionsPage] enrichment effect â€” queuing ${pending.length} collection(s):`, pending.map(c => c.name));
+    console.log(`[Soulstash][React][CollectionsPage] enrichment effect — queuing ${pending.length} collection(s):`, pending.map(c => c.name));
 
     // Mark as attempted immediately to prevent re-queuing on re-renders
     pending.forEach((c) => enrichedCollectionIdsRef.current.add(String(c._id || c.name)));
@@ -5236,7 +5432,7 @@ function HomePage() {
         console.log('[NAV-DEBUG] HomePage: jumping focus to firstCardRef');
         firstCardRef.current?.focus();
       } else {
-        console.log('[NAV-DEBUG] HomePage: focus already on content \u2014 letting useGridKeyNav handle it');
+        console.log('[NAV-DEBUG] HomePage: focus already on content — letting useGridKeyNav handle it');
       }
     };
 
@@ -5420,18 +5616,24 @@ function TrendingPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [fetchingMore, setFetchingMore] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     let ignore = false;
-
     setLoading(true);
     setError('');
+    setPage(1);
+    setHasMore(true);
 
-    cachedApiFetch(`/api/trending?limit=40&retry=${retryTick}`)
+    cachedApiFetch(`/api/trending?limit=40&page=1&retry=${retryTick}`)
       .then((data) => {
         if (!ignore) {
-          setItems(Array.isArray(data) ? data : []);
+          const fetchedItems = Array.isArray(data?.movies) ? data.movies : (Array.isArray(data) ? data : []);
+          setItems(fetchedItems);
+          setHasMore(fetchedItems.length > 0 && data?.pagination?.page < data?.pagination?.pages);
           document.title = 'Trending Now | Soulstash';
         }
       })
@@ -5446,6 +5648,38 @@ function TrendingPage() {
       ignore = true;
     };
   }, [retryTick]);
+
+  const observerRef = useRef(null);
+  const lastElementRef = useCallback((node) => {
+    if (loading || fetchingMore || !hasMore) return;
+    if (observerRef.current) observerRef.current.disconnect();
+    if (node) {
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          setPage((p) => p + 1);
+        }
+      }, { rootMargin: '400px' });
+      observerRef.current.observe(node);
+    }
+  }, [loading, fetchingMore, hasMore]);
+
+  useEffect(() => {
+    if (page === 1) return;
+    let ignore = false;
+    setFetchingMore(true);
+    cachedApiFetch(`/api/trending?limit=40&page=${page}`)
+      .then((data) => {
+        if (!ignore) {
+          const fetchedItems = Array.isArray(data?.movies) ? data.movies : (Array.isArray(data) ? data : []);
+          setItems((prev) => [...prev, ...fetchedItems]);
+          setHasMore(fetchedItems.length > 0 && data?.pagination?.page < data?.pagination?.pages);
+        }
+      })
+      .finally(() => {
+        if (!ignore) setFetchingMore(false);
+      });
+    return () => { ignore = true; };
+  }, [page]);
 
   if (loading && !error) {
     return (

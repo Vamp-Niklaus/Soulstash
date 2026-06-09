@@ -1652,12 +1652,13 @@ router.get('/person/:id/credits', async (req, res) => {
 // GET /api/trending
 router.get('/trending', trendingLimiter, async (req, res) => {
   try {
-    console.log(`[API] /api/trending hit limit=${req.query.limit || 12}`);
     const limit = parseInt(req.query.limit) || 12;
+    const page = parseInt(req.query.page) || 1;
+    console.log(`[API] /api/trending hit limit=${limit} page=${page}`);
     const now = Date.now();
-    if (trendingCache && now - trendingCacheTime < CACHE_DURATION) {
+    if (page === 1 && trendingCache && now - trendingCacheTime < CACHE_DURATION) {
       console.log('[API] /api/trending served from cache');
-      return res.json(trendingCache.slice(0, limit));
+      return res.json({ movies: trendingCache.slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
     }
     const opts = { method: 'GET', headers: tmdbHeaders() };
     const fetchWithDeadline = (promise) =>
@@ -1666,8 +1667,8 @@ router.get('/trending', trendingLimiter, async (req, res) => {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Trending request timed out')), 7000))
       ]);
     const [movieResult, tvResult] = await Promise.allSettled([
-      fetchWithDeadline(tmdbFetch('https://api.themoviedb.org/3/trending/movie/day?language=en-US', opts, 'Trending Movies')),
-      fetchWithDeadline(tmdbFetch('https://api.themoviedb.org/3/trending/tv/day?language=en-US', opts, 'Trending TV'))
+      fetchWithDeadline(tmdbFetch(`https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=${page}`, opts, 'Trending Movies')),
+      fetchWithDeadline(tmdbFetch(`https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=${page}`, opts, 'Trending TV'))
     ]);
 
     const movieResp = movieResult.status === 'fulfilled' ? movieResult.value : null;
@@ -1688,25 +1689,35 @@ router.get('/trending', trendingLimiter, async (req, res) => {
       });
     }
 
-    const half = Math.ceil(limit / 2);
-    const movieData = movieResp?.ok ? await movieResp.json() : { results: [] };
-    const tvData = tvResp?.ok ? await tvResp.json() : { results: [] };
-    const movieItems = movieData.results.slice(0, half).map(i => ({ ...i, media_type: 'Movie' }));
-    const tvItems = tvData.results.slice(0, half).map(i => ({ ...i, media_type: 'Series' }));
-    const all = [...movieItems, ...tvItems].slice(0, limit);
+    const movieData = movieResp?.ok ? await movieResp.json() : { results: [], total_pages: 1 };
+    const tvData = tvResp?.ok ? await tvResp.json() : { results: [], total_pages: 1 };
+    const movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
+    const tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
+    
+    const all = [];
+    const maxLen = Math.max(movieItems.length, tvItems.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < movieItems.length) all.push(movieItems[i]);
+      if (i < tvItems.length) all.push(tvItems[i]);
+    }
+    const finalItems = all.slice(0, limit);
 
-    if (!all.length) {
-      if (trendingCache?.length) {
+    if (!finalItems.length) {
+      if (page === 1 && trendingCache?.length) {
         console.log('[API] /api/trending using stale cache fallback');
-        return res.json(trendingCache.slice(0, limit));
+        return res.json({ movies: trendingCache.slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
       }
-      return res.json([]);
+      return res.json({ movies: [], pagination: { page, limit, pages: 1 } });
     }
 
-    trendingCache = all;
-    trendingCacheTime = now;
-    console.log(`[API] /api/trending success count=${all.length}`);
-    res.json(all);
+    if (page === 1) {
+      trendingCache = finalItems;
+      trendingCacheTime = now;
+    }
+    
+    const totalPages = Math.max(movieData.total_pages || 1, tvData.total_pages || 1);
+    console.log(`[API] /api/trending success count=${finalItems.length}`);
+    res.json({ movies: finalItems, pagination: { page, limit, pages: totalPages } });
   } catch (err) {
     console.error('Error fetching trending:', err);
     res.status(500).json({ error: 'Failed to fetch trending content' });
