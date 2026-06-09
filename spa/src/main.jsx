@@ -4844,6 +4844,7 @@ function AppShell() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/trending" element={<TrendingPage />} />
+      <Route path="/genre/:id/:name" element={<GenrePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -5525,6 +5526,81 @@ function LoadingCardRow({ count = 6 }) {
   );
 }
 
+function GenrePage() {
+  const { id, name } = useParams();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [retryTick, setRetryTick] = useState(0);
+
+  const genreId = id;
+  const genreName = decodeURIComponent(name || '');
+
+  useEffect(() => {
+    let ignore = false;
+
+    setLoading(true);
+    setError('');
+
+    cachedApiFetch(`/api/movies?genre=${genreId}&limit=40&retry=${retryTick}`)
+      .then((data) => {
+        if (!ignore) {
+          setItems(Array.isArray(data?.movies) ? data.movies : []);
+          document.title = `${genreName} | Soulstash`;
+        }
+      })
+      .catch((requestError) => {
+        if (!ignore) setError(requestError.message || `Unable to load ${genreName} titles.`);
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [genreId, genreName, retryTick]);
+
+  if (loading && !error) {
+    return (
+      <section className="content-section">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div className="h-8 w-40 rounded bg-white/[0.08] animate-pulse"></div>
+        </div>
+        <SearchResultSkeletonGrid columns="grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7" count={14} />
+      </section>
+    );
+  }
+
+  return (
+    <section className="content-section">
+      <SectionHeader title={genreName} />
+      {error ? (
+        <div className="app-error">
+          <p>{error}</p>
+          <button
+            type="button"
+            className="mt-4 rounded-full bg-white/10 px-5 py-2 text-white transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
+            onClick={() => setRetryTick((current) => current + 1)}
+          >
+            Try again
+          </button>
+        </div>
+      ) : items.length ? (
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
+          {items.map((item) => (
+            <ContentCard key={item.id} item={item} />
+          ))}
+        </div>
+      ) : (
+        <div className="app-empty">
+          <p>No titles found for this genre.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SearchResultSkeletonGrid({ columns = 'grid-cols-1 min-[600px]:grid-cols-2 min-[900px]:grid-cols-3 min-[1280px]:grid-cols-4 min-[1600px]:grid-cols-5', count = 6 }) {
   return (
     <div className={`grid ${columns} gap-3 animate-pulse`}>
@@ -5801,6 +5877,8 @@ function LazyCategoryShelf({ genre, limit }) {
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const navigate = useNavigate();
+
   useEffect(() => {
     let ignore = false;
     const genreId = genre.id || genre;
@@ -5821,6 +5899,7 @@ function LazyCategoryShelf({ genre, limit }) {
   if (loading || !movies.length) return null;
 
   const title = genre.name || genre;
+  const genreId = genre.id || genre;
   // Apply limit for 2 rows on desktop
   const displayLimit = limit || 14;
 
@@ -5828,9 +5907,7 @@ function LazyCategoryShelf({ genre, limit }) {
     <section className="content-section">
       <HomeShelfHeader 
         title={title} 
-        onViewAll={() => {
-          window.dispatchEvent(new CustomEvent('soulstash:open-search', { detail: { query: title } }));
-        }} 
+        onViewAll={() => navigate(`/genre/${genreId}/${encodeURIComponent(title)}`)} 
       />
       <div className={HOME_GRID_CLASS}>
         {movies.slice(0, displayLimit).map((item) => (
