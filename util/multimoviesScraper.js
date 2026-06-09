@@ -868,8 +868,7 @@ function inferServerItemFromUrl(playerUrl = '') {
     { match: ['server1.uns.bio'], sourceKey: 'upnshr', serverName: 'UPNSHR' },
     { match: ['multimovies.p2pplay.pro'], sourceKey: 'strmp2', serverName: 'STRMP2' },
     { match: ['smoothpre.com'], sourceKey: 'flls', serverName: 'FLLS' },
-    { match: ['multiembed.mov', 'multiembed.site'], sourceKey: 'mlembd', serverName: 'MLEMBD' },
-    { match: ['vidsrc.me', 'vidsrc.to', 'vidsrc.xyz', 'vidsrc.in'], sourceKey: 'vdsrc', serverName: 'VDSRC' }
+    { match: ['multiembed.mov', 'multiembed.site'], sourceKey: 'mlembd', serverName: 'MLEMBD' }
   ];
 
   const found = mappings.find((item) => item.match.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`)));
