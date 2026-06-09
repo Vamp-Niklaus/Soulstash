@@ -9386,7 +9386,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 allowFullScreen={true}
                 webkitallowfullscreen="true"
                 mozallowfullscreen="true"
-                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *; display-capture *"
                 referrerPolicy="origin"
                 title="Soulstash Player"
               />
