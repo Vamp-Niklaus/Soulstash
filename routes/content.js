@@ -1296,10 +1296,97 @@ function pickSeriesCertification(payload) {
   return fallback || '';
 }
 
-// ── Trending cache (5 min) ────────────────────────────────────────────────────
 let trendingCache = null;
 let trendingCacheTime = 0;
-const CACHE_DURATION = 5 * 60 * 1000;
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+const categoriesCache = new Map();
+const CATEGORIES_CACHE_DURATION = 24 * 60 * 60 * 1000;
+
+async function refreshCategoryCache(genre, year, page, limit, includeAdult, allowMissingImdb) {
+  try {
+    const opts = { method: 'GET', headers: tmdbHeaders() };
+    let url = `https://api.themoviedb.org/3/discover/movie?include_adult=${includeAdult ? 'true' : 'false'}&language=en-US&page=${page}`;
+    if (genre) url += `&with_genres=${genre}`;
+    if (year)  url += `&primary_release_year=${year}`;
+    url += `&sort_by=popularity.desc`;
+
+    const resp = await tmdbFetch(url, opts, 'Discover Movies Bg');
+    if (!resp.ok) {
+      return;
+    }
+    const data = await resp.json();
+    let movies = Array.isArray(data.results) ? data.results.slice(0, Math.max(limit * 2, limit)) : [];
+    if (!allowMissingImdb) {
+      movies = (await attachImdbIds(movies, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
+    }
+    
+    const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
+    const payload = { movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } };
+    
+    if (payload.movies.length > 0) {
+      categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
+      console.log(`[API] Background category revalidate success count=${payload.movies.length} key=${cacheKey}`);
+    }
+  } catch (err) {
+    console.error('[API] Background category refresh failed:', err);
+  } finally {
+    const lockKey = `revalidating_category_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
+    global[lockKey] = false;
+  }
+}
+
+async function refreshTrendingCache(limit = 12) {
+  try {
+    const opts = { method: 'GET', headers: tmdbHeaders() };
+    const fetchWithDeadline = (promise) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Trending request timed out')), 7000))
+      ]);
+    const [movieResult, tvResult] = await Promise.allSettled([
+      fetchWithDeadline(tmdbFetch(`https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=1`, opts, 'Trending Movies Bg')),
+      fetchWithDeadline(tmdbFetch(`https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=1`, opts, 'Trending TV Bg'))
+    ]);
+
+    const movieResp = movieResult.status === 'fulfilled' ? movieResult.value : null;
+    const tvResp = tvResult.status === 'fulfilled' ? tvResult.value : null;
+
+    if ((movieResp && !movieResp.ok) || (tvResp && !tvResp.ok)) {
+      global.trendingRevalidating = false;
+      return;
+    }
+
+    const movieData = movieResp?.ok ? await movieResp.json().catch(() => null) : null;
+    const tvData = tvResp?.ok ? await tvResp.json().catch(() => null) : null;
+    
+    if (!movieData || !tvData) {
+      global.trendingRevalidating = false;
+      return;
+    }
+
+    const movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
+    const tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
+    
+    const all = [];
+    const maxLen = Math.max(movieItems.length, tvItems.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < movieItems.length) all.push(movieItems[i]);
+      if (i < tvItems.length) all.push(tvItems[i]);
+    }
+    
+    const finalItems = all.slice(0, limit);
+    if (finalItems.length > 0) {
+      trendingCache = finalItems;
+      trendingCacheTime = Date.now();
+      console.log(`[API] Background trending revalidate success count=${finalItems.length}`);
+    }
+  } catch (err) {
+    console.error('[API] Background trending refresh failed:', err);
+  } finally {
+    global.trendingRevalidating = false;
+  }
+}
 
 const trendingLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -1358,6 +1445,19 @@ router.get('/movies', async (req, res) => {
     const includeAdult = await resolveIncludeAdult(req);
     const allowMissingImdb = includeAdult;
 
+    const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
+    const lockKey = `revalidating_category_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
+
+    if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && categoriesCache.has(cacheKey)) {
+      const cached = categoriesCache.get(cacheKey);
+      const isStale = Date.now() - cached.time > CATEGORIES_CACHE_DURATION;
+      if (isStale && !global[lockKey]) {
+        global[lockKey] = true;
+        setTimeout(() => refreshCategoryCache(genre, year, page, limit, includeAdult, allowMissingImdb), 0);
+      }
+      return res.json(cached.data);
+    }
+
     if (search) {
       const url = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(search)}&include_adult=${includeAdult ? 'true' : 'false'}&language=en-US&page=${page}`;
       const resp = await tmdbFetch(url, opts, `Search "${search}"`);
@@ -1383,7 +1483,13 @@ router.get('/movies', async (req, res) => {
     if (!allowMissingImdb) {
       movies = (await attachImdbIds(movies, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
     }
-    res.json({ movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } });
+    const payload = { movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } };
+    
+    if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && payload.movies.length > 0) {
+      categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
+    }
+
+    res.json(payload);
   } catch (err) {
     console.error('Error fetching movies:', err);
     res.status(500).json({ error: 'Failed to fetch movies' });
@@ -1670,8 +1776,13 @@ router.get('/trending', trendingLimiter, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     console.log(`[API] /api/trending hit limit=${limit} page=${page}`);
     const now = Date.now();
-    if (page === 1 && trendingCache && now - trendingCacheTime < CACHE_DURATION) {
-      console.log('[API] /api/trending served from cache');
+    if (page === 1 && trendingCache) {
+      const isStale = now - trendingCacheTime > CACHE_DURATION;
+      if (isStale && !global.trendingRevalidating) {
+        global.trendingRevalidating = true;
+        // Trigger background refresh, but return cache immediately
+        setTimeout(() => refreshTrendingCache(limit), 0);
+      }
       return res.json({ movies: trendingCache.slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
     }
     const opts = { method: 'GET', headers: tmdbHeaders() };
@@ -1738,9 +1849,40 @@ router.get('/trending', trendingLimiter, async (req, res) => {
   }
 });
 
+let genresCache = null;
+let genresCacheTime = 0;
+const GENRES_CACHE_DURATION = 24 * 60 * 60 * 1000;
+
+async function refreshGenresCache() {
+  try {
+    const resp = await tmdbFetch('https://api.themoviedb.org/3/genre/movie/list?language=en-US', { method: 'GET', headers: tmdbHeaders() }, 'Genres Bg');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const finalData = data.genres.filter(g => g.name.toLowerCase() !== 'documentary').map(g => ({ id: g.id, name: g.name })).sort((a,b) => a.name.localeCompare(b.name));
+    if (finalData.length > 0) {
+      genresCache = finalData;
+      genresCacheTime = Date.now();
+      console.log(`[API] Background genres revalidate success count=${finalData.length}`);
+    }
+  } catch (err) {
+    console.error('[API] Background genres refresh failed:', err);
+  } finally {
+    global.genresRevalidating = false;
+  }
+}
+
 // GET /api/genres
 router.get('/genres', async (req, res) => {
   try {
+    if (genresCache) {
+      const isStale = Date.now() - genresCacheTime > GENRES_CACHE_DURATION;
+      if (isStale && !global.genresRevalidating) {
+        global.genresRevalidating = true;
+        setTimeout(() => refreshGenresCache(), 0);
+      }
+      return res.json(genresCache);
+    }
+
     const resp = await tmdbFetch(
       'https://api.themoviedb.org/3/genre/movie/list?language=en-US',
       { method: 'GET', headers: tmdbHeaders() },
@@ -1748,11 +1890,17 @@ router.get('/genres', async (req, res) => {
     );
     if (!resp.ok) return res.status(500).json({ error: 'Failed to fetch genres' });
     const data = await resp.json();
-    res.json(data.genres
+    const finalData = data.genres
       .filter(g => g.name.toLowerCase() !== 'documentary')
       .map(g => ({ id: g.id, name: g.name }))
-      .sort((a,b) => a.name.localeCompare(b.name))
-    );
+      .sort((a,b) => a.name.localeCompare(b.name));
+      
+    if (finalData.length > 0) {
+      genresCache = finalData;
+      genresCacheTime = Date.now();
+    }
+    
+    res.json(finalData);
   } catch (err) {
     console.error('Error fetching genres:', err);
     res.status(500).json({ error: 'Failed to fetch genres' });
