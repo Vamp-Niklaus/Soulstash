@@ -679,202 +679,8 @@ async function fetchUserCollectionsWithVersion(cached) {
   const version = Number.isFinite(Number(versionHeader)) ? Number(versionHeader) : (cached?.version || 0);
   updateCollectionsCache(data, version);
   return { collections: data, version };
-  const response = await fetch(path, { ...options, headers });
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      clearAuthSession();
-      if (!['/login', '/register'].includes(window.location.pathname)) {
-        navigateWithoutReload('/login', { replace: true });
-      }
-    }
-    const payload = await response.json().catch(() => ({}));
-    const error = new Error(payload.error || `Request failed with status ${response.status}`);
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
-  }
-
-  return response.json();
 }
 
-async function streamApiFetch(path, options = {}) {
-  const token = getToken();
-  const headers = {
-    ...(options.headers || {})
-  };
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const { signal, onEvent } = options;
-  const response = await fetch(path, { signal, headers });
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      clearAuthSession();
-      if (!['/login', '/register'].includes(window.location.pathname)) {
-        navigateWithoutReload('/login', { replace: true });
-      }
-    }
-    const payload = await response.json().catch(() => ({}));
-    const error = new Error(payload.error || `Request failed with status ${response.status}`);
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
-  }
-
-  const reader = response.body?.getReader();
-  if (!reader) return;
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const parsed = JSON.parse(line);
-            onEvent?.(parsed);
-          } catch (e) {
-            console.warn('Failed to parse streaming line:', line, e);
-          }
-        }
-      }
-    }
-    buffer += decoder.decode();
-    if (buffer.trim()) {
-      try {
-        onEvent?.(JSON.parse(buffer.trim()));
-      } catch (e) {
-        console.warn('Failed to parse streaming line:', buffer, e);
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-async function cachedApiFetch(path, options = {}, ttl = API_CACHE_TTL) {
-  const method = String(options.method || 'GET').toUpperCase();
-  if (method !== 'GET') {
-    return apiFetch(path, options);
-  }
-
-  const cacheKey = `${method}:${path}`;
-  const now = Date.now();
-  const cached = apiResponseCache.get(cacheKey);
-
-  if (cached?.data && cached.expiresAt > now) {
-    return cached.data;
-  }
-
-  if (cached?.promise) {
-    return cached.promise;
-  }
-
-  const request = apiFetch(path, options)
-    .then((data) => {
-      apiResponseCache.set(cacheKey, {
-        data,
-        expiresAt: Date.now() + ttl
-      });
-      return data;
-    })
-    .finally(() => {
-      const latest = apiResponseCache.get(cacheKey);
-      if (latest?.promise) {
-        apiResponseCache.set(cacheKey, {
-          data: latest.data,
-          expiresAt: latest.expiresAt || 0
-        });
-      }
-    });
-
-  apiResponseCache.set(cacheKey, {
-    promise: request,
-    data: cached?.data || null,
-    expiresAt: cached?.expiresAt || 0
-  });
-
-  return request;
-}
-
-function optimisticSetCollectionMembership(collectionName, item, shouldInclude, options = {}) {
-  const current = normalizeCollections(getCachedUserCollections());
-  const targetId = String(collectionName);
-  const itemContentId = contentIdFromItem(item);
-  const exclusiveCollections = shouldInclude ? new Set(options.exclusiveCollections || []) : new Set();
-  const next = current.map((collection) => {
-    const collectionId = String(collection._id || collection.name);
-    const movies = Array.isArray(collection.movies) ? collection.movies : [];
-    const hasItem = movies.some((entry) => contentIdFromItem(entry) === itemContentId);
-
-    if (collectionId === targetId || String(collection.name) === targetId) {
-      if (shouldInclude) {
-        if (hasItem) return collection;
-        const updated = [...movies, item];
-        return { ...collection, movies: updated, movieCount: updated.length };
-      }
-      if (!hasItem) return collection;
-      const updated = movies.filter((entry) => contentIdFromItem(entry) !== itemContentId);
-      return { ...collection, movies: updated, movieCount: updated.length };
-    }
-
-    if (!exclusiveCollections.has(collection.name) || !hasItem) return collection;
-    const updated = movies.filter((entry) => contentIdFromItem(entry) !== itemContentId);
-    return { ...collection, movies: updated, movieCount: updated.length };
-  });
-  broadcastCollections(next, lastKnownCollectionVersion);
-  return current;
-}
-
-async function refreshCollectionsView() {
-  const latestCollections = normalizeCollections(await loadUserCollections());
-  window.dispatchEvent(
-    new CustomEvent(window.CollectionStore?.COLLECTIONS_UPDATED_EVENT || 'soulstash:collections-updated', {
-      detail: { collections: latestCollections }
-    })
-  );
-  return latestCollections;
-}
-
-async function fetchUserCollectionsWithVersion(cached) {
-  const token = getToken();
-  if (!token) {
-    return { collections: [], version: 0 };
-  }
-
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`
-  };
-  if (cached?.version != null) {
-    headers['X-Collection-Version'] = String(cached.version);
-  }
-
-  const response = await fetch('/api/user/collections', { headers });
-  if (response.status === 304 && cached) {
-    return { collections: cached.collections, version: cached.version, fromCache: true };
-  }
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    const error = new Error(payload.error || `Request failed with status ${response.status}`);
-    error.status = response.status;
-    error.payload = payload;
-    throw error;
-  }
-
-  const data = await response.json();
-  const versionHeader = response.headers.get('x-collection-version');
-  const version = Number.isFinite(Number(versionHeader)) ? Number(versionHeader) : (cached?.version || 0);
-  updateCollectionsCache(data, version);
-  return { collections: data, version };
-}
 
 async function loadTrendingHome(force = false) {
   const now = Date.now();
@@ -1133,12 +939,7 @@ function buildVideasyHindiAttemptUrl({ mediaType, tmdbId, seasonNumber, episodeN
   return url.toString();
 }
 
-function buildVidsrcUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
-  const type = String(mediaType || '').toLowerCase();
-  return type === 'movie'
-    ? `https://vidsrc.xyz/embed/movie/${tmdbId}`
-    : `https://vidsrc.xyz/embed/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
-}
+
 
 function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const type = String(mediaType || '').toLowerCase();
@@ -1166,15 +967,6 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       label: 'vidfast',
       url: buildVidfastUrl(input),
       urls: [buildVidfastUrl(input)],
-      embeddable: true,
-      fallback: true
-    },
-    {
-      id: 'legacy-vidsrc',
-      key: 'legacy-vidsrc',
-      label: 'vidsrc',
-      url: buildVidsrcUrl(input),
-      urls: [buildVidsrcUrl(input)],
       embeddable: true,
       fallback: true
     }
@@ -9068,12 +8860,12 @@ export function VideoPlayerModal({ request, onClose }) {
         });
         if (videasy) return videasy.url;
 
-        // Priority 2: Vidsrc
-        const vidsrc = playable.find(s => {
+        // Priority 2: YouTube
+        const youtube = playable.find(s => {
           const l = s.label?.toLowerCase() || '';
-          return l.includes('vidsrc') || l.includes('vid-src') || s.id?.includes('vidsrc');
+          return l.includes('youtube') || s.id?.includes('youtube');
         });
-        if (vidsrc) return vidsrc.url;
+        if (youtube) return youtube.url;
 
         // Fallback: First available
         return playable[0].url;
