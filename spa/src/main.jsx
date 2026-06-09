@@ -59,7 +59,7 @@ const FALLBACK_AVATAR = '/images/avatar.png';
 const CREDIT_PAGE_SIZE = 24;
 const HOME_TRENDING_TTL = 60 * 60 * 1000;
 const AUTO_RECOVERY_RETRIES = 3;
-const HOME_GRID_CLASS = 'grid grid-flow-col auto-cols-[32%] sm:auto-cols-[22%] gap-3 overflow-x-auto snap-x snap-mandatory hide-scrollbar pb-2 md:grid-flow-row md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:auto-cols-auto md:pb-0 md:snap-none md:overflow-visible';
+const HOME_GRID_CLASS = 'grid grid-flow-col auto-cols-[32%] sm:auto-cols-[22%] gap-3 overflow-x-auto snap-x snap-mandatory hide-scrollbar pb-2 md:grid-flow-row md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 md:auto-cols-auto md:pb-0 md:snap-none md:overflow-visible';
 const PUBLISH_MIN_COLLECTION_TITLES = 6;
 
 const homeTrendingCache = {
@@ -5360,7 +5360,7 @@ function HomePage() {
       </section>
 
       {genres.slice(0, visibleGenreCount).map((genre) => (
-        <LazyCategoryShelf key={genre} genre={genre} />
+        <LazyCategoryShelf key={genre.id || genre} genre={genre} />
       ))}
 
       {visibleGenreCount < genres.length && (
@@ -5801,7 +5801,8 @@ function LazyCategoryShelf({ genre }) {
 
   useEffect(() => {
     let ignore = false;
-    cachedApiFetch(`/api/movies?genre=${encodeURIComponent(genre)}&limit=15`)
+    const genreId = genre.id || genre;
+    cachedApiFetch(`/api/movies?genre=${genreId}&limit=15`)
       .then((data) => {
         if (!ignore && data.movies) {
           setMovies(data.movies);
@@ -5816,9 +5817,11 @@ function LazyCategoryShelf({ genre }) {
 
   if (loading || !movies.length) return null;
 
+  const title = genre.name || genre;
+
   return (
     <section className="content-section">
-      <HomeShelfHeader title={genre} onViewAll={() => navigate(`/search?q=${encodeURIComponent(genre)}`)} />
+      <HomeShelfHeader title={title} onViewAll={() => navigate(`/search?q=${encodeURIComponent(title)}`)} />
       <div className={HOME_GRID_CLASS}>
         {movies.slice(0, 15).map((item) => (
           <ContentCard key={item.id} item={item} data-card />
