@@ -9288,7 +9288,7 @@ export function VideoPlayerModal({ request, onClose }) {
               >
                 <i className="fas fa-redo"></i>
               </button>
-              {!canUseVideoJs && activeUrl && (
+              {!canUseVideoJs && activeUrl && isAndroidApp() && (
                 <button
                   type="button"
                   data-player-action="true"
