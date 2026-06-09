@@ -32,7 +32,7 @@ function validVoteAverage(value) {
 function buildTmdbHeaders() {
   return {
     accept: 'application/json',
-    Authorization: `Bearer ${TMDB_BEARER_TOKEN}`
+    Authorization: `Bearer ${String(process.env.TMDB_BEARER_TOKEN || TMDB_BEARER_TOKEN || '').trim()}`
   };
 }
 
