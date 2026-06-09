@@ -962,9 +962,25 @@ async function refreshPlayerSourceRecord(identity) {
       });
       
       if (validVideos.length) {
-        validVideos.sort((a, b) => b.seconds - a.seconds);
+        const scoreVideo = (v) => {
+          let score = 0;
+          const t = v.title.toLowerCase();
+          if (t.includes('hindi dubbed')) score += 50;
+          else if (t.includes('hindi')) score += 20;
+          
+          if (t.includes('1080p') || t.includes('1080 p')) score += 30;
+          if (t.includes('hd')) score += 10;
+          if (t.includes('full movie') || t.includes('full episode')) score += 10;
+          
+          const diffMin = Math.abs((v.seconds / 60) - tmdbRuntimeMin);
+          score += Math.max(0, 40 - diffMin); 
+          
+          return score;
+        };
+        
+        validVideos.sort((a, b) => scoreVideo(b) - scoreVideo(a));
         const bestVideo = validVideos[0];
-        console.log(`[YouTube Scraper] Found match: ${bestVideo.title} (${bestVideo.seconds / 60} min)`);
+        console.log(`[YouTube Scraper] Found match: ${bestVideo.title} (${bestVideo.seconds / 60} min) | Score: ${scoreVideo(bestVideo)}`);
         
         const ytPlayer = {
           sourceKey: 'youtube',
