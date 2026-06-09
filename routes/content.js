@@ -1723,7 +1723,7 @@ router.get('/genres', async (req, res) => {
     );
     if (!resp.ok) return res.status(500).json({ error: 'Failed to fetch genres' });
     const data = await resp.json();
-    res.json(data.genres.map(g => g.name).sort());
+    res.json(data.genres.map(g => ({ id: g.id, name: g.name })).sort((a,b) => a.name.localeCompare(b.name)));
   } catch (err) {
     console.error('Error fetching genres:', err);
     res.status(500).json({ error: 'Failed to fetch genres' });
