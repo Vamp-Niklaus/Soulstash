@@ -9461,17 +9461,28 @@ export function VideoPlayerModal({ request, onClose }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center justify-end gap-2">
-              <button
-                type="button"
-                data-player-action="true"
-                onClick={handleSwitchSource}
-                disabled={availableSources.length < 2}
-                className={iconButtonClass}
-                aria-label="Switch stream source"
-                title="Switch Source"
-              >
-                <i className="fas fa-exchange-alt"></i>
-              </button>
+              <div className="relative">
+                <select
+                  value={activeUrl}
+                  onChange={(e) => {
+                    setActiveUrl(e.target.value);
+                    setIframeReloadKey(0);
+                  }}
+                  disabled={availableSources.length < 2}
+                  className="appearance-none bg-white/10 hover:bg-white/20 text-white text-[11px] sm:text-xs font-medium rounded-full pl-3 pr-7 py-1.5 focus:outline-none focus:ring-1 focus:ring-white/50 cursor-pointer transition-colors max-w-[120px] sm:max-w-[160px] truncate disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Select Source"
+                  aria-label="Select stream source"
+                >
+                  {availableSources.map((s, idx) => (
+                    <option key={idx} value={s.url} className="bg-neutral-900 text-white">
+                      {s.label || s.serverName || `Source ${idx + 1}`}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-white/70">
+                  <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" /></svg>
+                </div>
+              </div>
               <button
                 type="button"
                 data-player-action="true"
