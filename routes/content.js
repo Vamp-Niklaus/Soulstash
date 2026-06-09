@@ -30,7 +30,8 @@ const DEFAULT_MULTIMOVIES_ROOT_URL = 'https://multimovies.fyi/';
 const refreshLocks = new Set();
 
 const DIRECT_SOURCES = [
-  { id: 'videasy', label: 'VIDEASY', template: (m, t, s, e) => `https://videasy.me/embed/${t}` }
+  { id: 'videasy', label: 'VIDEASY', template: (m, t, s, e) => `https://videasy.me/embed/${t}` },
+  { id: 'vidfast', label: 'vidfast', template: (m, t, s, e) => `https://vidfast.co/embed/${t}` }
 ];
 
 // ── TMDB fetch with retry ─────────────────────────────────────────────────────

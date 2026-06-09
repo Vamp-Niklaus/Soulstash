@@ -941,6 +941,13 @@ function buildVideasyHindiAttemptUrl({ mediaType, tmdbId, seasonNumber, episodeN
 
 
 
+function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  return type === 'movie'
+    ? `https://www.vidfast.net/movie/${tmdbId}`
+    : `https://www.vidfast.net/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
+}
+
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
 
@@ -951,6 +958,15 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       label: 'VIDEASY',
       url: buildVideasyHindiAttemptUrl(input),
       urls: [buildVideasyHindiAttemptUrl(input)],
+      embeddable: true,
+      fallback: true
+    },
+    {
+      id: 'legacy-vidfast',
+      key: 'legacy-vidfast',
+      label: 'vidfast',
+      url: buildVidfastUrl(input),
+      urls: [buildVidfastUrl(input)],
       embeddable: true,
       fallback: true
     }
@@ -5484,9 +5500,15 @@ function TrendingPage() {
         </div>
       ) : (
         <div className={HOME_GRID_CLASS}>
-          {items.map((item) => (
-            <ContentCard key={`${item.media_type || 'media'}-${item.id}`} item={item} />
-          ))}
+          {items.map((item, index) => {
+            const isLast = index === items.length - 1;
+            const contentCard = <ContentCard key={`${item.media_type || 'media'}-${item.id}`} item={item} />;
+            return isLast ? (
+              <div ref={lastElementRef} key={`${item.media_type || 'media'}-${item.id}-wrapper`}>
+                {contentCard}
+              </div>
+            ) : contentCard;
+          })}
         </div>
       )}
     </section>
@@ -9200,7 +9222,24 @@ export function VideoPlayerModal({ request, onClose }) {
             >
             <div className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
               <div className="flex min-w-max items-center gap-2 pr-2">
-                {sources.length ? (
+                {sourceState.loading ? (
+                  [
+                    { id: 'dummy-youtube', label: 'YouTube' },
+                    { id: 'dummy-videasy', label: 'VIDEASY' },
+                    { id: 'dummy-vidfast', label: 'vidfast' },
+                    { id: 'dummy-h1', label: 'H1' },
+                    { id: 'dummy-h2', label: 'H2' },
+                  ].map((dummy) => (
+                    <button
+                      key={dummy.id}
+                      type="button"
+                      disabled
+                      className={`${sourceButtonClass} animate-pulse cursor-wait bg-white/5 text-white/30`}
+                    >
+                      {dummy.label}
+                    </button>
+                  ))
+                ) : sources.length ? (
                   sources.map((source) => (
                     <button
                       key={source.id}
@@ -9221,8 +9260,6 @@ export function VideoPlayerModal({ request, onClose }) {
                       onClick={() => {
                         if (!source.disabled && !source.pending) {
                           setActiveUrl(source.url);
-                          // Do NOT focus the iframe here — tvNav.js will restore focus
-                          // to the newly-active stream button after the re-render.
                         }
                       }}
                     >
@@ -9237,28 +9274,6 @@ export function VideoPlayerModal({ request, onClose }) {
               </div>
             </div>
             <div className="flex shrink-0 items-center justify-end gap-2">
-              <div className="relative">
-                <select
-                  value={activeUrl}
-                  onChange={(e) => {
-                    setActiveUrl(e.target.value);
-                    setIframeReloadKey(0);
-                  }}
-                  disabled={availableSources.length < 2}
-                  className="appearance-none bg-white/10 hover:bg-white/20 text-white text-[11px] sm:text-xs font-medium rounded-full pl-3 pr-7 py-1.5 focus:outline-none focus:ring-1 focus:ring-white/50 cursor-pointer transition-colors max-w-[120px] sm:max-w-[160px] truncate disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Select Source"
-                  aria-label="Select stream source"
-                >
-                  {availableSources.map((s, idx) => (
-                    <option key={idx} value={s.url} className="bg-neutral-900 text-white">
-                      {s.label || s.serverName || `Source ${idx + 1}`}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-white/70">
-                  <svg className="w-3 h-3 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" /></svg>
-                </div>
-              </div>
               <button
                 type="button"
                 data-player-action="true"
