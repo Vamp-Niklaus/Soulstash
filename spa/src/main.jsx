@@ -4959,9 +4959,9 @@ function LegacyRedirectPage() {
   return <div className="app-loading">Opening page...</div>;
 }
 
-function SectionHeader({ title, subtitle }) {
-  const isTrendingTitle = title === 'Trending Now';
-  const titleClassName = isTrendingTitle
+function SectionHeader({ title, subtitle, large = false }) {
+  const isLargeTitle = title === 'Trending Now' || large;
+  const titleClassName = isLargeTitle
     ? 'section-title !mb-0 inline-block !ml-2 sm:!ml-3 !pl-1 !text-2xl sm:!text-3xl !font-black tracking-tight overflow-visible'
     : 'section-title !mb-0';
   return (
@@ -5531,6 +5531,9 @@ function GenrePage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [fetchingMore, setFetchingMore] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
 
   const genreId = id;
@@ -5538,14 +5541,17 @@ function GenrePage() {
 
   useEffect(() => {
     let ignore = false;
-
     setLoading(true);
     setError('');
+    setPage(1);
+    setHasMore(true);
 
-    cachedApiFetch(`/api/movies?genre=${genreId}&limit=40&retry=${retryTick}`)
+    cachedApiFetch(`/api/movies?genre=${genreId}&limit=40&page=1&retry=${retryTick}`)
       .then((data) => {
         if (!ignore) {
-          setItems(Array.isArray(data?.movies) ? data.movies : []);
+          const fetchedItems = Array.isArray(data?.movies) ? data.movies : [];
+          setItems(fetchedItems);
+          setHasMore(fetchedItems.length > 0 && data?.pagination?.page < data?.pagination?.pages);
           document.title = `${genreName} | Soulstash`;
         }
       })
@@ -5561,6 +5567,38 @@ function GenrePage() {
     };
   }, [genreId, genreName, retryTick]);
 
+  const observerRef = useRef(null);
+  const lastElementRef = useCallback((node) => {
+    if (loading || fetchingMore || !hasMore) return;
+    if (observerRef.current) observerRef.current.disconnect();
+    if (node) {
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          setPage((p) => p + 1);
+        }
+      }, { rootMargin: '400px' });
+      observerRef.current.observe(node);
+    }
+  }, [loading, fetchingMore, hasMore]);
+
+  useEffect(() => {
+    if (page === 1) return;
+    let ignore = false;
+    setFetchingMore(true);
+    cachedApiFetch(`/api/movies?genre=${genreId}&limit=40&page=${page}`)
+      .then((data) => {
+        if (!ignore) {
+          const fetchedItems = Array.isArray(data?.movies) ? data.movies : [];
+          setItems((prev) => [...prev, ...fetchedItems]);
+          setHasMore(fetchedItems.length > 0 && data?.pagination?.page < data?.pagination?.pages);
+        }
+      })
+      .finally(() => {
+        if (!ignore) setFetchingMore(false);
+      });
+    return () => { ignore = true; };
+  }, [page, genreId]);
+
   if (loading && !error) {
     return (
       <section className="content-section">
@@ -5574,7 +5612,7 @@ function GenrePage() {
 
   return (
     <section className="content-section">
-      <SectionHeader title={genreName} />
+      <SectionHeader title={genreName} large />
       {error ? (
         <div className="app-error">
           <p>{error}</p>
@@ -5587,11 +5625,19 @@ function GenrePage() {
           </button>
         </div>
       ) : items.length ? (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
-          {items.map((item) => (
-            <ContentCard key={item.id} item={item} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
+            {items.map((item, index) => {
+              const isLast = index === items.length - 1;
+              return <ContentCard ref={isLast ? lastElementRef : null} key={`${item.id}-${index}`} item={item} />;
+            })}
+          </div>
+          {fetchingMore && (
+            <div className="mt-8 flex justify-center">
+              <div className="w-6 h-6 border-2 border-white/20 border-t-white/80 rounded-full animate-spin"></div>
+            </div>
+          )}
+        </>
       ) : (
         <div className="app-empty">
           <p>No titles found for this genre.</p>
