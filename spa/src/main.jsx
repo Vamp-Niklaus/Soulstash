@@ -5420,7 +5420,7 @@ function TrendingPage() {
     setPage(1);
     setHasMore(true);
 
-    cachedApiFetch(`/api/trending?limit=40&page=1&retry=${retryTick}`)
+    cachedApiFetch(`/api/trending?limit=36&page=1&retry=${retryTick}`)
       .then((data) => {
         if (!ignore) {
           const fetchedItems = Array.isArray(data?.movies) ? data.movies : (Array.isArray(data) ? data : []);
@@ -5459,7 +5459,7 @@ function TrendingPage() {
     if (page === 1) return;
     let ignore = false;
     setFetchingMore(true);
-    cachedApiFetch(`/api/trending?limit=40&page=${page}`)
+    cachedApiFetch(`/api/trending?limit=36&page=${page}`)
       .then((data) => {
         if (!ignore) {
           const fetchedItems = Array.isArray(data?.movies) ? data.movies : (Array.isArray(data) ? data : []);
@@ -5499,7 +5499,7 @@ function TrendingPage() {
           </button>
         </div>
       ) : (
-        <div className={HOME_GRID_CLASS}>
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
           {items.map((item, index) => {
             const isLast = index === items.length - 1;
             const contentCard = <ContentCard key={`${item.media_type || 'media'}-${item.id}`} item={item} />;
@@ -5578,7 +5578,7 @@ function GenrePage() {
     setPage(1);
     setHasMore(true);
 
-    cachedApiFetch(`/api/movies?genre=${genreId}&limit=40&page=1&retry=${retryTick}`)
+    cachedApiFetch(`/api/movies?genre=${genreId}&limit=36&page=1&retry=${retryTick}`)
       .then((data) => {
         if (!ignore) {
           const fetchedItems = Array.isArray(data?.movies) ? data.movies : [];
@@ -5617,7 +5617,7 @@ function GenrePage() {
     if (page === 1) return;
     let ignore = false;
     setFetchingMore(true);
-    cachedApiFetch(`/api/movies?genre=${genreId}&limit=40&page=${page}`)
+    cachedApiFetch(`/api/movies?genre=${genreId}&limit=36&page=${page}`)
       .then((data) => {
         if (!ignore) {
           const fetchedItems = Array.isArray(data?.movies) ? data.movies : [];
