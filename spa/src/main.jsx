@@ -5200,6 +5200,19 @@ function HomePage() {
   const firstCardRef = useRef(null);
   useGridKeyNav(pageRef, 'button[data-card]');
 
+  const observerRef = useRef(null);
+  const lastElementRef = useCallback((node) => {
+    if (observerRef.current) observerRef.current.disconnect();
+    if (node) {
+      observerRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleGenreCount((prev) => prev + 2);
+        }
+      }, { rootMargin: '400px' });
+      observerRef.current.observe(node);
+    }
+  }, []);
+
   // When page loads, set up arrow key listener to focus first card
   useEffect(() => {
     // Global TV navigation handles initial focus and card movement.
@@ -5365,17 +5378,7 @@ function HomePage() {
 
       {visibleGenreCount < genres.length && (
         <div 
-          ref={(node) => {
-            if (node) {
-              const obs = new IntersectionObserver((entries) => {
-                if (entries[0].isIntersecting) {
-                  setVisibleGenreCount((c) => c + 2);
-                  obs.disconnect();
-                }
-              }, { rootMargin: '400px' });
-              obs.observe(node);
-            }
-          }} 
+          ref={lastElementRef} 
           className="h-10 w-full flex justify-center items-center"
         >
           <div className="w-6 h-6 border-2 border-white/20 border-t-white/80 rounded-full animate-spin"></div>
@@ -5823,7 +5826,12 @@ function LazyCategoryShelf({ genre, limit }) {
 
   return (
     <section className="content-section">
-      <HomeShelfHeader title={title} />
+      <HomeShelfHeader 
+        title={title} 
+        onViewAll={() => {
+          window.dispatchEvent(new CustomEvent('soulstash:open-search', { detail: { query: title } }));
+        }} 
+      />
       <div className={HOME_GRID_CLASS}>
         {movies.slice(0, displayLimit).map((item) => (
           <ContentCard key={item.id} item={item} data-card />
@@ -7389,6 +7397,18 @@ function ReactNavbar() {
   useEffect(() => {
     setSearchOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    const handleOpenSearch = (e) => {
+      if (e.detail?.query) {
+        setSearchQuery(e.detail.query);
+        setSearchTab('content');
+      }
+      setSearchOpen(true);
+    };
+    window.addEventListener('soulstash:open-search', handleOpenSearch);
+    return () => window.removeEventListener('soulstash:open-search', handleOpenSearch);
+  }, []);
 
   useEffect(() => {
     searchCacheRef.current.clear();
