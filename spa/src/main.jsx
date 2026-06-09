@@ -8987,7 +8987,7 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [hindiSources, fallbackSources]);
 
   // Auto-select a default source whenever sources load and nothing is playing yet.
-  // Priority: VIDEASY → vidsrc → first available.
+  // Priority: VIDEASY → YouTube → first available.
   useEffect(() => {
     setActiveUrl((current) => {
       if (current && sources.some((s) => s.url === current)) return current;
@@ -8997,10 +8997,10 @@ export function VideoPlayerModal({ request, onClose }) {
         s.id?.toLowerCase().includes('videasy') || s.label?.toLowerCase().includes('videasy')
       );
       if (videasy) return videasy.url;
-      const vidsrc = playable.find((s) =>
-        s.id?.toLowerCase().includes('vidsrc') || s.label?.toLowerCase().includes('vidsrc')
+      const youtube = playable.find((s) =>
+        s.id?.toLowerCase().includes('youtube') || s.label?.toLowerCase().includes('youtube')
       );
-      if (vidsrc) return vidsrc.url;
+      if (youtube) return youtube.url;
       return playable[0].url;
     });
   }, [sources]);

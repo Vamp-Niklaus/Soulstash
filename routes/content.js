@@ -31,7 +31,6 @@ const refreshLocks = new Set();
 
 const DIRECT_SOURCES = [
   { id: 'videasy', label: 'VIDEASY', template: (m, t, s, e) => `https://videasy.me/embed/${t}` },
-  { id: 'vidsrc', label: 'vidsrc', template: (m, t, s, e) => m === 'movie' ? `https://vidsrc.me/embed/movie?tmdb=${t}` : `https://vidsrc.me/embed/tv?tmdb=${t}&sea=${s}&epi=${e}` },
   { id: 'vidfast', label: 'vidfast', template: (m, t, s, e) => `https://vidfast.co/embed/${t}` }
 ];
 
