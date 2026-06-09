@@ -5360,7 +5360,7 @@ function HomePage() {
       </section>
 
       {genres.slice(0, visibleGenreCount).map((genre) => (
-        <LazyCategoryShelf key={genre.id || genre} genre={genre} />
+        <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} />
       ))}
 
       {visibleGenreCount < genres.length && (
@@ -5794,15 +5794,15 @@ function DetailPageSkeleton({ type }) {
   );
 }
 
-function LazyCategoryShelf({ genre }) {
+function LazyCategoryShelf({ genre, limit }) {
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
   useEffect(() => {
     let ignore = false;
     const genreId = genre.id || genre;
-    cachedApiFetch(`/api/movies?genre=${genreId}&limit=15`)
+    // We fetch a bit more (e.g. 20) but slice it down to the limit for desktop
+    cachedApiFetch(`/api/movies?genre=${genreId}&limit=20`)
       .then((data) => {
         if (!ignore && data.movies) {
           setMovies(data.movies);
@@ -5818,12 +5818,14 @@ function LazyCategoryShelf({ genre }) {
   if (loading || !movies.length) return null;
 
   const title = genre.name || genre;
+  // Apply limit for 2 rows on desktop
+  const displayLimit = limit || 14;
 
   return (
     <section className="content-section">
-      <HomeShelfHeader title={title} onViewAll={() => navigate(`/search?q=${encodeURIComponent(title)}`)} />
+      <HomeShelfHeader title={title} />
       <div className={HOME_GRID_CLASS}>
-        {movies.slice(0, 15).map((item) => (
+        {movies.slice(0, displayLimit).map((item) => (
           <ContentCard key={item.id} item={item} data-card />
         ))}
       </div>
