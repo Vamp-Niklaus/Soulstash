@@ -8660,8 +8660,11 @@ const setNativeScale = async (scale) => {
   if (isAndroidApp()) {
     try {
       const { Capacitor } = window;
-      if (Capacitor.Plugins && Capacitor.Plugins.ZoomPlugin) {
-        await Capacitor.Plugins.ZoomPlugin.setScale({ scale });
+      if (Capacitor && Capacitor.registerPlugin) {
+        const ZoomPlugin = Capacitor.registerPlugin('ZoomPlugin');
+        if (ZoomPlugin) {
+          await ZoomPlugin.setScale({ scale });
+        }
       }
     } catch (e) {
       console.log('ZoomPlugin error:', e);
