@@ -59,7 +59,7 @@ const FALLBACK_AVATAR = '/images/avatar.png';
 const CREDIT_PAGE_SIZE = 24;
 const HOME_TRENDING_TTL = 60 * 60 * 1000;
 const AUTO_RECOVERY_RETRIES = 3;
-const HOME_GRID_CLASS = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4';
+const HOME_GRID_CLASS = 'grid grid-flow-col auto-cols-[32%] sm:auto-cols-[22%] gap-3 overflow-x-auto snap-x snap-mandatory hide-scrollbar pb-2 md:grid-flow-row md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 md:auto-cols-auto md:pb-0 md:snap-none md:overflow-visible';
 const PUBLISH_MIN_COLLECTION_TITLES = 6;
 
 const homeTrendingCache = {
@@ -5186,6 +5186,8 @@ function HomePage() {
   const [trending, setTrending] = useState([]);
   const [collections, setCollections] = useState([]);
   const [publishedCollections, setPublishedCollections] = useState([]);
+  const [genres, setGenres] = useState([]);
+  const [visibleGenreCount, setVisibleGenreCount] = useState(2);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryTick, setRetryTick] = useState(0);
@@ -5235,16 +5237,18 @@ function HomePage() {
     async function load() {
       try {
         setError('');
-        const [trendingData, userCollections, publishedData] = await Promise.all([
+        const [trendingData, userCollections, publishedData, genresData] = await Promise.all([
           loadTrendingHome(retryTick > 0).catch(() => []),
           getToken() ? loadUserCollections().catch(() => []) : Promise.resolve([]),
-          cachedApiFetch('/api/collections/published').catch(() => ({ collections: [] }))
+          cachedApiFetch('/api/collections/published').catch(() => ({ collections: [] })),
+          cachedApiFetch('/api/genres').catch(() => [])
         ]);
 
         if (!ignore) {
           setTrending(trendingData);
           setCollections(userCollections);
           setPublishedCollections(Array.isArray(publishedData?.collections) ? publishedData.collections : []);
+          setGenres(Array.isArray(genresData) ? genresData : []);
         }
       } catch (requestError) {
         if (!ignore) {
@@ -5354,6 +5358,29 @@ function HomePage() {
           </div>
         ) : null}
       </section>
+
+      {genres.slice(0, visibleGenreCount).map((genre) => (
+        <LazyCategoryShelf key={genre} genre={genre} />
+      ))}
+
+      {visibleGenreCount < genres.length && (
+        <div 
+          ref={(node) => {
+            if (node) {
+              const obs = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting) {
+                  setVisibleGenreCount((c) => c + 2);
+                  obs.disconnect();
+                }
+              }, { rootMargin: '400px' });
+              obs.observe(node);
+            }
+          }} 
+          className="h-10 w-full flex justify-center items-center"
+        >
+          <div className="w-6 h-6 border-2 border-white/20 border-t-white/80 rounded-full animate-spin"></div>
+        </div>
+      )}
 
       {publishedCollections.length ? (
         <section className="content-section space-y-8">
@@ -5764,6 +5791,40 @@ function DetailPageSkeleton({ type }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function LazyCategoryShelf({ genre }) {
+  const [movies, setMovies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let ignore = false;
+    cachedApiFetch(`/api/movies?genre=${encodeURIComponent(genre)}&limit=15`)
+      .then((data) => {
+        if (!ignore && data.movies) {
+          setMovies(data.movies);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => { ignore = true; };
+  }, [genre]);
+
+  if (loading || !movies.length) return null;
+
+  return (
+    <section className="content-section">
+      <HomeShelfHeader title={genre} onViewAll={() => navigate(`/search?q=${encodeURIComponent(genre)}`)} />
+      <div className={HOME_GRID_CLASS}>
+        {movies.slice(0, 15).map((item) => (
+          <ContentCard key={item.id} item={item} data-card />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -7458,6 +7519,17 @@ function ReactNavbar() {
   ];
 
   const mobileItems = [
+    {
+      label: 'Home',
+      active: currentPath === '/',
+      onClick: () => navigate('/'),
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="nav-link-icon">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+      )
+    },
     ...navItems,
     {
       label: isLoggedIn && username ? 'Profile' : 'Login',

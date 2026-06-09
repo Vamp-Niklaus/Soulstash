@@ -15,6 +15,7 @@ const {
 } = require('../util/multimoviesScraper');
 const { optionalAuth } = require('../middleware/auth');
 const { playwrightFetch } = require('../util/playwrightFetch');
+const ytSearch = require('yt-search');
 
 const TMDB_BEARER_TOKEN = process.env.TMDB_BEARER_TOKEN;
 const TMDB_BASE_URL = process.env.TMDB_BASE_URL || 'https://api.tmdb.org';
@@ -868,7 +869,9 @@ async function fetchTmdbPlayerIdentity({ mediaType, tmdbId, seasonNumber, episod
     episode1Overview,
     episodeTitle,
     directors: [],
-    cast: []
+    cast: [],
+    runtime: detail.runtime || 120,
+    episodeRuntime: episodeDetail?.runtime || detail.episode_run_time?.[0] || 40
   };
 }
 
@@ -944,6 +947,43 @@ async function refreshPlayerSourceRecord(identity) {
   };
 
   const scrapeResult = await scrapeWithMultimoviesConfig(identity, { onTableHit, onSource, reqId });
+
+  // YouTube Fallback Scraper
+  try {
+    const ytQuery = `${identity.title} ${identity.year || ''} hindi full ${identity.mediaType === 'movie' ? 'movie' : 'episode'}`;
+    console.log(`[YouTube Scraper] Searching for: "${ytQuery}"`);
+    const ytRes = await ytSearch(ytQuery);
+    if (ytRes && ytRes.videos && ytRes.videos.length) {
+      const tmdbRuntimeMin = identity.mediaType === 'series' ? identity.episodeRuntime : identity.runtime;
+      
+      const validVideos = ytRes.videos.slice(0, 15).filter(v => {
+        const vDurMin = v.seconds / 60;
+        return vDurMin >= (tmdbRuntimeMin * 0.85); // Allow 15% discrepancy
+      });
+      
+      if (validVideos.length) {
+        validVideos.sort((a, b) => b.seconds - a.seconds);
+        const bestVideo = validVideos[0];
+        console.log(`[YouTube Scraper] Found match: ${bestVideo.title} (${bestVideo.seconds / 60} min)`);
+        
+        const ytPlayer = {
+          sourceKey: 'youtube',
+          serverName: 'YOUTUBE',
+          url: `https://www.youtube.com/embed/${bestVideo.videoId}`,
+          preferred: false,
+          available: true
+        };
+        scrapeResult.players = scrapeResult.players || [];
+        scrapeResult.players.push(ytPlayer);
+        // Dispatch to UI and DB immediately
+        await onSource([ytPlayer]);
+      } else {
+        console.log(`[YouTube Scraper] No videos matched the runtime criteria of ${tmdbRuntimeMin} min`);
+      }
+    }
+  } catch(ytErr) {
+    console.error('[YouTube Scraper] failed:', ytErr.message);
+  }
 
   console.log(`************************** Scraped Sources Result [Req-${reqId}] [TMDB ${identity.tmdbId}] [url: ${scrapeResult.pageUrl || '(none)'}]`);
   console.log(JSON.stringify(scrapeResult.players || [], null, 2));
