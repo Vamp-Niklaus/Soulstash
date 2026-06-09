@@ -57,7 +57,7 @@ async function tmdbFetch(url, options, context = 'TMDB API') {
 
 const tmdbHeaders = () => ({
   accept: 'application/json',
-  Authorization: `Bearer ${TMDB_BEARER_TOKEN}`
+  Authorization: `Bearer ${String(process.env.TMDB_BEARER_TOKEN || TMDB_BEARER_TOKEN || '').trim()}`
 });
 
 function normalizePlayerMediaType(value = '') {

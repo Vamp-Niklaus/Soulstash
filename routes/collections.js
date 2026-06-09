@@ -490,7 +490,8 @@ router.post('/user/collections/:id/add', authenticateToken, async (req, res) => 
         ? `${TMDB_BASE_URL}/3/tv/${contentId}?language=en-US`
         : `${TMDB_BASE_URL}/3/movie/${contentId}?language=en-US`;
       console.log(`[Collections/add] fetching TMDB detail url=${tmdbUrl}`);
-      const resp = await fetch(tmdbUrl, { method: 'GET', headers: { accept: 'application/json', Authorization: `Bearer ${TMDB_BEARER_TOKEN}` } });
+      const token = (process.env.TMDB_BEARER_TOKEN || TMDB_BEARER_TOKEN || '').trim();
+      const resp = await fetch(tmdbUrl, { method: 'GET', headers: { accept: 'application/json', Authorization: `Bearer ${token}` } });
       console.log(`[Collections/add] TMDB detail response status=${resp.status} contentId=${contentId}`);
       if (resp.ok) {
         const details = await resp.json();
