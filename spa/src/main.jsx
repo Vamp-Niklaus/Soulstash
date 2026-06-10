@@ -4351,16 +4351,31 @@ function splitTrendingIntoColumns(items) {
 
 const AUTH_POSTER_CACHE_KEY = 'soulstash:auth-posters:v1';
 
+const FALLBACK_AUTH_POSTERS = [
+  { id: 1, title: 'Inception', poster_path: '/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg' },
+  { id: 2, title: 'Interstellar', poster_path: '/gEU2QlsUUHXjNpebjhdWWe2eC5M.jpg' },
+  { id: 3, title: 'The Dark Knight', poster_path: '/qJ2tW6WMUDux911r6m7haRef0WH.jpg' },
+  { id: 4, title: 'Avatar', poster_path: '/kyeqWdyA2B149KI01o04lZc6z4.jpg' },
+  { id: 5, title: 'The Matrix', poster_path: '/f89U3ADr1oiB1s9Gqw52ovR6vC9.jpg' },
+  { id: 6, title: 'Oppenheimer', poster_path: '/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg' },
+  { id: 7, title: 'Dune: Part Two', poster_path: '/1pdfLvkbY9ohJlCjQH2IGpd7B3N.jpg' },
+  { id: 8, title: 'Deadpool & Wolverine', poster_path: '/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg' },
+  { id: 9, title: 'Spider-Man: Across the Spider-Verse', poster_path: '/8Vt6mWEReuy1qP3pP8v1R0R35S9.jpg' },
+  { id: 10, title: 'John Wick: Chapter 4', poster_path: '/vZloFAK7NmvMGKE7VkF5UHaypcL.jpg' },
+  { id: 11, title: 'The Batman', poster_path: '/74xTEgt7R36Fpooo50r9T25onhq.jpg' },
+  { id: 12, title: 'Avengers: Endgame', poster_path: '/or06FN3Dka5tukK1e9sl16pB3iy.jpg' }
+];
+
 function AuthPosterColumns() {
   const [columns, setColumns] = useState(() => {
     try {
       const cached = sessionStorage.getItem(AUTH_POSTER_CACHE_KEY);
-      if (!cached) return [[], [], []];
-      const parsed = JSON.parse(cached);
-      return Array.isArray(parsed) ? parsed : [[], [], []];
-    } catch {
-      return [[], [], []];
-    }
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed[0]?.length) return parsed;
+      }
+    } catch {}
+    return splitTrendingIntoColumns(FALLBACK_AUTH_POSTERS);
   });
 
   useEffect(() => {
@@ -4368,7 +4383,7 @@ function AuthPosterColumns() {
 
     cachedApiFetch('/api/trending?limit=36', {}, 10 * 60 * 1000)
       .then((items) => {
-        if (!cancelled && Array.isArray(items)) {
+        if (!cancelled && Array.isArray(items) && items.length > 0) {
           const nextColumns = splitTrendingIntoColumns(items);
           setColumns(nextColumns);
           try {
@@ -4377,8 +4392,9 @@ function AuthPosterColumns() {
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setColumns([[], [], []]);
+        // Fallback to hardcoded posters on error
+        if (!cancelled && columns[0]?.length === 0) {
+          setColumns(splitTrendingIntoColumns(FALLBACK_AUTH_POSTERS));
         }
       });
 
