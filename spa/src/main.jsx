@@ -941,9 +941,23 @@ function buildVideasyHindiAttemptUrl({ mediaType, tmdbId, seasonNumber, episodeN
 
 function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const type = String(mediaType || '').toLowerCase();
-  return type === 'movie'
-    ? `https://www.vidfast.net/movie/${tmdbId}`
-    : `https://www.vidfast.net/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
+  const baseUrl = type === 'movie'
+    ? `https://vidfast.pro/movie/${tmdbId}`
+    : `https://vidfast.pro/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
+
+  const params = new URLSearchParams({
+    theme: 'F97316',
+    autoPlay: 'true',
+    title: 'true',
+    poster: 'true'
+  });
+
+  if (type !== 'movie') {
+    params.set('nextButton', 'true');
+    params.set('autoNext', 'true');
+  }
+
+  return `${baseUrl}?${params.toString()}`;
 }
 
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
