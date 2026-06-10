@@ -4349,7 +4349,7 @@ function splitTrendingIntoColumns(items) {
   return columns;
 }
 
-const AUTH_POSTER_CACHE_KEY = 'soulstash:auth-posters:v1';
+const AUTH_POSTER_CACHE_KEY = 'soulstash:auth-posters:v2';
 
 const FALLBACK_AUTH_POSTERS = [
   { id: 1, title: 'Inception', poster_path: '/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg' },
@@ -4363,7 +4363,31 @@ const FALLBACK_AUTH_POSTERS = [
   { id: 9, title: 'Spider-Man: Across the Spider-Verse', poster_path: '/8Vt6mWEReuy1qP3pP8v1R0R35S9.jpg' },
   { id: 10, title: 'John Wick: Chapter 4', poster_path: '/vZloFAK7NmvMGKE7VkF5UHaypcL.jpg' },
   { id: 11, title: 'The Batman', poster_path: '/74xTEgt7R36Fpooo50r9T25onhq.jpg' },
-  { id: 12, title: 'Avengers: Endgame', poster_path: '/or06FN3Dka5tukK1e9sl16pB3iy.jpg' }
+  { id: 12, title: 'Avengers: Endgame', poster_path: '/or06FN3Dka5tukK1e9sl16pB3iy.jpg' },
+  { id: 13, title: 'Joker', poster_path: '/udDclJoHjfpt8MvSMzNc1E1xXjG.jpg' },
+  { id: 14, title: 'Pulp Fiction', poster_path: '/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg' },
+  { id: 15, title: 'Fight Club', poster_path: '/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg' },
+  { id: 16, title: 'Forrest Gump', poster_path: '/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg' },
+  { id: 17, title: 'The Lord of the Rings: The Fellowship of the Ring', poster_path: '/6oom5QYQ2yQTMJIbnvbkBL9cHo6.jpg' },
+  { id: 18, title: 'Star Wars: Episode V - The Empire Strikes Back', poster_path: '/7BuH8itoSrLExs2GIrXQiaZylg0.jpg' },
+  { id: 19, title: 'The Shawshank Redemption', poster_path: '/q6y0Go1tsGEsmtFryDOJo3dEmqu.jpg' },
+  { id: 20, title: 'Gladiator', poster_path: '/ty8TGRuvJLPUmAR1X1k6fB25e5o.jpg' },
+  { id: 21, title: 'The Godfather', poster_path: '/3bhkrj58Vtu7enYsRolD1fZdja1.jpg' },
+  { id: 22, title: 'Goodfellas', poster_path: '/aKuFiU82s5ISJpGZp7YkIr3kCUd.jpg' },
+  { id: 23, title: 'Se7en', poster_path: '/6yoghtyTpznpAsOUflzZaSpGWPb.jpg' },
+  { id: 24, title: 'The Silence of the Lambs', poster_path: '/uS9m8OBk1A8eM9I042bx8XXpqAq.jpg' },
+  { id: 25, title: 'The Departed', poster_path: '/xbjfM74TqPnvx9pXhC9kntH396r.jpg' },
+  { id: 26, title: 'Saving Private Ryan', poster_path: '/1wLhoOjjTcTCcgEsc3vOMvjcDYY.jpg' },
+  { id: 27, title: 'Schindler\'s List', poster_path: '/sF1U4EUQS8YHUYjNl3pMGNIQyr0.jpg' },
+  { id: 28, title: 'The Prestige', poster_path: '/tK1zy5BsCt1J4OzoDicXmr0UTFH.jpg' },
+  { id: 29, title: 'The Green Mile', poster_path: '/8VG8fDNiy50H4FedGwdSVUPoaJe.jpg' },
+  { id: 30, title: 'The Lion King', poster_path: '/sKCr78AS8N2MHsmMbnWcEw9rL6R.jpg' },
+  { id: 31, title: 'Jurassic Park', poster_path: '/9i3plLl89DHMz7mahksDaAo7ISI.jpg' },
+  { id: 32, title: 'Back to the Future', poster_path: '/fNOH9f1aA7XPRB21HlQ8T1s1BwL.jpg' },
+  { id: 33, title: 'Terminator 2: Judgment Day', poster_path: '/wehltHqE0x2Yd2v7x9P2oR1hY1y.jpg' },
+  { id: 34, title: 'Alien', poster_path: '/vfrQk5IPloGg1v9Rzbh2Eg3VGyM.jpg' },
+  { id: 35, title: 'Whiplash', poster_path: '/7fn624j5lj3xTme2SgiLCeuedmO.jpg' },
+  { id: 36, title: 'Parasite', poster_path: '/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg' }
 ];
 
 function AuthPosterColumns() {
@@ -4402,7 +4426,7 @@ function AuthPosterColumns() {
       })
       .catch(() => {
         // Fallback to hardcoded posters on error
-        if (!cancelled && columns[0]?.length === 0) {
+        if (!cancelled) {
           setColumns(splitTrendingIntoColumns(FALLBACK_AUTH_POSTERS));
         }
       });
