@@ -9440,19 +9440,6 @@ export function VideoPlayerModal({ request, onClose }) {
                   referrerPolicy={activeUrl.includes('youtube.com') ? 'strict-origin-when-cross-origin' : 'no-referrer'}
                   title="Soulstash Player"
                 />
-                {(activeUrl.includes('youtube.com') || activeUrl.includes('youtu.be')) && (
-                  <div className="absolute top-4 right-4 z-[9999]">
-                    <a
-                      href={activeUrl.replace('/embed/', '/watch?v=').split('&')[0]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-2 rounded-full bg-[#FF0000]/90 px-4 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-[#FF0000] sm:text-sm"
-                    >
-                      <i className="fab fa-youtube text-base" />
-                      <span>Open in App</span>
-                    </a>
-                  </div>
-                )}
               </div>
             )}
           </div>
