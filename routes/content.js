@@ -30,8 +30,8 @@ const DEFAULT_MULTIMOVIES_ROOT_URL = 'https://multimovies.fyi/';
 const refreshLocks = new Set();
 
 const DIRECT_SOURCES = [
-  { id: 'videasy', label: 'VIDEASY', template: (m, t, s, e) => m === 'tv' ? `https://player.videasy.to/tv/${t}/${s || 1}/${e || 1}` : `https://player.videasy.to/movie/${t}` },
-  { id: 'vidfast', label: 'vidfast', template: (m, t, s, e) => m === 'tv' ? `https://www.vidfast.net/tv/${t}/${s || 1}/${e || 1}` : `https://www.vidfast.net/movie/${t}` }
+  { id: 'videasy', label: 'VIDEASY', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://player.videasy.to/tv/${t}/${s || 1}/${e || 1}` : `https://player.videasy.to/movie/${t}` },
+  { id: 'vidfast', label: 'vidfast', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://www.vidfast.net/tv/${t}/${s || 1}/${e || 1}` : `https://www.vidfast.net/movie/${t}` }
 ];
 
 // â”€â”€ TMDB fetch with retry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
