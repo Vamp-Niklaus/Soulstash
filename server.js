@@ -34,7 +34,7 @@ app.set('trust proxy', 1);
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? ['https://soulstash.onrender.com', 'http://localhost', 'https://localhost', 'capacitor://localhost']
+  ? ['https://soulstash.onrender.com', 'https://app.soulstash.onrender.com', 'http://localhost', 'https://localhost', 'capacitor://localhost']
   : ['http://localhost:3000', 'http://127.0.0.1:3000', /^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/];
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
