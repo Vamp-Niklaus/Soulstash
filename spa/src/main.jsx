@@ -913,8 +913,8 @@ function buildVideasyUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const type = String(mediaType || '').toLowerCase();
   const baseUrl =
     type === 'movie'
-      ? `https://player.videasy.net/movie/${tmdbId}`
-      : `https://player.videasy.net/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
+      ? `https://player.videasy.to/movie/${tmdbId}`
+      : `https://player.videasy.to/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
 
   const params = new URLSearchParams({
     color: 'F97316',
@@ -9049,6 +9049,12 @@ export function VideoPlayerModal({ request, onClose }) {
 
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
+
+  useEffect(() => {
+    if (activeUrl) {
+      console.log('[Soulstash Player Debug] Rendering player for URL:', activeUrl, '| VideoJS:', canUseVideoJs);
+    }
+  }, [activeUrl, canUseVideoJs]);
   const canEmbedSource = canUseVideoJs || activeSource?.embeddable !== false;
   const availableHeight = `calc(100dvh - ${modalPadding * 2 + verticalInset * 2}px)`;
   const mediaHeight = `calc(${availableHeight} - ${chromeAllowance - 18}px)`;
@@ -9403,6 +9409,8 @@ export function VideoPlayerModal({ request, onClose }) {
                 key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
                 src={activeUrl}
                 tabIndex={0}
+                onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}
+                onError={(e) => console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e)}
                 className="h-full w-full border-0 bg-black"
                 style={{
                   transform: scale !== 1.0 ? `scale(${scale})` : 'none',
