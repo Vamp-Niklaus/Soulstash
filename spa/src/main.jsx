@@ -4383,8 +4383,17 @@ function AuthPosterColumns() {
 
     cachedApiFetch('/api/trending?limit=36', {}, 10 * 60 * 1000)
       .then((items) => {
-        if (!cancelled && Array.isArray(items) && items.length > 0) {
-          const nextColumns = splitTrendingIntoColumns(items);
+        if (!cancelled && Array.isArray(items)) {
+          const validApiItems = items.filter(item => Boolean(item.poster_path));
+          let finalItems = [...validApiItems];
+          if (finalItems.length < 36) {
+            let i = 0;
+            while (finalItems.length < 36) {
+              finalItems.push(FALLBACK_AUTH_POSTERS[i % FALLBACK_AUTH_POSTERS.length]);
+              i++;
+            }
+          }
+          const nextColumns = splitTrendingIntoColumns(finalItems);
           setColumns(nextColumns);
           try {
             sessionStorage.setItem(AUTH_POSTER_CACHE_KEY, JSON.stringify(nextColumns));
