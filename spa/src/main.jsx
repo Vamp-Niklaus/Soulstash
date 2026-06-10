@@ -4451,7 +4451,7 @@ function AuthPosterColumns() {
                         {columnItems.map((movie, itemIndex) => (
                           <div key={`${duplicateIndex}-${movie.id || itemIndex}`} className="relative w-full aspect-[2/3] my-4 rounded-lg overflow-hidden shadow-lg opacity-90 flex-shrink-0">
                             <img
-                              src={imageUrl(movie.poster_path, 'w300_and_h450_face')}
+                              src={imageUrl(movie.poster_path, 'w500')}
                               alt={movie.title || movie.name || 'Poster'}
                               className="object-cover w-full h-full"
                               loading="lazy"
