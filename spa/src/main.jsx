@@ -5175,7 +5175,6 @@ function HomePage() {
   const [publishedCollections, setPublishedCollections] = useState([]);
   const [genres, setGenres] = useState([]);
   const [categoryData, setCategoryData] = useState({});
-  const [visibleGenreCount, setVisibleGenreCount] = useState(2);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retryTick, setRetryTick] = useState(0);
@@ -5188,18 +5187,7 @@ function HomePage() {
   const firstCardRef = useRef(null);
   useGridKeyNav(pageRef, 'button[data-card]');
 
-  const observerRef = useRef(null);
-  const lastElementRef = useCallback((node) => {
-    if (observerRef.current) observerRef.current.disconnect();
-    if (node) {
-      observerRef.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleGenreCount((prev) => prev + 2);
-        }
-      }, { rootMargin: '400px' });
-      observerRef.current.observe(node);
-    }
-  }, []);
+
 
   // When page loads, set up arrow key listener to focus first card
   useEffect(() => {
@@ -5363,18 +5351,9 @@ function HomePage() {
         ) : null}
       </section>
 
-      {genres.slice(0, visibleGenreCount).map((genre) => (
+      {genres.map((genre) => (
         <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} preloadedMovies={categoryData[String(genre.id)]} />
       ))}
-
-      {visibleGenreCount < genres.length && (
-        <div 
-          ref={lastElementRef} 
-          className="h-10 w-full flex justify-center items-center"
-        >
-          <div className="w-6 h-6 border-2 border-white/20 border-t-white/80 rounded-full animate-spin"></div>
-        </div>
-      )}
 
       {publishedCollections.length ? (
         <section className="content-section space-y-8">
@@ -9424,17 +9403,18 @@ export function VideoPlayerModal({ request, onClose }) {
                 key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
                 src={activeUrl}
                 tabIndex={0}
-                className="h-full w-full border-0"
+                className="h-full w-full border-0 bg-black"
                 style={{
                   transform: scale !== 1.0 ? `scale(${scale})` : 'none',
                   transformOrigin: 'center center',
-                  transition: 'transform 0.2s ease'
+                  transition: 'transform 0.2s ease',
+                  backgroundColor: 'black'
                 }}
                 allowFullScreen={true}
                 webkitallowfullscreen="true"
                 mozallowfullscreen="true"
                 allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *; display-capture *"
-                referrerPolicy="origin"
+                referrerPolicy="no-referrer"
                 title="Soulstash Player"
               />
             )}
