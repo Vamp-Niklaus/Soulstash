@@ -34,7 +34,7 @@ const DIRECT_SOURCES = [
   { id: 'vidfast', label: 'vidfast', template: (m, t, s, e) => `https://vidfast.co/embed/${t}` }
 ];
 
-// ── TMDB fetch with retry ─────────────────────────────────────────────────────
+// â”€â”€ TMDB fetch with retry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function tmdbFetch(url, options, context = 'TMDB API') {
   if (url.startsWith('https://api.themoviedb.org')) {
     url = url.replace('https://api.themoviedb.org', TMDB_BASE_URL);
@@ -47,7 +47,7 @@ async function tmdbFetch(url, options, context = 'TMDB API') {
     } catch (err) {
       console.error(`[TMDB] ${context} network error on attempt ${attempt}: ${err.message}${err.cause?.message ? ` | cause: ${err.cause.message}` : ''}`);
       if (attempt === maxRetries) {
-        console.error(`❌ ${context} failed after ${maxRetries} attempts`);
+        console.error(`âŒ ${context} failed after ${maxRetries} attempts`);
         throw new Error(`${context} failed: ${err.message}`);
       }
       await new Promise(r => setTimeout(r, 1000 * attempt));
@@ -121,6 +121,18 @@ function buildPlayerSourcePayload(record = {}, identity = null, isScraping = fal
     isDirect: true
   })) : [];
 
+  const youtubeUrls = sanitizeProviderUrls(record?.sources?.youtube);
+  const youtubeSource = youtubeUrls[0]
+    ? {
+        id: 'youtube',
+        key: 'youtube',
+        label: 'YouTube',
+        urls: youtubeUrls,
+        url: youtubeUrls[0],
+        embeddable: true
+      }
+    : null;
+
 
   return {
     searchKey: record.searchKey || '',
@@ -133,7 +145,7 @@ function buildPlayerSourcePayload(record = {}, identity = null, isScraping = fal
     scraping: isScraping,
     notAvailable: Boolean(record.notAvailable),
     downloads: Array.isArray(record.downloads) ? record.downloads.filter(Boolean) : [],
-    sources: [...multimoviesSources, ...directSources]
+    sources: [...multimoviesSources, ...directSources, ...(youtubeSource ? [youtubeSource] : [])]
   };
 
 }
@@ -471,7 +483,7 @@ async function scrapeWithMultimoviesConfig(identity, options = {}) {
       let pageResult;
       if (preMatchedUrl) {
          if (preMatchedHtml) {
-             // Use the HTML already fetched during Method 2 verification — no re-fetch needed!
+             // Use the HTML already fetched during Method 2 verification â€” no re-fetch needed!
              console.log(`[Player Sources] Using pre-fetched HTML from Method 2 verification for: ${preMatchedUrl}`);
              pageResult = {
                  ok: true,
@@ -945,63 +957,152 @@ async function refreshPlayerSourceRecord(identity) {
     console.log(`[Player Sources] Table-hit cache updated for ${identity.mediaType} ${identity.tmdbId}`);
   };
 
-  const scrapeResult = await scrapeWithMultimoviesConfig(identity, { onTableHit, onSource, reqId });
+  const scrapePromise = scrapeWithMultimoviesConfig(identity, { onTableHit, onSource, reqId }).catch(err => {
+    console.error('[Multimovies Scraper] failed:', err.message);
+    return { ok: false, reason: 'failed' };
+  });
 
-  // YouTube Fallback Scraper
-  try {
-    const ytQuery = `${identity.title} ${identity.year || ''} hindi full ${identity.mediaType === 'movie' ? 'movie' : 'episode'}`;
-    console.log(`[YouTube Scraper] Searching for: "${ytQuery}"`);
-    const ytRes = await ytSearch(ytQuery);
-    if (ytRes && ytRes.videos && ytRes.videos.length) {
-      const tmdbRuntimeMin = identity.mediaType === 'series' ? identity.episodeRuntime : identity.runtime;
-      
-      const validVideos = ytRes.videos.slice(0, 15).filter(v => {
-        const vDurMin = v.seconds / 60;
-        return vDurMin >= (tmdbRuntimeMin * 0.85); // Allow 15% discrepancy
-      });
-      
-      if (validVideos.length) {
-        const scoreVideo = (v) => {
-          let score = 0;
-          const t = v.title.toLowerCase();
-          if (t.includes('hindi dubbed')) score += 50;
-          else if (t.includes('hindi')) score += 20;
-          
-          if (t.includes('1080p') || t.includes('1080 p')) score += 30;
-          if (t.includes('hd')) score += 10;
-          if (t.includes('full movie') || t.includes('full episode')) score += 10;
-          
+  // YouTube Scraper (no API key â€” uses yt-search public scraping)
+  const youtubePromise = (async () => {
+    try {
+      const tmdbRuntimeMin = (identity.mediaType === 'series' ? identity.episodeRuntime : identity.runtime) || 0;
+      const t = identity.title || '';
+      const yr = identity.year || '';
+      const titleYear = yr ? `${t} ${yr}` : t;
+
+      // Cast names for a more targeted query
+      let castSnippet = '';
+      if (Array.isArray(identity.cast) && identity.cast.length > 0) {
+        if (identity.cast.length > 1) {
+          castSnippet = `${identity.cast[0]} and ${identity.cast[1]}`;
+        } else {
+          castSnippet = identity.cast[0];
+        }
+      }
+
+      const ytQueries = identity.mediaType === 'movie'
+        ? [
+            castSnippet ? `${t} hindi ${castSnippet} full movie hd 1080` : `${titleYear} full movie hindi 1080p`,
+            `${titleYear} full movie hindi dubbed`,
+            `${titleYear} full movie 1080p`,
+            `${titleYear} full movie`,
+            `${t} full movie hindi`
+          ]
+        : [
+            `${titleYear} S${String(identity.seasonNumber||1).padStart(2,'0')}E${String(identity.episodeNumber||1).padStart(2,'0')} hindi dubbed`,
+            `${titleYear} episode ${identity.episodeNumber||1} hindi dubbed`,
+            `${titleYear} season ${identity.seasonNumber||1} episode ${identity.episodeNumber||1} hindi`,
+            `${t} S${String(identity.seasonNumber||1).padStart(2,'0')}E${String(identity.episodeNumber||1).padStart(2,'0')}`,
+            `${titleYear} episode ${identity.episodeNumber||1}`
+          ];
+
+      // Normalise a title string for comparison
+      const normTitle = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+      const titleWords = normTitle(t).split(' ').filter(Boolean);
+
+      const isStrictTitleMatch = (videoTitle) => {
+        const vt = normTitle(videoTitle);
+        const mt = normTitle(t);
+        if (vt.includes(mt)) return true;
+        // Fallback: check if at least 50% of the words from the title are in the video title
+        if (titleWords.length > 0) {
+          const matchedWords = titleWords.filter(w => vt.includes(w) || vt.split(' ').includes(w));
+          if (matchedWords.length / titleWords.length >= 0.5) return true;
+        }
+        return false;
+      };
+
+      const titleSimilarity = (videoTitle) => {
+        const vt = normTitle(videoTitle);
+        if (!titleWords.length) return 0;
+        const matched = titleWords.filter(w => vt.includes(w)).length;
+        return matched / titleWords.length; // 0â€“1
+      };
+
+      const scoreVideo = (v, queryIndex) => {
+        const vt = v.title.toLowerCase();
+        let score = 0;
+        // Query-position bonus (earlier = more specific)
+        score += (ytQueries.length - queryIndex) * 4;
+        // Title similarity (0â€“100 points)
+        score += titleSimilarity(v.title) * 100;
+        // Language
+        if (vt.includes('hindi dubbed')) score += 50;
+        else if (vt.includes('hindi')) score += 20;
+        // Quality
+        if (vt.includes('1080p') || vt.includes('1080 p') || vt.includes('hd')) score += 30;
+        if (vt.includes('full movie') || vt.includes('full episode')) score += 10;
+        // Runtime proximity (smaller diff = more points, max 30)
+        if (tmdbRuntimeMin) {
           const diffMin = Math.abs((v.seconds / 60) - tmdbRuntimeMin);
-          score += Math.max(0, 40 - diffMin); 
-          
-          return score;
-        };
-        
-        validVideos.sort((a, b) => scoreVideo(b) - scoreVideo(a));
-        const bestVideo = validVideos[0];
-        console.log(`[YouTube Scraper] Found match: ${bestVideo.title} (${bestVideo.seconds / 60} min) | Score: ${scoreVideo(bestVideo)}`);
-        
+          score += Math.max(0, 30 - diffMin);
+        } else {
+          if (v.seconds >= 3600) score += 25;      // 60+ min
+          else if (v.seconds >= 1800) score += 12; // 30+ min
+        }
+        return score;
+      };
+
+      let bestYtVideo = null;
+      let bestScore = -Infinity;
+      let bestQueryIndex = 0;
+
+      for (let qi = 0; qi < ytQueries.length; qi++) {
+        const query = ytQueries[qi];
+        console.log(`[YouTube Scraper] Query ${qi + 1}/${ytQueries.length}: "${query}"`);
+        try {
+          const ytRes = await ytSearch(query);
+          const videos = Array.isArray(ytRes?.videos) ? ytRes.videos.slice(0, 15) : [];
+          for (const v of videos) {
+            // Absolute minimum: 20 minutes (avoids trailers / clips)
+            if (v.seconds < 1200) continue;
+            // Runtime floor: must be >= 75% of TMDB runtime (user requirement)
+            if (tmdbRuntimeMin && (v.seconds / 60) < tmdbRuntimeMin * 0.75) continue;
+            // Strict title match check
+            if (!isStrictTitleMatch(v.title)) continue;
+            
+            const s = scoreVideo(v, qi);
+            if (
+              s > bestScore ||
+              // Same score â€” prefer longer video
+              (s === bestScore && bestYtVideo && v.seconds > bestYtVideo.seconds)
+            ) {
+              bestScore = s;
+              bestYtVideo = v;
+              bestQueryIndex = qi;
+            }
+          }
+          // Early exit: first query + high confidence score
+          if (bestYtVideo && bestScore >= 80 && qi === 0) break;
+        } catch (qErr) {
+          console.warn(`[YouTube Scraper] query "${query}" failed:`, qErr.message);
+        }
+      }
+
+      if (bestYtVideo) {
+        const durationMin = Math.round(bestYtVideo.seconds / 60);
+        console.log(`[YouTube Scraper] âœ“ Best match (query #${bestQueryIndex + 1}): "${bestYtVideo.title}" | ${durationMin} min | score=${Math.round(bestScore)} | titleSim=${(titleSimilarity(bestYtVideo.title) * 100).toFixed(0)}%`);
         const ytPlayer = {
           sourceKey: 'youtube',
           serverName: 'YOUTUBE',
-          url: `https://www.youtube.com/embed/${bestVideo.videoId}`,
+          url: `https://www.youtube.com/embed/${bestYtVideo.videoId}`,
           preferred: false,
           available: true
         };
-        scrapeResult.players = scrapeResult.players || [];
-        scrapeResult.players.push(ytPlayer);
-        // Dispatch to UI and DB immediately
+        // Persist to DB + push to connected SSE client immediately
         await onSource([ytPlayer]);
       } else {
-        console.log(`[YouTube Scraper] No videos matched the runtime criteria of ${tmdbRuntimeMin} min`);
+        console.log(`[YouTube Scraper] No suitable video found across ${ytQueries.length} queries (runtime floor: ${tmdbRuntimeMin ? `${Math.round(tmdbRuntimeMin * 0.75)} min` : 'n/a'}).`);
       }
+    } catch (ytErr) {
+      console.error('[YouTube Scraper] failed:', ytErr.message);
     }
-  } catch(ytErr) {
-    console.error('[YouTube Scraper] failed:', ytErr.message);
-  }
+  })();
 
-  console.log(`************************** Scraped Sources Result [Req-${reqId}] [TMDB ${identity.tmdbId}] [url: ${scrapeResult.pageUrl || '(none)'}]`);
-  console.log(JSON.stringify(scrapeResult.players || [], null, 2));
+  const [scrapeResult] = await Promise.all([scrapePromise, youtubePromise]);
+
+  console.log(`************************** Scraped Sources Result [Req-${reqId}] [TMDB ${identity.tmdbId}] [url: ${scrapeResult?.pageUrl || '(none)'}]`);
+  console.log(JSON.stringify(scrapeResult?.players || [], null, 2));
 
 
   if (!scrapeResult.ok && !(Array.isArray(scrapeResult.downloads) && scrapeResult.downloads.length)) {
@@ -1318,9 +1419,13 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     }
     const data = await resp.json();
     let movies = Array.isArray(data.results) ? data.results.slice(0, Math.max(limit * 2, limit)) : [];
+    // Tag media_type so cards render without client-side enrichment
+    movies = movies.map(i => ({ ...i, media_type: 'Movie' }));
     if (!allowMissingImdb) {
       movies = (await attachImdbIds(movies, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
     }
+    // Attach cached IMDB ratings so cards load immediately
+    movies = await attachCachedRatings(movies);
     
     const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
     const payload = { movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } };
@@ -1395,7 +1500,7 @@ const trendingLimiter = rateLimit({
   message: { error: 'Too many trending requests, please wait.' }
 });
 
-// ── Search dedup maps ─────────────────────────────────────────────────────────
+// â”€â”€ Search dedup maps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const searchRequests = new Map();
 const lastSearchResults = new Map();
 
@@ -1465,9 +1570,11 @@ router.get('/movies', async (req, res) => {
       if (!resp.ok) return res.status(500).json({ error: 'Failed to search movies' });
       const data = await resp.json();
       let movies = Array.isArray(data.results) ? data.results.slice(0, Math.max(limit * 2, limit)) : [];
+      movies = movies.map(i => ({ ...i, media_type: 'Movie' }));
       if (!allowMissingImdb) {
         movies = (await attachImdbIds(movies, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
       }
+      movies = await attachCachedRatings(movies);
       return res.json({ movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } });
     }
 
@@ -1481,9 +1588,13 @@ router.get('/movies', async (req, res) => {
     if (!resp.ok) return res.status(500).json({ error: 'Failed to fetch movies' });
     const data = await resp.json();
     let movies = Array.isArray(data.results) ? data.results.slice(0, Math.max(limit * 2, limit)) : [];
+    // Tag media_type so ContentCard renders immediately without extra client lookups
+    movies = movies.map(i => ({ ...i, media_type: 'Movie' }));
     if (!allowMissingImdb) {
       movies = (await attachImdbIds(movies, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
     }
+    // Attach cached IMDB ratings â€” same enrichment trending sends
+    movies = await attachCachedRatings(movies);
     const payload = { movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } };
     
     if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && payload.movies.length > 0) {
@@ -1575,7 +1686,7 @@ router.get('/movie/:id/credits', async (req, res) => {
   }
 });
 
-// GET /api/series/:id/credits  — must come before /series/:id
+// GET /api/series/:id/credits  â€” must come before /series/:id
 router.get('/series/:id/credits', async (req, res) => {
   try {
     const resp = await tmdbFetch(
@@ -1908,6 +2019,147 @@ router.get('/genres', async (req, res) => {
   }
 });
 
+// â”€â”€ /api/home â€” single batch endpoint for the home page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Returns trending + genres + first 8 genre shelves all in one request.
+// Uses existing caches (trendingCache, genresCache, categoriesCache) so no
+// extra TMDB calls are made if the server is already warm.
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+let homeCache = null;
+let homeCacheTime = 0;
+const HOME_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const HOME_CATEGORY_LIMIT = 20; // movies per genre shelf
+const HOME_PRELOAD_GENRES = 8;  // how many genre shelves to pre-bake
+
+async function buildHomePayload(includeAdult) {
+  const opts = { method: 'GET', headers: tmdbHeaders() };
+
+  // 1. Trending (always from cache if warm)
+  let trending = [];
+  if (trendingCache && trendingCache.length) {
+    trending = trendingCache.slice(0, 18);
+  } else {
+    try {
+      const fetchWithDeadline = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 7000))]);
+      const [movieResult, tvResult] = await Promise.allSettled([
+        fetchWithDeadline(tmdbFetch('https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=1', opts, 'Home Trending Movies')),
+        fetchWithDeadline(tmdbFetch('https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=1', opts, 'Home Trending TV'))
+      ]);
+      const movieData = movieResult.status === 'fulfilled' && movieResult.value?.ok ? await movieResult.value.json() : { results: [] };
+      const tvData = tvResult.status === 'fulfilled' && tvResult.value?.ok ? await tvResult.value.json() : { results: [] };
+      const all = [];
+      const maxLen = Math.max(movieData.results.length, tvData.results.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (i < movieData.results.length) all.push({ ...movieData.results[i], media_type: 'Movie' });
+        if (i < tvData.results.length) all.push({ ...tvData.results[i], media_type: 'Series' });
+      }
+      trending = all.slice(0, 18);
+      if (trending.length) { trendingCache = trending; trendingCacheTime = Date.now(); }
+    } catch (e) { console.warn('[Home] Trending fetch failed:', e.message); }
+  }
+
+  // 2. Genres (always from cache if warm)
+  let genres = [];
+  if (genresCache && genresCache.length) {
+    genres = genresCache;
+  } else {
+    try {
+      const resp = await tmdbFetch('https://api.themoviedb.org/3/genre/movie/list?language=en-US', opts, 'Home Genres');
+      if (resp.ok) {
+        const data = await resp.json();
+        genres = data.genres
+          .filter(g => g.name.toLowerCase() !== 'documentary')
+          .map(g => ({ id: g.id, name: g.name }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        if (genres.length) { genresCache = genres; genresCacheTime = Date.now(); }
+      }
+    } catch (e) { console.warn('[Home] Genres fetch failed:', e.message); }
+  }
+
+  // 3. First N genre shelves â€” fetch in parallel, use cache where available
+  const targetGenres = genres.slice(0, HOME_PRELOAD_GENRES);
+  const categories = {};
+
+  const fetchGenreMovies = async (genre) => {
+    const cacheKey = `movies_page1_genre${genre.id}_yearall`;
+    const cached = categoriesCache.get(cacheKey);
+    if (cached && Date.now() - cached.time < CATEGORIES_CACHE_DURATION) {
+      return { id: genre.id, movies: cached.data.movies };
+    }
+    try {
+      const url = `https://api.themoviedb.org/3/discover/movie?include_adult=${includeAdult ? 'true' : 'false'}&language=en-US&page=1&with_genres=${genre.id}&sort_by=popularity.desc`;
+      const resp = await tmdbFetch(url, opts, `Home Genre ${genre.name}`);
+      if (!resp.ok) return { id: genre.id, movies: [] };
+      const data = await resp.json();
+      let movies = Array.isArray(data.results) ? data.results.slice(0, HOME_CATEGORY_LIMIT * 2) : [];
+      movies = movies.map(i => ({ ...i, media_type: 'Movie' }));
+      if (!includeAdult) {
+        movies = (await attachImdbIds(movies, 'Movie')).filter(m => String(m?.imdb_id || '').trim());
+      }
+      movies = await attachCachedRatings(movies);
+      movies = movies.slice(0, HOME_CATEGORY_LIMIT);
+      const payload = { movies, pagination: { page: 1, limit: HOME_CATEGORY_LIMIT, total: data.total_results, pages: data.total_pages } };
+      if (movies.length) categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
+      return { id: genre.id, movies };
+    } catch (e) {
+      console.warn(`[Home] Genre ${genre.id} fetch failed:`, e.message);
+      return { id: genre.id, movies: [] };
+    }
+  };
+
+  const genreResults = await Promise.all(targetGenres.map(fetchGenreMovies));
+  for (const { id, movies } of genreResults) {
+    if (movies.length) categories[String(id)] = movies;
+  }
+
+  return { trending, genres, categories };
+}
+
+async function refreshHomeCache(includeAdult) {
+  try {
+    const payload = await buildHomePayload(includeAdult);
+    if (payload.trending.length || Object.keys(payload.categories).length) {
+      homeCache = payload;
+      homeCacheTime = Date.now();
+      console.log(`[API] /api/home revalidated: trending=${payload.trending.length} genres=${payload.genres.length} categories=${Object.keys(payload.categories).length}`);
+    }
+  } catch (e) {
+    console.error('[API] /api/home background refresh failed:', e.message);
+  } finally {
+    global.homeRevalidating = false;
+  }
+}
+
+// GET /api/home
+router.get('/home', async (req, res) => {
+  try {
+    const includeAdult = await resolveIncludeAdult(req);
+    const now = Date.now();
+
+    // Serve from cache if fresh
+    if (homeCache) {
+      const isStale = now - homeCacheTime > HOME_CACHE_DURATION;
+      if (isStale && !global.homeRevalidating) {
+        global.homeRevalidating = true;
+        setTimeout(() => refreshHomeCache(includeAdult), 0);
+      }
+      return res.json(homeCache);
+    }
+
+    // Cold start â€” build and cache
+    const payload = await buildHomePayload(includeAdult);
+    if (payload.trending.length || Object.keys(payload.categories).length) {
+      homeCache = payload;
+      homeCacheTime = now;
+    }
+    console.log(`[API] /api/home cold: trending=${payload.trending.length} genres=${payload.genres.length} categories=${Object.keys(payload.categories).length}`);
+    res.json(payload);
+  } catch (err) {
+    console.error('Error building home payload:', err);
+    res.status(500).json({ error: 'Failed to load home data' });
+  }
+});
+
+
 router.get('/ratings', async (req, res) => {
   try {
     const limit = Math.min(Math.max(Number(req.query.limit) || 5000, 1), 10000);
@@ -2029,17 +2281,17 @@ router.get('/player/sources', async (req, res) => {
               cast: []
            };
 
-           // Per-episode lock: actively scraping → skip TMDB calls entirely.
+           // Per-episode lock: actively scraping â†’ skip TMDB calls entirely.
            const epLock = `series-${tmdbId}-s${seasonNumber}e${episodeNumber}`;
            if (refreshLocks.has(epLock) && !forceRefresh) {
-             console.log(`[Method 1] Episode ${seasonNumber}x${episodeNumber} is actively being scraped — skipping TMDB calls.`);
+             console.log(`[Method 1] Episode ${seasonNumber}x${episodeNumber} is actively being scraped â€” skipping TMDB calls.`);
              // return the "Wait for source" logic later? 
              // Actually, if it's already scraping, we can just proceed to the wait loop.
              identity = fastIdentity; 
            } else {
              const epStamp = masterDoc.episodes?.[`s${seasonNumber}e${episodeNumber}`]?.lastScrapeAttempt || 0;
              if (epStamp && (Date.now() - epStamp) < 120000 && !forceRefresh) {
-               console.log(`[Method 1] Episode ${seasonNumber}x${episodeNumber} recently attempted (${Math.round((Date.now()-epStamp)/1000)}s ago) — throttled, returning scraping:false.`);
+               console.log(`[Method 1] Episode ${seasonNumber}x${episodeNumber} recently attempted (${Math.round((Date.now()-epStamp)/1000)}s ago) â€” throttled, returning scraping:false.`);
                return res.json({ sources: [], cacheHit: false, scraping: false, notAvailable: false });
              }
            }

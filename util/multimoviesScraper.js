@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DEFAULT_BASE_URL = 'https://multimovies.fyi';
-const PREFERRED_SERVER_ORDER = ['smwh', 'rpmshre', 'upnshr', 'strmp2', 'flls'];
+const PREFERRED_SERVER_ORDER = ['smwh', 'rpmshre', 'upnshr', 'strmp2', 'flls', 'youtube'];
 
 function createLogger(logger) {
   if (logger && typeof logger.log === 'function') {
