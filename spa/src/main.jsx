@@ -9437,9 +9437,22 @@ export function VideoPlayerModal({ request, onClose }) {
                   webkitallowfullscreen="true"
                   mozallowfullscreen="true"
                   allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *; display-capture *"
-                  referrerPolicy={activeUrl.includes('youtube.com') ? 'strict-origin-when-cross-origin' : 'no-referrer'}
+                  referrerPolicy={activeUrl.includes('youtube.com') || activeUrl.includes('youtube-nocookie.com') ? 'strict-origin-when-cross-origin' : 'no-referrer'}
                   title="Soulstash Player"
                 />
+                {Capacitor.isNativePlatform() && (activeUrl.includes('youtube.com') || activeUrl.includes('youtu.be') || activeUrl.includes('youtube-nocookie.com')) && (
+                  <div className="absolute top-4 right-4 z-[9999]">
+                    <a
+                      href={activeUrl.replace('youtube-nocookie.com/embed/', 'youtube.com/watch?v=').replace('youtube.com/embed/', 'youtube.com/watch?v=').split('&')[0]}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 rounded-full bg-[#FF0000]/90 px-4 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-[#FF0000] sm:text-sm"
+                    >
+                      <i className="fab fa-youtube text-base" />
+                      <span>Open in App</span>
+                    </a>
+                  </div>
+                )}
               </div>
             )}
           </div>
