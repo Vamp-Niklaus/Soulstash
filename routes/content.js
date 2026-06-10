@@ -1085,7 +1085,7 @@ async function refreshPlayerSourceRecord(identity) {
         const ytPlayer = {
           sourceKey: 'youtube',
           serverName: 'YOUTUBE',
-          url: `https://www.youtube.com/embed/${bestYtVideo.videoId}`,
+          url: `https://www.youtube-nocookie.com/embed/${bestYtVideo.videoId}`,
           preferred: false,
           available: true
         };
