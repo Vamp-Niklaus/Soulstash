@@ -83,7 +83,7 @@ const COLLECTIONS_TRASH_CACHE_KEY = 'ss_collections_trash_v1';
 let lastKnownCollectionVersion = null;
 
 // Synchronously clear collection caches on hard reload (Ctrl+R / F5).
-// This MUST run at module-load time — before any component reads localStorage —
+// This MUST run at module-load time Ã¢â‚¬â€ before any component reads localStorage Ã¢â‚¬â€
 // so that useLiveCollections never serves stale cache on a reload.
 try {
   const navEntry = performance.getEntriesByType('navigation')[0];
@@ -358,7 +358,7 @@ function optimisticUpdateCollectionItems(collectionId, updateFn) {
 }
 
 
-// ── Item-level trash cache ────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬ Item-level trash cache Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 // Trash entries: { collectionId, collectionName, item, removedAt }
 function readTrashCache() {
   try {
@@ -471,7 +471,7 @@ function restoreTrashItem(collectionId, itemId) {
   });
   broadcastCollections(next, lastKnownCollectionVersion);
 }
-// ─────────────────────────────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 async function apiFetch(path, options = {}) {
   const token = getToken();
@@ -939,8 +939,6 @@ function buildVideasyHindiAttemptUrl({ mediaType, tmdbId, seasonNumber, episodeN
   return url.toString();
 }
 
-
-
 function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const type = String(mediaType || '').toLowerCase();
   return type === 'movie'
@@ -950,7 +948,6 @@ function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
 
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
-
   return [
     {
       id: 'legacy-videasy-hi',
@@ -970,6 +967,7 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       embeddable: true,
       fallback: true
     }
+    // YouTube: no fallback URL â€” button stays disabled until backend scraper finds a real video.
   ].filter((source) => source.url);
 }
 
@@ -990,7 +988,7 @@ function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNumber, i
       mediaType: normalizedType,
       tmdbId: resolvedTmdbId,
       seasonNumber: resolvedSeasonNumber,
-      episodeNumber: resolvedEpisodeNumber
+      episodeNumber: resolvedEpisodeNumber,
     })
   };
 }
@@ -1038,7 +1036,7 @@ async function enrichCollectionRatingsInBackground(collection, logPrefix = '[Sou
       (getValidImdbRating(item?.imdb_rating) == null || getValidVoteAverage(item?.vote_average) == null)
   );
   if (!needsEnrich.length) {
-    console.log(`${logPrefix} enrichCollectionRatingsInBackground SKIP — all ratings present collection="${collection.name}"`);
+    console.log(`${logPrefix} enrichCollectionRatingsInBackground SKIP Ã¢â‚¬â€ all ratings present collection="${collection.name}"`);
     return null;
   }
 
@@ -1080,7 +1078,7 @@ async function enrichCollectionRatingsInBackground(collection, logPrefix = '[Sou
       // Prefer vote_average from backend response (Ratings table), fall back to existing item value
       const vote_average = getValidVoteAverage(ratingMatch?.vote_average) ?? getValidVoteAverage(item?.vote_average);
 
-      console.log(`${logPrefix}   "${item.title || item.name}" (${mediaType}:${contentId}) imdb_rating: ${item.imdb_rating} → ${imdb_rating} | vote_average: ${item.vote_average} → ${vote_average} | source=${ratingMatch?.source}`);
+      console.log(`${logPrefix}   "${item.title || item.name}" (${mediaType}:${contentId}) imdb_rating: ${item.imdb_rating} Ã¢â€ â€™ ${imdb_rating} | vote_average: ${item.vote_average} Ã¢â€ â€™ ${vote_average} | source=${ratingMatch?.source}`);
 
       return {
         contentId,
@@ -1102,7 +1100,7 @@ async function enrichCollectionRatingsInBackground(collection, logPrefix = '[Sou
     return null;
   }
 
-  console.log(`${logPrefix} enrichCollectionRatingsInBackground → /enrich-metadata collection="${collection.name}" itemCount=${items.length}`);
+  console.log(`${logPrefix} enrichCollectionRatingsInBackground Ã¢â€ â€™ /enrich-metadata collection="${collection.name}" itemCount=${items.length}`);
 
   const response = await apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/enrich-metadata`, {
     method: 'POST',
@@ -1905,7 +1903,7 @@ function SaveToCollectionModal({ open, onClose, collections, contentId, onToggle
 }
 
 
-// MarqueeText — shows text as-is if it fits within maxChars,
+// MarqueeText Ã¢â‚¬â€ shows text as-is if it fits within maxChars,
 // otherwise scrolls it right-to-left on a loop inside a clipped container.
 function MarqueeText({ text = '', maxChars = 25 }) {
   const isLong = text.length > maxChars;
@@ -2118,7 +2116,7 @@ function CollectionFilterControls({
     };
   }, [animeMenuOpen, sortMenuOpen]);
 
-  // Close on outside click — but ignore clicks on the trigger itself (handled by toggle)
+  // Close on outside click Ã¢â‚¬â€ but ignore clicks on the trigger itself (handled by toggle)
   useEffect(() => {
     if (!animeMenuOpen && !sortMenuOpen) return undefined;
 
@@ -2256,7 +2254,7 @@ function CollectionFilterControls({
         ))}
       </div>
 
-      {/* Anime filter trigger — dropdown rendered via portal into document.body */}
+      {/* Anime filter trigger Ã¢â‚¬â€ dropdown rendered via portal into document.body */}
       <div className={`relative flex-shrink-0 ${stacked ? 'max-w-full' : ''}`}>
         <button
           ref={triggerRef}
@@ -2682,7 +2680,7 @@ function CollectionDetailPane({
           <div className="absolute inset-0" aria-hidden="true" style={{ background: 'linear-gradient(180deg, rgba(8, 8, 8, 0.02) 0%, rgba(8, 8, 8, 0.12) 30%, rgba(8, 8, 8, 0.42) 62%, rgba(8, 8, 8, 0.78) 84%, rgba(8, 8, 8, 0.96) 100%)' }}></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_left_center,rgba(150,123,255,0.08),transparent_30%)]"></div>
 
-          {/* Back arrow — always visible on standalone; hidden on desktop in dashboard layout */}
+          {/* Back arrow Ã¢â‚¬â€ always visible on standalone; hidden on desktop in dashboard layout */}
           <button
             type="button"
             className={`absolute top-4 left-4 bg-black/70 p-2.5 rounded-full hover:bg-black/90 transition-colors z-10 focus:outline-none focus:ring-2 focus:ring-white
@@ -3041,11 +3039,11 @@ function UserCollectionsPage() {
       return !enrichedCollectionIdsRef.current.has(key);
     });
     if (!pending.length) {
-      console.log('[Soulstash][React][CollectionsPage] enrichment effect — all needy collections already attempted, skipping');
+      console.log('[Soulstash][React][CollectionsPage] enrichment effect Ã¢â‚¬â€ all needy collections already attempted, skipping');
       return undefined;
     }
 
-    console.log(`[Soulstash][React][CollectionsPage] enrichment effect — queuing ${pending.length} collection(s):`, pending.map(c => c.name));
+    console.log(`[Soulstash][React][CollectionsPage] enrichment effect Ã¢â‚¬â€ queuing ${pending.length} collection(s):`, pending.map(c => c.name));
 
     // Mark as attempted immediately to prevent re-queuing on re-renders
     pending.forEach((c) => enrichedCollectionIdsRef.current.add(String(c._id || c.name)));
@@ -3236,11 +3234,11 @@ function UserCollectionsPage() {
           await refreshCollectionsView();
         }
       }
-      // Backend confirmed — permanently purge from trash
+      // Backend confirmed Ã¢â‚¬â€ permanently purge from trash
       confirmTrashItem(collectionId, itemId);
       toast(`Removed ${pendingRemoval.title}`);
     } catch (error) {
-      // Backend failed — restore item from trash back into the collection
+      // Backend failed Ã¢â‚¬â€ restore item from trash back into the collection
       restoreTrashItem(collectionId, itemId);
       setRemoveTarget(pendingRemoval);
       toast(error.message, 'error');
@@ -3803,7 +3801,7 @@ function UserCollectionDetailPage() {
   }, [decodedCollectionName]);
 
   useEffect(() => {
-    // Owner sees their own collection from the live cache — no public fetch needed.
+    // Owner sees their own collection from the live cache Ã¢â‚¬â€ no public fetch needed.
     if (isOwner) {
       setPublicLoading(false);
       return;
@@ -3952,11 +3950,11 @@ function UserCollectionDetailPage() {
           await refreshCollectionsView();
         }
       }
-      // Backend confirmed — permanently purge from trash
+      // Backend confirmed Ã¢â‚¬â€ permanently purge from trash
       confirmTrashItem(collectionId, itemId);
       toast(`Removed ${pendingRemoval.title}`);
     } catch (error) {
-      // Backend failed — restore item from trash back into the collection
+      // Backend failed Ã¢â‚¬â€ restore item from trash back into the collection
       restoreTrashItem(collectionId, itemId);
       setRemoveTarget(pendingRemoval);
       toast(error.message, 'error');
@@ -4719,9 +4717,9 @@ function AppShell() {
   const isCollectionRoute = /^\/user\/[^/]+\/(collections|collection\/.+)$/.test(location.pathname);
   const isAuthRoute = location.pathname === '/login' || location.pathname === '/register' || location.pathname === '/forgot-password';
 
-  // ── TV / remote D-pad navigation ──────────────────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬ TV / remote D-pad navigation Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
   useTvFocus(location);
-  // ──────────────────────────────────────────────────────────────────────────
+  // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 
   useEffect(() => {
@@ -5075,7 +5073,7 @@ function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') {
 
       const container = containerRef.current;
       if (!container) {
-        console.log('[NAV-DEBUG] useGridKeyNav: key pressed but container still null — skipping');
+        console.log('[NAV-DEBUG] useGridKeyNav: key pressed but container still null Ã¢â‚¬â€ skipping');
         return;
       }
 
@@ -5085,7 +5083,7 @@ function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') {
       console.log(`[NAV-DEBUG] useGridKeyNav key=${event.key} | cards found=${cards.length} | currentIndex=${currentIndex} | activeEl=`, current);
 
       if (currentIndex === -1) {
-        console.log('[NAV-DEBUG] useGridKeyNav: focused element not in card list — no-op');
+        console.log('[NAV-DEBUG] useGridKeyNav: focused element not in card list Ã¢â‚¬â€ no-op');
         return;
       }
 
@@ -5110,14 +5108,14 @@ function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') {
         cards[nextIndex].focus();
         cards[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       } else {
-        console.log(`[NAV-DEBUG] useGridKeyNav: nextIndex=${nextIndex} out of range [0..${cards.length-1}] — at edge`);
+        console.log(`[NAV-DEBUG] useGridKeyNav: nextIndex=${nextIndex} out of range [0..${cards.length-1}] Ã¢â‚¬â€ at edge`);
       }
     };
 
     console.log('[NAV-DEBUG] useGridKeyNav: window keydown listener registered (will resolve container on each key press)');
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  // Empty deps — register once, resolve ref dynamically on every key press
+  // Empty deps Ã¢â‚¬â€ register once, resolve ref dynamically on every key press
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
@@ -5176,6 +5174,7 @@ function HomePage() {
   const [collections, setCollections] = useState([]);
   const [publishedCollections, setPublishedCollections] = useState([]);
   const [genres, setGenres] = useState([]);
+  const [categoryData, setCategoryData] = useState({});
   const [visibleGenreCount, setVisibleGenreCount] = useState(2);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -5224,7 +5223,7 @@ function HomePage() {
         console.log('[NAV-DEBUG] HomePage: jumping focus to firstCardRef');
         firstCardRef.current?.focus();
       } else {
-        console.log('[NAV-DEBUG] HomePage: focus already on content — letting useGridKeyNav handle it');
+        console.log('[NAV-DEBUG] HomePage: focus already on content Ã¢â‚¬â€ letting useGridKeyNav handle it');
       }
     };
 
@@ -5239,18 +5238,21 @@ function HomePage() {
     async function load() {
       try {
         setError('');
-        const [trendingData, userCollections, publishedData, genresData] = await Promise.all([
-          loadTrendingHome(retryTick > 0).catch(() => []),
+        const [homeData, userCollections, publishedData] = await Promise.all([
+          cachedApiFetch('/api/home').catch(() => ({ trending: [], genres: [], categories: {} })),
           getToken() ? loadUserCollections().catch(() => []) : Promise.resolve([]),
-          cachedApiFetch('/api/collections/published').catch(() => ({ collections: [] })),
-          cachedApiFetch('/api/genres').catch(() => [])
+          cachedApiFetch('/api/collections/published').catch(() => ({ collections: [] }))
         ]);
 
         if (!ignore) {
-          setTrending(trendingData);
+          const homeTrending = Array.isArray(homeData?.trending) ? homeData.trending : [];
+          setTrending(homeTrending);
+          // Warm the loadTrendingHome cache so TrendingPage reuses it
+          if (homeTrending.length) { homeTrendingCache.data = homeTrending; homeTrendingCache.expiresAt = Date.now() + HOME_TRENDING_TTL; }
           setCollections(userCollections);
           setPublishedCollections(Array.isArray(publishedData?.collections) ? publishedData.collections : []);
-          setGenres(Array.isArray(genresData) ? genresData : []);
+          setGenres(Array.isArray(homeData?.genres) ? homeData.genres : []);
+          setCategoryData(homeData?.categories && typeof homeData.categories === 'object' ? homeData.categories : {});
         }
       } catch (requestError) {
         if (!ignore) {
@@ -5278,7 +5280,7 @@ function HomePage() {
   }, [retryTick]);
 
   // Enrich ratings for any collection not yet attempted this session.
-  // We deliberately do NOT include `collections` in the dep array — we only
+  // We deliberately do NOT include `collections` in the dep array Ã¢â‚¬â€ we only
   // want to kick off enrichment once per load, not every time setCollections
   // updates state (which would create an infinite loop).
   useEffect(() => {
@@ -5290,11 +5292,11 @@ function HomePage() {
       return !enrichedCollectionIdsRef.current.has(key);
     });
     if (!pending.length) {
-      console.log('[Soulstash][React][HomePage] enrichment effect — all collections already attempted, skipping');
+      console.log('[Soulstash][React][HomePage] enrichment effect Ã¢â‚¬â€ all collections already attempted, skipping');
       return undefined;
     }
 
-    console.log(`[Soulstash][React][HomePage] enrichment effect — queuing ${pending.length} collection(s):`, pending.map(c => c.name));
+    console.log(`[Soulstash][React][HomePage] enrichment effect Ã¢â‚¬â€ queuing ${pending.length} collection(s):`, pending.map(c => c.name));
 
     // Mark them as attempted immediately so re-renders don't re-queue them
     pending.forEach((c) => enrichedCollectionIdsRef.current.add(String(c._id || c.name)));
@@ -5362,7 +5364,7 @@ function HomePage() {
       </section>
 
       {genres.slice(0, visibleGenreCount).map((genre) => (
-        <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} />
+        <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} preloadedMovies={categoryData[String(genre.id)]} />
       ))}
 
       {visibleGenreCount < genres.length && (
@@ -5951,16 +5953,17 @@ function DetailPageSkeleton({ type }) {
   );
 }
 
-function LazyCategoryShelf({ genre, limit }) {
-  const [movies, setMovies] = useState([]);
-  const [loading, setLoading] = useState(true);
+function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
+  const [movies, setMovies] = useState(() => preloadedMovies || []);
+  const [loading, setLoading] = useState(!preloadedMovies || !preloadedMovies.length);
 
   const navigate = useNavigate();
 
   useEffect(() => {
+    // If we already have preloaded data, skip the network call
+    if (preloadedMovies && preloadedMovies.length) return;
     let ignore = false;
     const genreId = genre.id || genre;
-    // We fetch a bit more (e.g. 20) but slice it down to the limit for desktop
     cachedApiFetch(`/api/movies?genre=${genreId}&limit=20`)
       .then((data) => {
         if (!ignore && data.movies) {
@@ -5972,7 +5975,7 @@ function LazyCategoryShelf({ genre, limit }) {
         if (!ignore) setLoading(false);
       });
     return () => { ignore = true; };
-  }, [genre]);
+  }, [genre, preloadedMovies]);
 
   if (loading || !movies.length) return null;
 
@@ -6846,7 +6849,7 @@ function DetailPage({ type }) {
             <div className="mb-5 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm text-[#b7b7b7]">
-                  {content.number_of_seasons || 0} seasons • {content.number_of_episodes || 0} episodes • Avg runtime {formatRuntime(content.runtime)}
+                  {content.number_of_seasons || 0} seasons Ã¢â‚¬Â¢ {content.number_of_episodes || 0} episodes Ã¢â‚¬Â¢ Avg runtime {formatRuntime(content.runtime)}
                 </p>
                 {visibleSeasonList.length > 1 ? (
                   <div className="hidden shrink-0 items-center gap-2 md:flex">
@@ -7019,7 +7022,9 @@ function DetailPage({ type }) {
         saving={createLoading}
       />
       {playerRequest?.tmdbId ? (
-        <VideoPlayerModal request={playerRequest} onClose={() => setPlayerRequest(null)} />
+        <PlayerErrorBoundary onClose={() => setPlayerRequest(null)}>
+          <VideoPlayerModal request={playerRequest} onClose={() => setPlayerRequest(null)} />
+        </PlayerErrorBoundary>
       ) : null}
     </div>
   );
@@ -8650,6 +8655,56 @@ function RegisterPage() {
 
 const SESSION_SCRAPED = new Set();
 
+const PLAYER_SOURCE_SLOTS = [
+  { id: 'h1', key: 'smwh', label: 'H1' },
+  { id: 'h2', key: 'rpmshre', label: 'H2' },
+  { id: 'h3', key: 'upnshr', label: 'H3' },
+  { id: 'h4', key: 'strmp2', label: 'H4' },
+  { id: 'h5', key: 'flls', label: 'H5' },
+  { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
+  { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
+  { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
+];
+
+function sourceKeyText(source = {}) {
+  return `${source.id || ''} ${source.key || ''} ${source.label || ''}`.toLowerCase();
+}
+
+function firstPlayableUrl(source) {
+  if (!source) return '';
+  if (source.url) return source.url;
+  if (Array.isArray(source.urls)) return source.urls.find(Boolean) || '';
+  return '';
+}
+
+function buildPlayerSourceSlots(incomingSources = [], fallbackSources = []) {
+  const pool = [...incomingSources, ...fallbackSources].filter(Boolean);
+  const used = new Set();
+
+  return PLAYER_SOURCE_SLOTS.map((slot) => {
+    const foundIndex = pool.findIndex((source, index) => {
+      if (used.has(index)) return false;
+      if (slot.key && (source.key === slot.key || source.id === slot.key)) return true;
+      return slot.match ? slot.match(source) : false;
+    });
+    const found = foundIndex >= 0 ? pool[foundIndex] : null;
+    if (foundIndex >= 0) used.add(foundIndex);
+
+    const url = firstPlayableUrl(found);
+    return {
+      ...(found || {}),
+      id: found?.id || slot.id,
+      key: found?.key || slot.key || slot.id,
+      label: slot.label,
+      url,
+      urls: found?.urls || (url ? [url] : []),
+      embeddable: found?.embeddable !== false,
+      pending: Boolean(found?.pending),
+      disabled: Boolean(found?.pending) || !url
+    };
+  });
+}
+
 const isAndroidApp = () => {
   return typeof window !== 'undefined' && 
          window.Capacitor !== undefined && 
@@ -8671,6 +8726,32 @@ const setNativeScale = async (scale) => {
     }
   }
 };
+
+class PlayerErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("Player Error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-[9999] bg-black text-red-500 p-8 flex flex-col items-center justify-center">
+          <h2 className="text-2xl font-bold mb-4">Player Error</h2>
+          <p className="text-white font-mono bg-red-900/20 p-4 rounded">{String(this.state.error?.message || this.state.error)}</p>
+          <pre className="mt-4 text-xs text-gray-400">{String(this.state.error?.stack)}</pre>
+          <button className="mt-8 px-4 py-2 bg-white text-black rounded" onClick={() => this.props.onClose()}>Close Player</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export function VideoPlayerModal({ request, onClose }) {
   if (!request?.tmdbId) return null;
@@ -8893,7 +8974,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
 
     let pollAttempt = 0;
-    const MAX_POLL_ATTEMPTS = 30; // 30 × 4s = 120s max wait for a scrape
+    const MAX_POLL_ATTEMPTS = 30; // 30 Ãƒâ€” 4s = 120s max wait for a scrape
 
     const fetchSources = async (isManualRefresh = false) => {
       if (ignore) return;
@@ -8909,7 +8990,7 @@ export function VideoPlayerModal({ request, onClose }) {
           payload = await apiFetch(`/api/player/sources?${queryParams.toString()}`);
         } catch (fetchError) {
           if (ignore) return;
-          // 503 = TMDB down but backend may still scrape via fallback — keep polling
+          // 503 = TMDB down but backend may still scrape via fallback Ã¢â‚¬â€ keep polling
           if (fetchError?.status === 503 && pollAttempt < MAX_POLL_ATTEMPTS) {
             pollAttempt++;
             setSourceState((prev) => ({
@@ -8921,7 +9002,7 @@ export function VideoPlayerModal({ request, onClose }) {
             setTimeout(() => !ignore && fetchSources(false), 4000);
             return;
           }
-          // Hard failure — show error but don't hide fallback sources
+          // Hard failure Ã¢â‚¬â€ show error but don't hide fallback sources
           setSourceState({
             loading: false,
             cacheHit: false,
@@ -8936,7 +9017,7 @@ export function VideoPlayerModal({ request, onClose }) {
         applyPayload(payload);
 
         if (payload?.scraping && pollAttempt < MAX_POLL_ATTEMPTS) {
-          // Backend is still scraping — keep polling until it finishes or we hit the limit
+          // Backend is still scraping Ã¢â‚¬â€ keep polling until it finishes or we hit the limit
           pollAttempt++;
           setTimeout(() => !ignore && fetchSources(false), 4000);
         } else {
@@ -8961,42 +9042,12 @@ export function VideoPlayerModal({ request, onClose }) {
     };
   }, [request]);
 
-  const sources = useMemo(() => {
-    const directSources = hindiSources.filter((s) => s.isDirect);
-    const hindiByKey = new Map(hindiSources.map((source) => [source.key || source.id, source]));
-    const hindiSlots = ['smwh', 'rpmshre', 'upnshr', 'strmp2', 'flls'].map((key, index) => {
-      const found = hindiByKey.get(key);
-      return {
-        id: `hindi-${key}`,
-        key,
-        label: `H${index + 1}`,
-        url: found?.url || '',
-        urls: found?.urls || [],
-        embeddable: found?.embeddable !== false,
-        pending: found?.pending || false,
-        disabled: !found?.url && !found?.pending
-      };
-    });
+  // legacySources removed Ã¢â‚¬â€ buildPlayerSourceSlots covers all 8 fixed slots.
 
-    const combined = [...hindiSlots, ...fallbackSources, ...directSources];
-    const seenLabels = new Set();
-    const seenUrls = new Set();
-    
-    return combined.filter((s) => {
-      const labelKey = s.label?.toLowerCase().trim();
-      const urlKey = s.url ? s.url.split('?')[0].split('#')[0].toLowerCase().trim() : null;
-
-      if (labelKey && seenLabels.has(labelKey)) return false;
-      if (urlKey && seenUrls.has(urlKey)) return false;
-
-      if (labelKey) seenLabels.add(labelKey);
-      if (urlKey) seenUrls.add(urlKey);
-      return true;
-    });
-  }, [hindiSources, fallbackSources]);
+  const sources = useMemo(() => buildPlayerSourceSlots(hindiSources, fallbackSources), [hindiSources, fallbackSources]);
 
   // Auto-select a default source whenever sources load and nothing is playing yet.
-  // Priority: VIDEASY → YouTube → first available.
+  // Priority: VIDEASY Ã¢â€ â€™ YouTube Ã¢â€ â€™ first available.
   useEffect(() => {
     setActiveUrl((current) => {
       if (current && sources.some((s) => s.url === current)) return current;
@@ -9099,7 +9150,7 @@ export function VideoPlayerModal({ request, onClose }) {
     if (!isAndroidViewport || event.pointerType !== 'touch') return;
     if (!event.target.closest('[data-player-drag-handle]')) return;
     if (event.target.closest('button, a')) return;
-    // Don't preventDefault here — wait for movement threshold so taps
+    // Don't preventDefault here Ã¢â‚¬â€ wait for movement threshold so taps
     // pass through to the iframe for play/pause controls.
 
     dragStateRef.current = {
@@ -9226,15 +9277,9 @@ export function VideoPlayerModal({ request, onClose }) {
             <div className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
               <div className="flex min-w-max items-center gap-2 pr-2">
                 {sourceState.loading ? (
-                  [
-                    { id: 'dummy-youtube', label: 'YouTube' },
-                    { id: 'dummy-videasy', label: 'VIDEASY' },
-                    { id: 'dummy-vidfast', label: 'vidfast' },
-                    { id: 'dummy-h1', label: 'H1' },
-                    { id: 'dummy-h2', label: 'H2' },
-                  ].map((dummy) => (
+                  PLAYER_SOURCE_SLOTS.map((dummy) => (
                     <button
-                      key={dummy.id}
+                      key={`loading-${dummy.id}`}
                       type="button"
                       disabled
                       className={`${sourceButtonClass} animate-pulse cursor-wait bg-white/5 text-white/30`}

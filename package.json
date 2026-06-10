@@ -20,6 +20,7 @@
     "@capacitor/core": "^8.3.4",
     "@capacitor/screen-orientation": "^8.0.1",
     "@videojs/react": "^10.0.0-beta.5",
+    "acorn": "^8.16.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
