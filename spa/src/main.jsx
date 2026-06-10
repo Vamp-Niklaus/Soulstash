@@ -9418,27 +9418,42 @@ export function VideoPlayerModal({ request, onClose }) {
                 </a>
               </div>
             ) : (
-              <iframe
-                ref={iframeRef}
-                key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
-                src={activeUrl}
-                tabIndex={0}
-                onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}
-                onError={(e) => console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e)}
-                className="h-full w-full border-0 bg-black"
-                style={{
-                  transform: scale !== 1.0 ? `scale(${scale})` : 'none',
-                  transformOrigin: 'center center',
-                  transition: 'transform 0.2s ease',
-                  backgroundColor: 'black'
-                }}
-                allowFullScreen={true}
-                webkitallowfullscreen="true"
-                mozallowfullscreen="true"
-                allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *; display-capture *"
-                referrerPolicy="no-referrer"
-                title="Soulstash Player"
-              />
+              <div className="relative h-full w-full">
+                <iframe
+                  ref={iframeRef}
+                  key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
+                  src={activeUrl}
+                  tabIndex={0}
+                  onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}
+                  onError={(e) => console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e)}
+                  className="h-full w-full border-0 bg-black"
+                  style={{
+                    transform: scale !== 1.0 ? `scale(${scale})` : 'none',
+                    transformOrigin: 'center center',
+                    transition: 'transform 0.2s ease',
+                    backgroundColor: 'black'
+                  }}
+                  allowFullScreen={true}
+                  webkitallowfullscreen="true"
+                  mozallowfullscreen="true"
+                  allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *; display-capture *"
+                  referrerPolicy="no-referrer"
+                  title="Soulstash Player"
+                />
+                {(activeUrl.includes('youtube.com') || activeUrl.includes('youtu.be')) && (
+                  <div className="absolute top-4 right-4 z-[9999]">
+                    <a
+                      href={activeUrl.replace('/embed/', '/watch?v=').split('&')[0]}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-2 rounded-full bg-[#FF0000]/90 px-4 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-[#FF0000] sm:text-sm"
+                    >
+                      <i className="fab fa-youtube text-base" />
+                      <span>Open in App</span>
+                    </a>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
