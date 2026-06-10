@@ -9437,7 +9437,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   webkitallowfullscreen="true"
                   mozallowfullscreen="true"
                   allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *; display-capture *"
-                  referrerPolicy="no-referrer"
+                  referrerPolicy={activeUrl.includes('youtube.com') ? 'strict-origin-when-cross-origin' : 'no-referrer'}
                   title="Soulstash Player"
                 />
                 {(activeUrl.includes('youtube.com') || activeUrl.includes('youtu.be')) && (
