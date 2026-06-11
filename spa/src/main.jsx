@@ -5032,39 +5032,45 @@ const ContentCard = React.forwardRef(function ContentCard({ item, status = null,
       ref={ref}
       type="button"
       {...props}
-      className="border text-card-foreground group p-2 flex flex-col items-start gap-2 sm:gap-[6px] w-full h-full cursor-pointer relative rounded-lg overflow-visible hover:bg-[#171717] hover:backdrop-blur-sm transition-all duration-300 border-none bg-transparent shadow-none text-left focus:bg-white/[0.08] focus:ring-2 focus:ring-white focus:outline-none"
+      className="card group"
       onClick={() => navigate(mediaRoute(item))}
+      aria-label={title}
     >
-      <div className="p-0 w-full h-full flex flex-col items-start gap-2 sm:gap-[6px]">
-        <div className="relative w-full aspect-[2/3] overflow-hidden rounded-md max-w-full mx-auto">
-          <img
-            src={imageUrl(item.poster_path, 'w300_and_h450_face')}
-            alt={title}
-            className="w-full h-full object-cover rounded-md"
-            onError={(event) => {
-              event.currentTarget.src = FALLBACK_AVATAR;
-            }}
-          />
-          {status?.watched ? (
-            <span className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#10B981] text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)]">
-              <i className="fas fa-eye text-[15px] text-black"></i>
-            </span>
-          ) : null}
-          {!status?.watched && status?.watchlist ? (
-            <span className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#F59E0B] text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)]">
-              <i className="fas fa-clock text-[15px] text-black"></i>
-            </span>
-          ) : null}
-        </div>
-        <div className="flex flex-col items-start w-full px-[2px]">
-          <div className="w-full overflow-hidden h-[16px] sm:h-[20px] flex items-center relative">
-            <h3 className="w-full text-sm opacity-80 font-medium leading-4 sm:leading-5 tracking-[0.5px] text-[#E2E2E2] text-left truncate">
-              {title}
-            </h3>
-          </div>
-          <p className="w-full text-[10px] opacity-100 font-normal leading-[18px] tracking-[0.4px] text-left text-[#C6C6C6]">
-            {contentType} | {yearFrom(item)} | Rating {getPreferredRating(item)?.toFixed(1) || 'N/A'}
-          </p>
+      <div className="cardImageWrap">
+        <img
+          src={imageUrl(item.poster_path, 'w500')}
+          alt={title}
+          className="cardImg fadeImg"
+          loading="lazy"
+          decoding="async"
+          onError={(event) => {
+            event.currentTarget.src = FALLBACK_AVATAR;
+          }}
+        />
+        {status?.watched ? (
+          <span className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#10B981] text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)] z-10">
+            <i className="fas fa-eye text-[15px] text-black"></i>
+          </span>
+        ) : null}
+        {!status?.watched && status?.watchlist ? (
+          <span className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#F59E0B] text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)] z-10">
+            <i className="fas fa-clock text-[15px] text-black"></i>
+          </span>
+        ) : null}
+      </div>
+      <div className="cardMeta">
+        <h3 className="cardTitle">{title}</h3>
+        <div className="cardSubMeta">
+          <span className="cardSubMetaItem">
+            <svg className="cardSubMetaStar" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span className="cardSubMetaNum">{getPreferredRating(item)?.toFixed(1) || 'N/A'}</span>
+          </span>
+          <span className="cardSubMetaSep" aria-hidden="true">·</span>
+          <span className="cardSubMetaItem cardSubMetaNum">{yearFrom(item)}</span>
+          <span className="cardSubMetaSep" aria-hidden="true">·</span>
+          <span className="cardSubMetaItem">{contentType}</span>
         </div>
       </div>
     </button>
