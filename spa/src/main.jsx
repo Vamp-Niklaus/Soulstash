@@ -4391,54 +4391,7 @@ const FALLBACK_AUTH_POSTERS = [
 ];
 
 function AuthPosterColumns() {
-  const [columns, setColumns] = useState(() => {
-    try {
-      const cached = sessionStorage.getItem(AUTH_POSTER_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed[0]?.length) return parsed;
-      }
-    } catch {}
-    return splitTrendingIntoColumns(FALLBACK_AUTH_POSTERS);
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-
-    cachedApiFetch('/api/trending?limit=36', {}, 10 * 60 * 1000)
-      .then((items) => {
-        if (!cancelled && Array.isArray(items)) {
-          const validApiItems = items.filter(item => Boolean(item.poster_path));
-          let finalItems = [...validApiItems];
-          if (finalItems.length < 36) {
-            const availableFallbacks = FALLBACK_AUTH_POSTERS.filter(
-              fallback => !finalItems.some(item => item.id === fallback.id)
-            );
-            const sourceArray = availableFallbacks.length ? availableFallbacks : FALLBACK_AUTH_POSTERS;
-            let i = 0;
-            while (finalItems.length < 36) {
-              finalItems.push(sourceArray[i % sourceArray.length]);
-              i++;
-            }
-          }
-          const nextColumns = splitTrendingIntoColumns(finalItems);
-          setColumns(nextColumns);
-          try {
-            sessionStorage.setItem(AUTH_POSTER_CACHE_KEY, JSON.stringify(nextColumns));
-          } catch {}
-        }
-      })
-      .catch(() => {
-        // Fallback to hardcoded posters on error
-        if (!cancelled) {
-          setColumns(splitTrendingIntoColumns(FALLBACK_AUTH_POSTERS));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [columns] = useState(() => splitTrendingIntoColumns(FALLBACK_AUTH_POSTERS));
 
   const animationClasses = ['auth-poster-column--up', 'auth-poster-column--down', 'auth-poster-column--up'];
 
@@ -4460,7 +4413,7 @@ function AuthPosterColumns() {
                               className="object-cover w-full h-full"
                               loading="lazy"
                               onError={(event) => {
-                                event.currentTarget.src = FALLBACK_AVATAR;
+                                event.currentTarget.src = '/images/transparent.png';
                               }}
                             />
                           </div>
