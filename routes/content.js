@@ -1405,30 +1405,79 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 const categoriesCache = new Map();
 const CATEGORIES_CACHE_DURATION = 24 * 60 * 60 * 1000;
 
+function mapMovieGenreToTvGenre(movieGenreId) {
+  if (!movieGenreId) return null;
+  const id = parseInt(movieGenreId, 10);
+  const map = {
+    28: 10759, // Action -> Action & Adventure
+    12: 10759, // Adventure -> Action & Adventure
+    16: 16,    // Animation -> Animation
+    35: 35,    // Comedy -> Comedy
+    80: 80,    // Crime -> Crime
+    99: 99,    // Documentary -> Documentary
+    18: 18,    // Drama -> Drama
+    10751: 10751, // Family -> Family
+    14: 10765, // Fantasy -> Sci-Fi & Fantasy
+    9648: 9648, // Mystery -> Mystery
+    878: 10765, // Sci-Fi -> Sci-Fi & Fantasy
+    10752: 10768, // War -> War & Politics
+    37: 37,    // Western -> Western
+  };
+  return map[id] !== undefined ? map[id] : null;
+}
+
 async function refreshCategoryCache(genre, year, page, limit, includeAdult, allowMissingImdb) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
-    let url = `https://api.themoviedb.org/3/discover/movie?include_adult=${includeAdult ? 'true' : 'false'}&language=en-US&page=${page}`;
-    if (genre) url += `&with_genres=${genre}`;
-    if (year)  url += `&primary_release_year=${year}`;
-    url += `&sort_by=popularity.desc`;
+    const voteCountFilter = '&vote_count.gte=50'; // Enforce minimum quality to avoid weird/adult/placeholder posters
+    const adultFilter = '&include_adult=false'; // Always enforce no adult content for discovery
+    
+    let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}&sort_by=popularity.desc`;
+    if (genre) movieUrl += `&with_genres=${genre}`;
+    if (year)  movieUrl += `&primary_release_year=${year}`;
 
-    const resp = await tmdbFetch(url, opts, 'Discover Movies Bg');
-    if (!resp.ok) {
-      return;
+    let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}&sort_by=popularity.desc`;
+    if (genre) {
+      const tvGenre = mapMovieGenreToTvGenre(genre);
+      if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
+      else tvUrl = null; // Skip TV if genre has no mapping
     }
-    const data = await resp.json();
-    let movies = Array.isArray(data.results) ? data.results.slice(0, Math.max(limit * 2, limit)) : [];
-    // Tag media_type so cards render without client-side enrichment
-    movies = movies.map(i => ({ ...i, media_type: 'Movie' }));
+    if (year) tvUrl += `&first_air_date_year=${year}`;
+
+    const requests = [
+      tmdbFetch(movieUrl, opts, 'Discover Movies Bg').then(r => r.ok ? r.json() : null).catch(() => null)
+    ];
+    if (tvUrl) {
+      requests.push(tmdbFetch(tvUrl, opts, 'Discover TV Bg').then(r => r.ok ? r.json() : null).catch(() => null));
+    } else {
+      requests.push(Promise.resolve(null));
+    }
+
+    const [movieData, tvData] = await Promise.all(requests);
+
+    if (!movieData && !tvData) return;
+
+    let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
+    let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
+
+    const all = [];
+    const maxLen = Math.max(movies.length, tvShows.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < movies.length) all.push(movies[i]);
+      if (i < tvShows.length) all.push(tvShows[i]);
+    }
+    let finalItems = all.slice(0, Math.max(limit * 2, limit));
+
     if (!allowMissingImdb) {
-      movies = (await attachImdbIds(movies, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
+      finalItems = (await attachImdbIds(finalItems, 'Movie')).filter((item) => String(item?.imdb_id || '').trim() || item.media_type === 'Series');
     }
-    // Attach cached IMDB ratings so cards load immediately
-    movies = await attachCachedRatings(movies);
+    finalItems = await attachCachedRatings(finalItems);
     
     const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
-    const payload = { movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } };
+    const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
+    const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
+    
+    const payload = { movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } };
     
     if (payload.movies.length > 0) {
       categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
@@ -1565,37 +1614,90 @@ router.get('/movies', async (req, res) => {
     }
 
     if (search) {
-      const url = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(search)}&include_adult=${includeAdult ? 'true' : 'false'}&language=en-US&page=${page}`;
-      const resp = await tmdbFetch(url, opts, `Search "${search}"`);
-      if (!resp.ok) return res.status(500).json({ error: 'Failed to search movies' });
-      const data = await resp.json();
-      let movies = Array.isArray(data.results) ? data.results.slice(0, Math.max(limit * 2, limit)) : [];
-      movies = movies.map(i => ({ ...i, media_type: 'Movie' }));
-      if (!allowMissingImdb) {
-        movies = (await attachImdbIds(movies, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
+      const adultFilter = '&include_adult=false';
+      const movieUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(search)}${adultFilter}&language=en-US&page=${page}`;
+      const tvUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(search)}${adultFilter}&language=en-US&page=${page}`;
+      
+      const [movieResp, tvResp] = await Promise.all([
+        tmdbFetch(movieUrl, opts, `Search Movie "${search}"`).catch(() => null),
+        tmdbFetch(tvUrl, opts, `Search TV "${search}"`).catch(() => null)
+      ]);
+      
+      if (!movieResp?.ok && !tvResp?.ok) return res.status(500).json({ error: 'Failed to search' });
+      
+      const movieData = movieResp?.ok ? await movieResp.json() : null;
+      const tvData = tvResp?.ok ? await tvResp.json() : null;
+      
+      let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
+      let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
+      
+      const all = [];
+      const maxLen = Math.max(movies.length, tvShows.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (i < movies.length) all.push(movies[i]);
+        if (i < tvShows.length) all.push(tvShows[i]);
       }
-      movies = await attachCachedRatings(movies);
-      return res.json({ movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } });
+      let finalItems = all.slice(0, Math.max(limit * 2, limit));
+
+      if (!allowMissingImdb) {
+        finalItems = (await attachImdbIds(finalItems, 'Movie')).filter((item) => String(item?.imdb_id || '').trim() || item.media_type === 'Series');
+      }
+      finalItems = await attachCachedRatings(finalItems);
+      
+      const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
+      const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
+      
+      return res.json({ movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } });
     }
 
-    let url = `https://api.themoviedb.org/3/discover/movie?include_adult=${includeAdult ? 'true' : 'false'}&language=en-US&page=${page}`;
-    if (genre) url += `&with_genres=${genre}`;
-    if (year)  url += `&primary_release_year=${year}`;
+    const voteCountFilter = '&vote_count.gte=50';
+    const adultFilter = '&include_adult=false';
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
-    if (sortMap[sortBy]) url += `&sort_by=${sortMap[sortBy]}.${sortOrder}`;
+    const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
 
-    const resp = await tmdbFetch(url, opts, 'Discover Movies');
-    if (!resp.ok) return res.status(500).json({ error: 'Failed to fetch movies' });
-    const data = await resp.json();
-    let movies = Array.isArray(data.results) ? data.results.slice(0, Math.max(limit * 2, limit)) : [];
-    // Tag media_type so ContentCard renders immediately without extra client lookups
-    movies = movies.map(i => ({ ...i, media_type: 'Movie' }));
-    if (!allowMissingImdb) {
-      movies = (await attachImdbIds(movies, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
+    let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}${sortParam}`;
+    if (genre) movieUrl += `&with_genres=${genre}`;
+    if (year)  movieUrl += `&primary_release_year=${year}`;
+
+    let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}${sortParam}`;
+    if (genre) {
+      const tvGenre = mapMovieGenreToTvGenre(genre);
+      if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
+      else tvUrl = null;
     }
-    // Attach cached IMDB ratings â€” same enrichment trending sends
-    movies = await attachCachedRatings(movies);
-    const payload = { movies: movies.slice(0, limit), pagination: { page, limit, total: data.total_results, pages: data.total_pages } };
+    if (year) tvUrl += `&first_air_date_year=${year}`;
+
+    const requests = [
+      tmdbFetch(movieUrl, opts, 'Discover Movies').then(r => r.ok ? r.json() : null).catch(() => null)
+    ];
+    if (tvUrl) {
+      requests.push(tmdbFetch(tvUrl, opts, 'Discover TV').then(r => r.ok ? r.json() : null).catch(() => null));
+    } else {
+      requests.push(Promise.resolve(null));
+    }
+
+    const [movieData, tvData] = await Promise.all(requests);
+    if (!movieData && !tvData) return res.status(500).json({ error: 'Failed to fetch content' });
+
+    let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
+    let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
+
+    const all = [];
+    const maxLen = Math.max(movies.length, tvShows.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (i < movies.length) all.push(movies[i]);
+      if (i < tvShows.length) all.push(tvShows[i]);
+    }
+    let finalItems = all.slice(0, Math.max(limit * 2, limit));
+
+    if (!allowMissingImdb) {
+      finalItems = (await attachImdbIds(finalItems, 'Movie')).filter((item) => String(item?.imdb_id || '').trim() || item.media_type === 'Series');
+    }
+    finalItems = await attachCachedRatings(finalItems);
+    
+    const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
+    const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
+    const payload = { movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } };
     
     if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && payload.movies.length > 0) {
       categoriesCache.set(cacheKey, { time: Date.now(), data: payload });

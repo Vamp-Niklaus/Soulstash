@@ -657,3 +657,86 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 /* Hide VideoJS big play button to prevent Android stretch */
 .vjs-big-play-button { display: none !important; }
 
+
+/* Cine.su Card Styles */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: opacity 0.3s ease;
+  background: transparent;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  text-align: left;
+  width: 100%;
+}
+
+.cardImageWrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.cardImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.card:hover .cardImg, .card:focus-visible .cardImg {
+  transform: scale(1.08);
+}
+
+.cardMeta {
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2e2e2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.cardSubMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: #919191;
+}
+
+.cardSubMetaItem {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cardSubMetaStar {
+  fill: #F5C518;
+  margin-top: -1px;
+}
+
+.cardSubMetaNum {
+  font-weight: 500;
+}
+
+.cardSubMetaSep {
+  color: #666;
+}
+
