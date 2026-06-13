@@ -1429,15 +1429,16 @@ function mapMovieGenreToTvGenre(movieGenreId) {
 async function refreshCategoryCache(genre, year, page, limit, includeAdult, allowMissingImdb) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
-    const voteCountFilter = '&vote_count.gte=50'; // Enforce minimum quality to avoid weird/adult/placeholder posters
-    const adultFilter = '&include_adult=false'; // Always enforce no adult content for discovery
+    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50'; // Enforce minimum quality to avoid weird/adult/placeholder posters
+    const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false'; // Always enforce no adult content for discovery
+    const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     
-    let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}&sort_by=popularity.desc`;
-    if (genre) movieUrl += `&with_genres=${genre}`;
+    let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
+    if (genre && !includeAdult) movieUrl += `&with_genres=${genre}`;
     if (year)  movieUrl += `&primary_release_year=${year}`;
 
-    let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}&sort_by=popularity.desc`;
-    if (genre) {
+    let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
+    if (genre && !includeAdult) {
       const tvGenre = mapMovieGenreToTvGenre(genre);
       if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
       else tvUrl = null; // Skip TV if genre has no mapping
@@ -1460,6 +1461,11 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
     let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
 
+    if (includeAdult) {
+      movies = movies.filter(i => i.adult === true);
+      tvShows = tvShows.filter(i => i.adult === true);
+    }
+
     const all = [];
     const maxLen = Math.max(movies.length, tvShows.length);
     for (let i = 0; i < maxLen; i++) {
@@ -1473,7 +1479,7 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     }
     finalItems = await attachCachedRatings(finalItems);
     
-    const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
+    const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}_adult${includeAdult}`;
     const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
     const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
     
@@ -1486,7 +1492,7 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
   } catch (err) {
     console.error('[API] Background category refresh failed:', err);
   } finally {
-    const lockKey = `revalidating_category_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
+    const lockKey = `revalidating_category_page${page}_genre${genre || 'all'}_year${year || 'all'}_adult${includeAdult}`;
     global[lockKey] = false;
   }
 }
@@ -1600,8 +1606,8 @@ router.get('/movies', async (req, res) => {
     const includeAdult = await resolveIncludeAdult(req);
     const allowMissingImdb = includeAdult;
 
-    const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
-    const lockKey = `revalidating_category_page${page}_genre${genre || 'all'}_year${year || 'all'}`;
+    const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}_adult${includeAdult}`;
+    const lockKey = `revalidating_category_page${page}_genre${genre || 'all'}_year${year || 'all'}_adult${includeAdult}`;
 
     if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && categoriesCache.has(cacheKey)) {
       const cached = categoriesCache.get(cacheKey);
@@ -1614,7 +1620,7 @@ router.get('/movies', async (req, res) => {
     }
 
     if (search) {
-      const adultFilter = '&include_adult=false';
+      const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
       const movieUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(search)}${adultFilter}&language=en-US&page=${page}`;
       const tvUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(search)}${adultFilter}&language=en-US&page=${page}`;
       
@@ -1630,6 +1636,11 @@ router.get('/movies', async (req, res) => {
       
       let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
       let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
+      
+      if (includeAdult) {
+        movies = movies.filter(i => i.adult === true);
+        tvShows = tvShows.filter(i => i.adult === true);
+      }
       
       const all = [];
       const maxLen = Math.max(movies.length, tvShows.length);
@@ -1650,17 +1661,18 @@ router.get('/movies', async (req, res) => {
       return res.json({ movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } });
     }
 
-    const voteCountFilter = '&vote_count.gte=50';
-    const adultFilter = '&include_adult=false';
+    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
+    const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
+    const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
     const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
 
-    let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}${sortParam}`;
-    if (genre) movieUrl += `&with_genres=${genre}`;
+    let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
+    if (genre && !includeAdult) movieUrl += `&with_genres=${genre}`;
     if (year)  movieUrl += `&primary_release_year=${year}`;
 
-    let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}${sortParam}`;
-    if (genre) {
+    let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
+    if (genre && !includeAdult) {
       const tvGenre = mapMovieGenreToTvGenre(genre);
       if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
       else tvUrl = null;
@@ -1681,6 +1693,11 @@ router.get('/movies', async (req, res) => {
 
     let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
     let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
+
+    if (includeAdult) {
+      movies = movies.filter(i => i.adult === true);
+      tvShows = tvShows.filter(i => i.adult === true);
+    }
 
     const all = [];
     const maxLen = Math.max(movies.length, tvShows.length);
@@ -1990,7 +2007,9 @@ router.get('/trending', trendingLimiter, async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     console.log(`[API] /api/trending hit limit=${limit} page=${page}`);
     const now = Date.now();
-    if (page === 1 && trendingCache) {
+    const includeAdult = await resolveIncludeAdult(req);
+
+    if (page === 1 && trendingCache && !includeAdult) {
       const isStale = now - trendingCacheTime > CACHE_DURATION;
       if (isStale && !global.trendingRevalidating) {
         global.trendingRevalidating = true;
@@ -2030,8 +2049,13 @@ router.get('/trending', trendingLimiter, async (req, res) => {
 
     const movieData = movieResp?.ok ? await movieResp.json() : { results: [], total_pages: 1 };
     const tvData = tvResp?.ok ? await tvResp.json() : { results: [], total_pages: 1 };
-    const movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
-    const tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
+    let movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
+    let tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
+    
+    if (includeAdult) {
+      movieItems = movieItems.filter(i => i.adult === true);
+      tvItems = tvItems.filter(i => i.adult === true);
+    }
     
     const all = [];
     const maxLen = Math.max(movieItems.length, tvItems.length);
@@ -2049,7 +2073,7 @@ router.get('/trending', trendingLimiter, async (req, res) => {
       return res.json({ movies: [], pagination: { page, limit, pages: 1 } });
     }
 
-    if (page === 1) {
+    if (page === 1 && !includeAdult) {
       trendingCache = finalItems;
       trendingCacheTime = now;
     }
@@ -2135,9 +2159,9 @@ const HOME_PRELOAD_GENRES = 8;  // how many genre shelves to pre-bake
 async function buildHomePayload(includeAdult) {
   const opts = { method: 'GET', headers: tmdbHeaders() };
 
-  // 1. Trending (always from cache if warm)
+  // 1. Trending (bypass cache if adult mode)
   let trending = [];
-  if (trendingCache && trendingCache.length) {
+  if (trendingCache && trendingCache.length && !includeAdult) {
     trending = trendingCache.slice(0, 18);
   } else {
     try {
@@ -2148,14 +2172,23 @@ async function buildHomePayload(includeAdult) {
       ]);
       const movieData = movieResult.status === 'fulfilled' && movieResult.value?.ok ? await movieResult.value.json() : { results: [] };
       const tvData = tvResult.status === 'fulfilled' && tvResult.value?.ok ? await tvResult.value.json() : { results: [] };
+      
+      let mItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
+      let tItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
+
+      if (includeAdult) {
+        mItems = mItems.filter(i => i.adult === true);
+        tItems = tItems.filter(i => i.adult === true);
+      }
+
       const all = [];
-      const maxLen = Math.max(movieData.results.length, tvData.results.length);
+      const maxLen = Math.max(mItems.length, tItems.length);
       for (let i = 0; i < maxLen; i++) {
-        if (i < movieData.results.length) all.push({ ...movieData.results[i], media_type: 'Movie' });
-        if (i < tvData.results.length) all.push({ ...tvData.results[i], media_type: 'Series' });
+        if (i < mItems.length) all.push(mItems[i]);
+        if (i < tItems.length) all.push(tItems[i]);
       }
       trending = all.slice(0, 18);
-      if (trending.length) { trendingCache = trending; trendingCacheTime = Date.now(); }
+      if (trending.length && !includeAdult) { trendingCache = trending; trendingCacheTime = Date.now(); }
     } catch (e) { console.warn('[Home] Trending fetch failed:', e.message); }
   }
 
@@ -2182,26 +2215,63 @@ async function buildHomePayload(includeAdult) {
   const categories = {};
 
   const fetchGenreMovies = async (genre) => {
-    const cacheKey = `movies_page1_genre${genre.id}_yearall`;
+    const cacheKey = `movies_page1_genre${genre.id}_yearall_adult${includeAdult}`;
     const cached = categoriesCache.get(cacheKey);
     if (cached && Date.now() - cached.time < CATEGORIES_CACHE_DURATION) {
       return { id: genre.id, movies: cached.data.movies };
     }
     try {
-      const url = `https://api.themoviedb.org/3/discover/movie?include_adult=${includeAdult ? 'true' : 'false'}&language=en-US&page=1&with_genres=${genre.id}&sort_by=popularity.desc`;
-      const resp = await tmdbFetch(url, opts, `Home Genre ${genre.name}`);
-      if (!resp.ok) return { id: genre.id, movies: [] };
-      const data = await resp.json();
-      let movies = Array.isArray(data.results) ? data.results.slice(0, HOME_CATEGORY_LIMIT * 2) : [];
-      movies = movies.map(i => ({ ...i, media_type: 'Movie' }));
+      const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
+      const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
+      const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
+      
+      let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
+      if (!includeAdult) movieUrl += `&with_genres=${genre.id}`;
+
+      let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=1${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
       if (!includeAdult) {
-        movies = (await attachImdbIds(movies, 'Movie')).filter(m => String(m?.imdb_id || '').trim());
+        const tvGenre = mapMovieGenreToTvGenre(genre.id);
+        if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
+        else tvUrl = null;
       }
-      movies = await attachCachedRatings(movies);
-      movies = movies.slice(0, HOME_CATEGORY_LIMIT);
-      const payload = { movies, pagination: { page: 1, limit: HOME_CATEGORY_LIMIT, total: data.total_results, pages: data.total_pages } };
-      if (movies.length) categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
-      return { id: genre.id, movies };
+
+      const requests = [
+        tmdbFetch(movieUrl, opts, `Home Genre ${genre.name} Movie`).then(r => r.ok ? r.json() : null).catch(() => null)
+      ];
+      if (tvUrl) {
+        requests.push(tmdbFetch(tvUrl, opts, `Home Genre ${genre.name} TV`).then(r => r.ok ? r.json() : null).catch(() => null));
+      } else {
+        requests.push(Promise.resolve(null));
+      }
+
+      const [movieData, tvData] = await Promise.all(requests);
+      if (!movieData && !tvData) return { id: genre.id, movies: [] };
+
+      let mItems = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
+      let tItems = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
+
+      if (includeAdult) {
+        mItems = mItems.filter(i => i.adult === true);
+        tItems = tItems.filter(i => i.adult === true);
+      }
+
+      const all = [];
+      const maxLen = Math.max(mItems.length, tItems.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (i < mItems.length) all.push(mItems[i]);
+        if (i < tItems.length) all.push(tItems[i]);
+      }
+      let finalItems = all.slice(0, HOME_CATEGORY_LIMIT * 2);
+
+      if (!includeAdult) {
+        finalItems = (await attachImdbIds(finalItems, 'Movie')).filter((item) => String(item?.imdb_id || '').trim() || item.media_type === 'Series');
+      }
+      finalItems = await attachCachedRatings(finalItems);
+      finalItems = finalItems.slice(0, HOME_CATEGORY_LIMIT);
+      
+      const payload = { movies: finalItems, pagination: { page: 1, limit: HOME_CATEGORY_LIMIT, total: 500, pages: 500 } };
+      if (finalItems.length) categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
+      return { id: genre.id, movies: finalItems };
     } catch (e) {
       console.warn(`[Home] Genre ${genre.id} fetch failed:`, e.message);
       return { id: genre.id, movies: [] };
@@ -2219,7 +2289,7 @@ async function buildHomePayload(includeAdult) {
 async function refreshHomeCache(includeAdult) {
   try {
     const payload = await buildHomePayload(includeAdult);
-    if (payload.trending.length || Object.keys(payload.categories).length) {
+    if ((payload.trending.length || Object.keys(payload.categories).length) && !includeAdult) {
       homeCache = payload;
       homeCacheTime = Date.now();
       console.log(`[API] /api/home revalidated: trending=${payload.trending.length} genres=${payload.genres.length} categories=${Object.keys(payload.categories).length}`);
@@ -2237,8 +2307,8 @@ router.get('/home', async (req, res) => {
     const includeAdult = await resolveIncludeAdult(req);
     const now = Date.now();
 
-    // Serve from cache if fresh
-    if (homeCache) {
+    // Serve from cache if fresh (bypass for adult mode)
+    if (homeCache && !includeAdult) {
       const isStale = now - homeCacheTime > HOME_CACHE_DURATION;
       if (isStale && !global.homeRevalidating) {
         global.homeRevalidating = true;
@@ -2249,7 +2319,7 @@ router.get('/home', async (req, res) => {
 
     // Cold start â€” build and cache
     const payload = await buildHomePayload(includeAdult);
-    if (payload.trending.length || Object.keys(payload.categories).length) {
+    if ((payload.trending.length || Object.keys(payload.categories).length) && !includeAdult) {
       homeCache = payload;
       homeCacheTime = now;
     }
