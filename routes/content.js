@@ -1461,11 +1461,6 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
     let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
 
-    if (includeAdult) {
-      movies = movies.filter(i => i.adult === true);
-      tvShows = tvShows.filter(i => i.adult === true);
-    }
-
     const all = [];
     const maxLen = Math.max(movies.length, tvShows.length);
     for (let i = 0; i < maxLen; i++) {
@@ -1637,11 +1632,6 @@ router.get('/movies', async (req, res) => {
       let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
       let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
       
-      if (includeAdult) {
-        movies = movies.filter(i => i.adult === true);
-        tvShows = tvShows.filter(i => i.adult === true);
-      }
-      
       const all = [];
       const maxLen = Math.max(movies.length, tvShows.length);
       for (let i = 0; i < maxLen; i++) {
@@ -1693,11 +1683,6 @@ router.get('/movies', async (req, res) => {
 
     let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
     let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
-
-    if (includeAdult) {
-      movies = movies.filter(i => i.adult === true);
-      tvShows = tvShows.filter(i => i.adult === true);
-    }
 
     const all = [];
     const maxLen = Math.max(movies.length, tvShows.length);
@@ -2052,11 +2037,6 @@ router.get('/trending', trendingLimiter, async (req, res) => {
     let movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
     let tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
     
-    if (includeAdult) {
-      movieItems = movieItems.filter(i => i.adult === true);
-      tvItems = tvItems.filter(i => i.adult === true);
-    }
-    
     const all = [];
     const maxLen = Math.max(movieItems.length, tvItems.length);
     for (let i = 0; i < maxLen; i++) {
@@ -2176,11 +2156,6 @@ async function buildHomePayload(includeAdult) {
       let mItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
       let tItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
 
-      if (includeAdult) {
-        mItems = mItems.filter(i => i.adult === true);
-        tItems = tItems.filter(i => i.adult === true);
-      }
-
       const all = [];
       const maxLen = Math.max(mItems.length, tItems.length);
       for (let i = 0; i < maxLen; i++) {
@@ -2249,11 +2224,6 @@ async function buildHomePayload(includeAdult) {
 
       let mItems = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
       let tItems = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
-
-      if (includeAdult) {
-        mItems = mItems.filter(i => i.adult === true);
-        tItems = tItems.filter(i => i.adult === true);
-      }
 
       const all = [];
       const maxLen = Math.max(mItems.length, tItems.length);
