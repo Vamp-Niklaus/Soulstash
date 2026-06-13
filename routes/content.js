@@ -1434,11 +1434,11 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     
     let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
-    if (genre && !includeAdult) movieUrl += `&with_genres=${genre}`;
+    if (genre) movieUrl += `&with_genres=${genre}`;
     if (year)  movieUrl += `&primary_release_year=${year}`;
 
     let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
-    if (genre && !includeAdult) {
+    if (genre) {
       const tvGenre = mapMovieGenreToTvGenre(genre);
       if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
       else tvUrl = null; // Skip TV if genre has no mapping
@@ -1658,11 +1658,11 @@ router.get('/movies', async (req, res) => {
     const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
 
     let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
-    if (genre && !includeAdult) movieUrl += `&with_genres=${genre}`;
+    if (genre) movieUrl += `&with_genres=${genre}`;
     if (year)  movieUrl += `&primary_release_year=${year}`;
 
     let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
-    if (genre && !includeAdult) {
+    if (genre) {
       const tvGenre = mapMovieGenreToTvGenre(genre);
       if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
       else tvUrl = null;
@@ -2009,9 +2009,19 @@ router.get('/trending', trendingLimiter, async (req, res) => {
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('Trending request timed out')), 7000))
       ]);
+      
+    let movieUrl = `https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=${page}`;
+    let tvUrl = `https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=${page}`;
+    
+    if (includeAdult) {
+      const adultKeywords = '&with_keywords=190370|13054|210024|156416';
+      movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${adultKeywords}&sort_by=popularity.desc`;
+      tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}&include_adult=true${adultKeywords}&sort_by=popularity.desc`;
+    }
+
     const [movieResult, tvResult] = await Promise.allSettled([
-      fetchWithDeadline(tmdbFetch(`https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=${page}`, opts, 'Trending Movies')),
-      fetchWithDeadline(tmdbFetch(`https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=${page}`, opts, 'Trending TV'))
+      fetchWithDeadline(tmdbFetch(movieUrl, opts, 'Trending Movies')),
+      fetchWithDeadline(tmdbFetch(tvUrl, opts, 'Trending TV'))
     ]);
 
     const movieResp = movieResult.status === 'fulfilled' ? movieResult.value : null;
@@ -2146,9 +2156,19 @@ async function buildHomePayload(includeAdult) {
   } else {
     try {
       const fetchWithDeadline = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 7000))]);
+      
+      let movieUrl = 'https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=1';
+      let tvUrl = 'https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=1';
+      
+      if (includeAdult) {
+        const adultKeywords = '&with_keywords=190370|13054|210024|156416';
+        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${adultKeywords}&sort_by=popularity.desc`;
+        tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=1&include_adult=true${adultKeywords}&sort_by=popularity.desc`;
+      }
+
       const [movieResult, tvResult] = await Promise.allSettled([
-        fetchWithDeadline(tmdbFetch('https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=1', opts, 'Home Trending Movies')),
-        fetchWithDeadline(tmdbFetch('https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=1', opts, 'Home Trending TV'))
+        fetchWithDeadline(tmdbFetch(movieUrl, opts, 'Home Trending Movies')),
+        fetchWithDeadline(tmdbFetch(tvUrl, opts, 'Home Trending TV'))
       ]);
       const movieData = movieResult.status === 'fulfilled' && movieResult.value?.ok ? await movieResult.value.json() : { results: [] };
       const tvData = tvResult.status === 'fulfilled' && tvResult.value?.ok ? await tvResult.value.json() : { results: [] };
@@ -2201,10 +2221,10 @@ async function buildHomePayload(includeAdult) {
       const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
       
       let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
-      if (!includeAdult) movieUrl += `&with_genres=${genre.id}`;
+      if (genre) movieUrl += `&with_genres=${genre.id}`;
 
       let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=1${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
-      if (!includeAdult) {
+      if (genre) {
         const tvGenre = mapMovieGenreToTvGenre(genre.id);
         if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
         else tvUrl = null;
