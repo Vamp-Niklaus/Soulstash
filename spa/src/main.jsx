@@ -6854,7 +6854,7 @@ function DetailPage({ type }) {
             <div className="mb-5 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm text-[#b7b7b7]">
-                  {content.number_of_seasons || 0} seasons Ã¢â‚¬Â¢ {content.number_of_episodes || 0} episodes Ã¢â‚¬Â¢ Avg runtime {formatRuntime(content.runtime)}
+                  {content.number_of_seasons || 0} seasons &bull; {content.number_of_episodes || 0} episodes &bull; Avg runtime {formatRuntime(content.runtime)}
                 </p>
                 {visibleSeasonList.length > 1 ? (
                   <div className="hidden shrink-0 items-center gap-2 md:flex">
