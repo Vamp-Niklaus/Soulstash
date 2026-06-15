@@ -769,3 +769,31 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
   vertical-align: middle;
 }
 
+/* ==================================================
+   CINE.SU PLAYER CROP HACK
+   ==================================================
+   Because of cross-origin security rules, we cannot inject CSS inside 
+   the cine.su iframe to hide their website menus.
+   Instead, we use this "CSS Crop" technique to hide the outer garbage.
+   
+   Adjust the 'top' value in .cine-crop-iframe to perfectly hide the top menu.
+   Adjust the 'height' value to give enough space at the bottom for the dropdowns.
+*/
+.cine-crop-wrapper {
+  overflow: hidden !important;
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.cine-crop-iframe {
+  position: absolute !important;
+  /* Shift the iframe UP by 65 pixels to hide the top navbar */
+  top: -65px !important; 
+  left: 0 !important;
+  width: 100% !important;
+  /* Make the iframe taller to account for the shifted top and the bottom selectors */
+  height: calc(100% + 150px) !important; 
+}
+
+
