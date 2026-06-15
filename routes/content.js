@@ -1471,10 +1471,12 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     
     if (!includeAdult) {
       const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
-      finalItems = finalItems.filter(item => 
-        !adultRegex.test(item.title || item.name || '') && 
-        !adultRegex.test(item.overview || '')
-      );
+      finalItems = finalItems.filter(item => {
+        if (adultRegex.test(item.title || item.name || '') || adultRegex.test(item.overview || '')) return false;
+        if (item.certification === 'NR' || item.age_rating === 'NR') return false;
+        if (item.certification === '18' || item.age_rating === '18') return false;
+        return true;
+      });
     }
     
     const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}_adult${includeAdult}`;
@@ -1640,10 +1642,12 @@ router.get('/movies', async (req, res) => {
       
       if (!includeAdult) {
         const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
-        finalItems = finalItems.filter(item => 
-          !adultRegex.test(item.title || item.name || '') && 
-          !adultRegex.test(item.overview || '')
-        );
+        finalItems = finalItems.filter(item => {
+          if (adultRegex.test(item.title || item.name || '') || adultRegex.test(item.overview || '')) return false;
+          if (item.certification === 'NR' || item.age_rating === 'NR') return false;
+          if (item.certification === '18' || item.age_rating === '18') return false;
+          return true;
+        });
       }
 
       const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
@@ -2251,10 +2255,12 @@ async function buildHomePayload(includeAdult) {
       
       if (!includeAdult) {
         const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
-        finalItems = finalItems.filter(item => 
-          !adultRegex.test(item.title || item.name || '') && 
-          !adultRegex.test(item.overview || '')
-        );
+        finalItems = finalItems.filter(item => {
+          if (adultRegex.test(item.title || item.name || '') || adultRegex.test(item.overview || '')) return false;
+          if (item.certification === 'NR' || item.age_rating === 'NR') return false;
+          if (item.certification === '18' || item.age_rating === '18') return false;
+          return true;
+        });
       }
 
       finalItems = finalItems.slice(0, HOME_CATEGORY_LIMIT);
