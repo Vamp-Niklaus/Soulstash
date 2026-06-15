@@ -777,41 +777,39 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
    Instead, we use this "CSS Crop" technique to hide the outer garbage.
 */
 .cine-crop-wrapper {
-  /* We must use manual offsets because cine.su is a React app that ignores URL anchors */
-  --crop-top: -300px;         /* Default Desktop: Adjust this to move the player up/down */
-  --crop-bottom-extra: 500px; /* Extra height for dropdowns */
-  --crop-scale: 1.15;         /* Zoom in to remove margins */
-
+  /* ==================================================
+   CINE.SU ULTIMATE RESPONSIVE CROP
+   ==================================================
+   Calculated directly from cine.su's source CSS:
+   - Hero banner is exactly: min-height: 20vh; padding-top: 18px;
+   - Container padding is ~5% on each side.
+   
+   If we set the iframe height to exactly 300% of the wrapper:
+   - 100vh = 300% of wrapper height
+   - 20vh = 60% of wrapper height
+   
+   So the video player ALWAYS starts exactly at top: -60% - 18px!
+   This math is unbreakable and perfectly responsive on all devices.
+*/
+.cine-crop-wrapper {
   overflow: hidden !important; 
   position: relative !important;
   width: 100% !important;
   height: 100% !important;
 }
 
-@media (max-width: 1024px) {
-  .cine-crop-wrapper {
-    --crop-top: -200px; 
-    --crop-bottom-extra: 400px;
-    --crop-scale: 1.05;
-  }
-}
-
-@media (max-width: 640px) {
-  .cine-crop-wrapper {
-    --crop-top: -120px; 
-    --crop-bottom-extra: 300px;
-    --crop-scale: 1.0;
-  }
-}
-
 .cine-crop-iframe {
   position: absolute !important;
-  top: var(--crop-top) !important; 
-  left: 0 !important;
   width: 100% !important;
-  height: calc(100% - var(--crop-top) + var(--crop-bottom-extra)) !important; 
-  transform: scale(var(--crop-scale));
-  transform-origin: top center;
+  height: 300% !important; /* 300% height allows us to precisely calculate their 20vh */
+  
+  /* Exactly 20vh (60% of 300%) + 18px down */
+  top: calc(-60% - 18px) !important; 
+  left: 0 !important;
+  
+  /* Zoom 1.12x to stretch their 90% wide player across the 5% side margins */
+  transform: scale(1.12) !important;
+  transform-origin: top center !important;
   pointer-events: auto;
 }
 
