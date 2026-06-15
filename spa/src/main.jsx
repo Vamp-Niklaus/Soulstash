@@ -939,6 +939,14 @@ function buildVideasyHindiAttemptUrl({ mediaType, tmdbId, seasonNumber, episodeN
   return url.toString();
 }
 
+function buildVidnestUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  if (type === 'movie') {
+    return `https://vidnest.fun/movie/${tmdbId}`;
+  }
+  return `https://vidnest.fun/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
+}
+
 function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const type = String(mediaType || '').toLowerCase();
   const baseUrl = type === 'movie'
@@ -1000,6 +1008,15 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       label: 'vidfast',
       url: buildVidfastUrl(input),
       urls: [buildVidfastUrl(input)],
+      embeddable: true,
+      fallback: true
+    },
+    {
+      id: 'legacy-vidnest',
+      key: 'legacy-vidnest',
+      label: 'VidNest',
+      url: buildVidnestUrl(input),
+      urls: [buildVidnestUrl(input)],
       embeddable: true,
       fallback: true
     },
@@ -8680,6 +8697,7 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h4', key: 'strmp2', label: 'H4' },
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
+  { id: 'vidnest', match: (source) => sourceKeyText(source).includes('vidnest'), label: 'VidNest' },
   { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
   { id: 'vidsrc-pro', match: (source) => sourceKeyText(source).includes('vidsrc-pro'), label: 'VidSrc PRO' },
   { id: 'vidsrc-in', match: (source) => sourceKeyText(source).includes('vidsrc-in'), label: 'VidSrc IN' },
