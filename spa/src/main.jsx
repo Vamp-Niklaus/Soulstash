@@ -9436,6 +9436,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
                   src={activeUrl}
                   tabIndex={0}
+                  scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}
                   onError={(e) => console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e)}
                   className={`h-full w-full border-0 bg-black ${activeSource?.id?.includes('cinesu') ? 'cine-crop-iframe' : ''}`}
