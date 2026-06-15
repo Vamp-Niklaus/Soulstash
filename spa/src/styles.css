@@ -792,6 +792,11 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
    This math is unbreakable and perfectly responsive on all devices.
 */
 .cine-crop-wrapper {
+  /* TWEAK THIS IF IT'S SLIGHTLY OFF! 
+     - Make it MORE negative (e.g. -10%) to shift the player UP.
+     - Make it LESS negative (e.g. 0%) to shift the player DOWN. */
+  --crop-top-adjustment: -5%; 
+
   overflow: hidden !important; 
   position: relative !important;
   width: 100% !important;
@@ -803,8 +808,8 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
   width: 100% !important;
   height: 300% !important; /* 300% height allows us to precisely calculate their 20vh */
   
-  /* Exactly 20vh (60% of 300%) + 18px down */
-  top: calc(-60% - 18px) !important; 
+  /* Exactly 20vh (60% of 300%) + 18px down + your custom adjustment */
+  top: calc(-60% - 18px + var(--crop-top-adjustment)) !important; 
   left: 0 !important;
   
   /* Zoom 1.12x to stretch their 90% wide player across the 5% side margins */
