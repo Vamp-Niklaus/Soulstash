@@ -1473,7 +1473,7 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
     const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
     
-    const payload = { movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } };
+    const payload = { movies: finalItems, pagination: { page, limit, total: totalResults, pages: totalPages } };
     
     if (payload.movies.length > 0) {
       categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
@@ -1521,7 +1521,7 @@ async function refreshTrendingCache(limit = 12) {
     
     const all = [...movieItems, ...tvItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     
-    const finalItems = all.slice(0, limit);
+    const finalItems = all;
     if (finalItems.length > 0) {
       trendingCache = finalItems;
       trendingCacheTime = Date.now();
@@ -1633,7 +1633,7 @@ router.get('/movies', async (req, res) => {
       const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
       const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
       
-      return res.json({ movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } });
+      return res.json({ movies: finalItems, pagination: { page, limit, total: totalResults, pages: totalPages } });
     }
 
     const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
@@ -1679,7 +1679,7 @@ router.get('/movies', async (req, res) => {
     
     const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
     const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
-    const payload = { movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } };
+    const payload = { movies: finalItems, pagination: { page, limit, total: totalResults, pages: totalPages } };
     
     if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && payload.movies.length > 0) {
       categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
@@ -2028,7 +2028,7 @@ router.get('/trending', trendingLimiter, async (req, res) => {
     let tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
     
     const all = [...movieItems, ...tvItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-    const finalItems = all.slice(0, limit);
+    const finalItems = all;
 
     if (!finalItems.length) {
       if (page === 1 && trendingCache?.length) {
