@@ -777,35 +777,39 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
    Instead, we use this "CSS Crop" technique to hide the outer garbage.
 */
 .cine-crop-wrapper {
-  /* No more 'top' offsets! We now use an anchor link (#episodes) to let the browser automatically scroll to the player perfectly on all screen sizes! */
-  --crop-bottom-extra: 300px; /* Extra height to show the episode dropdowns below the player */
-  --crop-scale: 1.15;         /* Zoom in to remove the side margins */
+  /* We must use manual offsets because cine.su is a React app that ignores URL anchors */
+  --crop-top: -300px;         /* Default Desktop: Adjust this to move the player up/down */
+  --crop-bottom-extra: 500px; /* Extra height for dropdowns */
+  --crop-scale: 1.15;         /* Zoom in to remove margins */
 
-  overflow: hidden !important; /* Prevents user from scrolling away from the player */
+  overflow: hidden !important; 
   position: relative !important;
   width: 100% !important;
   height: 100% !important;
 }
 
-/* You can still adjust the zoom per device if you want */
 @media (max-width: 1024px) {
   .cine-crop-wrapper {
+    --crop-top: -200px; 
+    --crop-bottom-extra: 400px;
     --crop-scale: 1.05;
   }
 }
 
 @media (max-width: 640px) {
   .cine-crop-wrapper {
+    --crop-top: -120px; 
+    --crop-bottom-extra: 300px;
     --crop-scale: 1.0;
   }
 }
 
 .cine-crop-iframe {
   position: absolute !important;
-  top: 0 !important; /* The anchor link handles the vertical positioning automatically! */
+  top: var(--crop-top) !important; 
   left: 0 !important;
   width: 100% !important;
-  height: calc(100% + var(--crop-bottom-extra)) !important; 
+  height: calc(100% - var(--crop-top) + var(--crop-bottom-extra)) !important; 
   transform: scale(var(--crop-scale));
   transform-origin: top center;
   pointer-events: auto;
