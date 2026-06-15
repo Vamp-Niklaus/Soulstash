@@ -1021,8 +1021,6 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       fallback: true
     },
     ...streamexaSources
-  ];
-    // YouTube: no fallback URL â€” button stays disabled until backend scraper finds a real video.
   ].filter((source) => source.url);
 }
 
