@@ -738,23 +738,20 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 }
 
 .cardSubMeta {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
   font-size: 11px;
   color: #919191;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   width: 100%;
+  line-height: 1.2;
 }
 
 .cardSubMetaItem {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 3px;
-  white-space: nowrap;
+  vertical-align: middle;
 }
 
 .cardSubMetaStar {
@@ -768,5 +765,7 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 
 .cardSubMetaSep {
   color: #666;
+  margin: 0 5px;
+  vertical-align: middle;
 }
 
