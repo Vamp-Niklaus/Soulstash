@@ -1773,6 +1773,12 @@ router.get('/movies/:id', async (req, res) => {
       content.age_rating = certification;
       content.certification = certification;
     }
+    
+    const includeAdult = await resolveIncludeAdult(req);
+    if (!includeAdult && (certification === 'NR' || certification === '18')) {
+      return res.status(404).json({ error: 'Content blocked by adult filter' });
+    }
+
     res.json(content);
   } catch (err) {
     console.error('Error fetching content:', err);
