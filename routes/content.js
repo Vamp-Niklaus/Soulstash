@@ -1469,6 +1469,14 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     }
     finalItems = await attachCachedRatings(finalItems);
     
+    if (!includeAdult) {
+      const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
+      finalItems = finalItems.filter(item => 
+        !adultRegex.test(item.title || item.name || '') && 
+        !adultRegex.test(item.overview || '')
+      );
+    }
+    
     const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}_adult${includeAdult}`;
     const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
     const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
@@ -1630,6 +1638,14 @@ router.get('/movies', async (req, res) => {
       }
       finalItems = await attachCachedRatings(finalItems);
       
+      if (!includeAdult) {
+        const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
+        finalItems = finalItems.filter(item => 
+          !adultRegex.test(item.title || item.name || '') && 
+          !adultRegex.test(item.overview || '')
+        );
+      }
+
       const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
       const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
       
@@ -2232,6 +2248,15 @@ async function buildHomePayload(includeAdult) {
         finalItems = (await attachImdbIds(finalItems, 'Movie')).filter((item) => String(item?.imdb_id || '').trim() || item.media_type === 'Series');
       }
       finalItems = await attachCachedRatings(finalItems);
+      
+      if (!includeAdult) {
+        const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
+        finalItems = finalItems.filter(item => 
+          !adultRegex.test(item.title || item.name || '') && 
+          !adultRegex.test(item.overview || '')
+        );
+      }
+
       finalItems = finalItems.slice(0, HOME_CATEGORY_LIMIT);
       
       const payload = { movies: finalItems, pagination: { page: 1, limit: HOME_CATEGORY_LIMIT, total: 500, pages: 500 } };
