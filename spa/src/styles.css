@@ -777,14 +777,33 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
    Instead, we use this "CSS Crop" technique to hide the outer garbage.
 */
 .cine-crop-wrapper {
-  --crop-top: -550px;       /* Shift iframe UP to hide top banner */
-  --crop-bottom-extra: 600px; /* Make iframe taller to show dropdowns */
-  --crop-scale: 1.1;        /* Zoom in to make player fill the screen */
+  /* Default Desktop Variables (screens larger than 1024px) */
+  --crop-top: -450px;         /* Shift iframe UP to hide top banner (decreased from -550px) */
+  --crop-bottom-extra: 600px; /* Make iframe taller so bottom isn't chopped */
+  --crop-scale: 1.0;          /* Zoom in to make the player fill the screen! */
 
   overflow: hidden !important; /* Prevents user from scrolling */
   position: relative !important;
   width: 100% !important;
   height: 100% !important;
+}
+
+/* Tablet (screens between 641px and 1024px) */
+@media (max-width: 1024px) {
+  .cine-crop-wrapper {
+    --crop-top: -350px; 
+    --crop-bottom-extra: 500px;
+    --crop-scale: 1.0;
+  }
+}
+
+/* Mobile (screens smaller than 640px) */
+@media (max-width: 640px) {
+  .cine-crop-wrapper {
+    --crop-top: -220px; 
+    --crop-bottom-extra: 400px;
+    --crop-scale: 1.0;
+  }
 }
 
 .cine-crop-iframe {
