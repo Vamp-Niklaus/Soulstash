@@ -701,6 +701,12 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
   gap: 4px;
 }
 
+.cardTitleWrap {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+
 .cardTitle {
   font-size: 14px;
   font-weight: 600;
@@ -710,21 +716,45 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
   text-overflow: ellipsis;
   margin: 0;
   line-height: 1.2;
+  display: inline-block;
+  max-width: 100%;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(calc(-100% - 20px)); }
+}
+
+.card:hover .cardTitle.marquee-on-hover {
+  overflow: visible;
+  animation: marquee 6s linear infinite;
+  max-width: none;
+}
+
+.card:hover .cardTitle.marquee-on-hover::after {
+  content: attr(data-title);
+  position: absolute;
+  left: calc(100% + 20px);
 }
 
 .cardSubMeta {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   font-size: 11px;
   color: #919191;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
 }
 
 .cardSubMetaItem {
   display: flex;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
 }
 
 .cardSubMetaStar {
