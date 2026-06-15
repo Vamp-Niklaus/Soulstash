@@ -9449,7 +9449,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 </a>
               </div>
             ) : (
-              <div className={`relative h-full w-full ${currentSource.id.includes('cinesu') ? 'cine-crop-wrapper' : ''}`}>
+              <div className={`relative h-full w-full ${currentSource?.id?.includes('cinesu') ? 'cine-crop-wrapper' : ''}`}>
                 <iframe
                   ref={iframeRef}
                   key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
@@ -9457,7 +9457,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   tabIndex={0}
                   onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}
                   onError={(e) => console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e)}
-                  className={`h-full w-full border-0 bg-black ${currentSource.id.includes('cinesu') ? 'cine-crop-iframe' : ''}`}
+                  className={`h-full w-full border-0 bg-black ${currentSource?.id?.includes('cinesu') ? 'cine-crop-iframe' : ''}`}
                   style={{
                     transform: scale !== 1.0 ? `scale(${scale})` : 'none',
                     transformOrigin: 'center center',
