@@ -2184,18 +2184,24 @@ async function buildHomePayload(includeAdult) {
       return { id: genre.id, movies: cached.data.movies };
     }
     try {
-      const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
+      const strictRatingFilter = includeAdult ? '' : '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5';
       const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
       const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
       
-      let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
-      if (genre) movieUrl += `&with_genres=${genre.id}`;
+      let movieUrl, tvUrl;
+      if (genre && genre.id === 'bollywood') {
+        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+        tvUrl = null;
+      } else {
+        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1${adultFilter}${strictRatingFilter}${adultKeywords}&sort_by=popularity.desc`;
+        if (genre) movieUrl += `&with_genres=${genre.id}`;
 
-      let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=1${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
-      if (genre) {
-        const tvGenre = mapMovieGenreToTvGenre(genre.id);
-        if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
-        else tvUrl = null;
+        tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=1${adultFilter}${strictRatingFilter}${adultKeywords}&sort_by=popularity.desc`;
+        if (genre) {
+          const tvGenre = mapMovieGenreToTvGenre(genre.id);
+          if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
+          else tvUrl = null;
+        }
       }
 
       const requests = [
