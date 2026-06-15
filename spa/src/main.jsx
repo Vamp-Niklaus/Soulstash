@@ -9434,7 +9434,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 <iframe
                   ref={iframeRef}
                   key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
-                  src={activeUrl}
+                  src={activeSource?.id?.includes('cinesu') ? `${activeUrl}#episodes` : activeUrl}
                   tabIndex={0}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}

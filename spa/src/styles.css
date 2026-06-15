@@ -777,41 +777,35 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
    Instead, we use this "CSS Crop" technique to hide the outer garbage.
 */
 .cine-crop-wrapper {
-  /* Default Desktop Variables (screens larger than 1024px) */
-  --crop-top: -250px;         /* Shifted less to bring the player DOWN into view */
-  --crop-bottom-extra: 600px; /* Make iframe taller so bottom isn't chopped */
-  --crop-scale: 1.15;         /* Zoomed in to remove margins */
+  /* No more 'top' offsets! We now use an anchor link (#episodes) to let the browser automatically scroll to the player perfectly on all screen sizes! */
+  --crop-bottom-extra: 300px; /* Extra height to show the episode dropdowns below the player */
+  --crop-scale: 1.15;         /* Zoom in to remove the side margins */
 
-  overflow: hidden !important; /* Prevents user from scrolling */
+  overflow: hidden !important; /* Prevents user from scrolling away from the player */
   position: relative !important;
   width: 100% !important;
   height: 100% !important;
 }
 
-/* Tablet (screens between 641px and 1024px) */
+/* You can still adjust the zoom per device if you want */
 @media (max-width: 1024px) {
   .cine-crop-wrapper {
-    --crop-top: -350px; 
-    --crop-bottom-extra: 500px;
-    --crop-scale: 1.0;
+    --crop-scale: 1.05;
   }
 }
 
-/* Mobile (screens smaller than 640px) */
 @media (max-width: 640px) {
   .cine-crop-wrapper {
-    --crop-top: -220px; 
-    --crop-bottom-extra: 400px;
     --crop-scale: 1.0;
   }
 }
 
 .cine-crop-iframe {
   position: absolute !important;
-  top: var(--crop-top) !important; 
+  top: 0 !important; /* The anchor link handles the vertical positioning automatically! */
   left: 0 !important;
   width: 100% !important;
-  height: calc(100% - var(--crop-top) + var(--crop-bottom-extra)) !important; 
+  height: calc(100% + var(--crop-bottom-extra)) !important; 
   transform: scale(var(--crop-scale));
   transform-origin: top center;
   pointer-events: auto;
