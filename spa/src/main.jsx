@@ -5380,7 +5380,7 @@ function HomePage() {
 
 
   return (
-    <div ref={pageRef} className="space-y-12">
+    <div ref={pageRef} className="space-y-8">
       <section className="content-section">
         <HomeShelfHeader title="Trending Now" onViewAll={() => navigate('/trending')} />
         {error ? (
@@ -5412,7 +5412,7 @@ function HomePage() {
       ))}
 
       {publishedCollections.length ? (
-        <section className="content-section space-y-8">
+        <section className="content-section space-y-6">
           {publishedCollections.map((collection) => {
             const items = Array.isArray(collection.movies) ? collection.movies.map(normalizeStoredCollectionItem) : [];
             return (
@@ -6036,7 +6036,7 @@ function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
 
 function HomePageSkeleton() {
   return (
-    <div className="space-y-12">
+    <div className="space-y-8">
       <section className="content-section">
         <div className="mb-4 space-y-2 animate-pulse">
           <div className="h-6 w-40 rounded bg-white/[0.08]"></div>
