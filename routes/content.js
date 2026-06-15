@@ -1431,7 +1431,7 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     const opts = { method: 'GET', headers: tmdbHeaders() };
     const strictRatingFilter = includeAdult ? '' : '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5'; // Enforce minimum quality to avoid weird/adult/placeholder posters
     const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false'; // Always enforce no adult content for discovery
-    const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
+    const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '&without_keywords=190370,13054,210024,156416,155477,284489,178082,10221,173251,202111,288220,256466,267122';
     
     let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
     if (genre) movieUrl += `&with_genres=${genre}`;
@@ -1638,7 +1638,7 @@ router.get('/movies', async (req, res) => {
 
     const strictRatingFilter = includeAdult ? '' : '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5';
     const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
-    const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
+    const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '&without_keywords=190370,13054,210024,156416,155477,284489,178082,10221,173251,202111,288220,256466,267122';
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
     const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
 
@@ -2192,7 +2192,7 @@ async function buildHomePayload(includeAdult) {
     try {
       const strictRatingFilter = includeAdult ? '' : '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5';
       const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
-      const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
+      const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '&without_keywords=190370,13054,210024,156416,155477,284489,178082,10221,173251,202111,288220,256466,267122';
       
       let movieUrl, tvUrl;
       if (genre && genre.id === 'bollywood') {
