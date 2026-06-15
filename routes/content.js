@@ -1642,12 +1642,6 @@ router.get('/movies', async (req, res) => {
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
     const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
 
-    let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
-    if (genre) movieUrl += `&with_genres=${genre}`;
-    if (year)  movieUrl += `&primary_release_year=${year}`;
-
-    let tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
-    if (genre) {
       const tvGenre = mapMovieGenreToTvGenre(genre);
       if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
       else tvUrl = null;
