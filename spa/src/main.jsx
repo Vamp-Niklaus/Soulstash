@@ -5899,7 +5899,7 @@ function NavbarSkeleton() {
 function DetailPageSkeleton({ type }) {
   return (
     <div className="space-y-10">
-      <section className="relative min-h-[560px] overflow-hidden rounded-[28px] border border-white/10 bg-[#0d0d0d] animate-pulse">
+      <section className="relative min-h-[560px] overflow-hidden rounded-[28px] border border-white/10 bg-transparent animate-pulse">
         <div className="absolute inset-0 bg-white/[0.04]"></div>
         <div className="relative z-10 flex min-h-[560px] items-end p-5 md:p-8 lg:p-10">
           <div className="flex w-full flex-col gap-6 lg:flex-row lg:items-end lg:gap-8">
@@ -6135,15 +6135,15 @@ function EditProfileSkeleton() {
 function AuthPageSkeleton({ posterColumn = true }) {
   return (
     <div className="h-[calc(100vh-88px)] overflow-hidden">
-      <div className="grid h-[calc(100vh-88px)] overflow-hidden bg-[#080808] lg:grid-cols-[1.08fr_0.92fr]">
+      <div className="grid h-[calc(100vh-88px)] overflow-hidden bg-transparent lg:grid-cols-[1.08fr_0.92fr]">
         {posterColumn ? (
-          <div className="relative hidden overflow-hidden bg-[#080808] lg:flex">
+          <div className="relative hidden overflow-hidden bg-transparent lg:flex">
             <div className="flex w-full items-center justify-center animate-pulse">
               <div className="h-[70%] w-[70%] rounded-[32px] bg-white/[0.04]"></div>
             </div>
           </div>
         ) : null}
-        <div className="flex h-[calc(100vh-88px)] items-center justify-center bg-[#080808] px-4 sm:px-6 lg:px-10">
+        <div className="flex h-[calc(100vh-88px)] items-center justify-center bg-transparent px-4 sm:px-6 lg:px-10">
           <div className="w-full max-w-[424px] animate-pulse space-y-6">
             <div className="h-8 w-40 rounded bg-white/[0.08]"></div>
             <div className="h-4 w-60 rounded bg-white/[0.06]"></div>
@@ -6661,7 +6661,7 @@ function DetailPage({ type }) {
 
   return (
     <div className="space-y-10">
-      <section className="relative -mx-4 overflow-hidden bg-[#080808] sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
+      <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
         <div className="relative aspect-[1.6/1] sm:aspect-[2.1/1] lg:aspect-[2.68/1] w-full overflow-hidden bg-black">
           <img
             src={imageUrl(content.backdrop_path, 'original')}
@@ -7883,14 +7883,14 @@ function AuthPageLayout({ title, subtitle, children, altLabel, altAction, altHre
 
   return (
     <div className="min-h-[calc(100vh-88px)] lg:h-[calc(100vh-88px)] lg:overflow-hidden">
-      <div className="grid min-h-[calc(100vh-88px)] lg:h-[calc(100vh-88px)] lg:overflow-hidden bg-[#080808] lg:grid-cols-[1.08fr_0.92fr]">
+      <div className="grid min-h-[calc(100vh-88px)] lg:h-[calc(100vh-88px)] lg:overflow-hidden bg-transparent lg:grid-cols-[1.08fr_0.92fr]">
         {posterColumn ? (
-          <div className="relative hidden overflow-hidden bg-[#080808] lg:flex">
+          <div className="relative hidden overflow-hidden bg-transparent lg:flex">
             <AuthPosterColumns />
           </div>
         ) : null}
 
-        <div className="flex min-h-[calc(100vh-88px)] lg:h-[calc(100vh-88px)] items-center justify-center bg-[#080808] px-4 py-8 sm:px-6 lg:px-10 overflow-y-auto">
+        <div className="flex min-h-[calc(100vh-88px)] lg:h-[calc(100vh-88px)] items-center justify-center bg-transparent px-4 py-8 sm:px-6 lg:px-10 overflow-y-auto">
           <div className="w-full max-w-[424px] my-auto">
             <h2 className="text-3xl font-semibold text-white">{title}</h2>
             {subtitle ? <p className="mt-2 text-sm leading-6 text-[#9f9f9f]">{subtitle}</p> : null}
@@ -10506,7 +10506,7 @@ function AdminPage() {
 
   return (
     <div className="space-y-8">
-      <section className="rounded-[28px] border border-white/10 bg-[#0d0d0d] p-6 md:p-8">
+      <section className="rounded-[28px] border border-white/10 bg-transparent p-6 md:p-8">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <div>
             <p className="text-sm uppercase tracking-[0.25em] text-[#8f44f0]">Admin Access</p>

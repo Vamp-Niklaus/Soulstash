@@ -821,3 +821,12 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
   }
 }
 
+
+body {
+    transition: background 0.3s ease-in-out;
+    background-image: url('/dark-bg.png') !important;
+    background-color: rgb(0, 0, 0) !important;
+    background-size: cover;
+    background-attachment: fixed;
+}
+
