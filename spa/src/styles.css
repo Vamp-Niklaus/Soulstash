@@ -778,7 +778,7 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 */
 .cine-crop-wrapper {
   /* Default Desktop Variables (screens larger than 1024px) */
-  --crop-top: -600px;         /* Shifted further UP to bring the player into view */
+  --crop-top: -250px;         /* Shifted less to bring the player DOWN into view */
   --crop-bottom-extra: 600px; /* Make iframe taller so bottom isn't chopped */
   --crop-scale: 1.15;         /* Zoomed in to remove margins */
 
