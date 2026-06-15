@@ -210,10 +210,29 @@ async function saveMultimoviesConfig(update = {}) {
 }
 
 function extractMultimoviesBaseUrlFromRoot(html = '', rootUrl = '') {
-  const match = html.match(/<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*btn-main[^"']*["'][^>]*>\s*Visit\s*MultiMovies\s*<\/a>/i);
-  if (match?.[1]) {
-    return new URL(match[1], rootUrl || DEFAULT_MULTIMOVIES_ROOT_URL).toString();
+  const root = rootUrl || DEFAULT_MULTIMOVIES_ROOT_URL;
+
+  // Pattern 1: nav-btn
+  let match = html.match(/<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*nav-btn[^"']*["'][^>]*>/i);
+  if (match?.[1]) return new URL(match[1], root).toString();
+
+  // Pattern 2: cta-primary
+  match = html.match(/<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*cta-primary[^"']*["'][^>]*>/i);
+  if (match?.[1]) return new URL(match[1], root).toString();
+
+  // Pattern 3: Legacy btn-main
+  match = html.match(/<a[^>]+href=["']([^"']+)["'][^>]*class=["'][^"']*btn-main[^"']*["'][^>]*>/i);
+  if (match?.[1]) return new URL(match[1], root).toString();
+
+  // Fallback: any link starting with https://multimovies.
+  const fallbackRegex = /href=["'](https?:\/\/multimovies\.[a-z0-9]+[\/]?)["']/ig;
+  let fallbackMatch;
+  while ((fallbackMatch = fallbackRegex.exec(html)) !== null) {
+    if (fallbackMatch[1]) {
+      return new URL(fallbackMatch[1], root).toString();
+    }
   }
+
   return '';
 }
 
