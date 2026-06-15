@@ -1007,8 +1007,7 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       urls: [buildCinesuUrl(input)],
       embeddable: true,
       fallback: true
-    },
-    ...streamexaSources
+    }
   ].filter((source) => source.url);
 }
 
