@@ -720,7 +720,10 @@ async function attachImdbIds(items = [], mediaType) {
 
 async function attachCachedRatings(items = []) {
   const normalizedItems = (Array.isArray(items) ? items : []).filter(
-    (item) => item?.id && (item?.media_type === 'movie' || item?.media_type === 'tv')
+    (item) => item?.id && (
+      item?.media_type === 'movie' || item?.media_type === 'tv' ||
+      item?.media_type === 'Movie' || item?.media_type === 'Series'
+    )
   );
 
   if (!normalizedItems.length) {
@@ -741,15 +744,16 @@ async function attachCachedRatings(items = []) {
   const needsCert = normalizedItems.filter(item => {
     const voteCount = Number(item.vote_count) || 0;
     if (voteCount >= 600) return false;
-    const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+    const mediaType = (item.media_type === 'tv' || item.media_type === 'Series') ? 'Series' : 'Movie';
     const match = ratingMap.get(`${mediaType}:${Number(item.id)}`);
     return !match || match.certification === undefined;
   });
 
   if (needsCert.length > 0) {
+    console.log(`[Content] Fetching missing certifications for ${needsCert.length} obscure items...`);
     await Promise.all(needsCert.map(async (item) => {
       try {
-        const isSeries = item.media_type === 'tv';
+        const isSeries = item.media_type === 'tv' || item.media_type === 'Series';
         const mediaType = isSeries ? 'Series' : 'Movie';
         const certificationUrl = isSeries
           ? `https://api.themoviedb.org/3/tv/${item.id}/content_ratings`
@@ -759,10 +763,11 @@ async function attachCachedRatings(items = []) {
         if (certResp && certResp.ok) {
           const payload = await certResp.json();
           const certification = isSeries ? pickSeriesCertification(payload) : pickMovieCertification(payload);
+          console.log(`[Content] Fetched cert for ${item.title || item.name}: "${certification}"`);
           
           await getDb().collection(RATINGS_COLLECTION).updateOne(
             { tmdbID: Number(item.id), mediaType },
-            { $set: { certification: certification, updatedAt: new Date() } },
+            { $set: { certification: certification || '', updatedAt: new Date() } },
             { upsert: true }
           );
           
@@ -771,18 +776,23 @@ async function attachCachedRatings(items = []) {
             match = { tmdbID: Number(item.id), mediaType };
             ratingMap.set(`${mediaType}:${Number(item.id)}`, match);
           }
-          match.certification = certification;
+          match.certification = certification || '';
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error(`[Content] Failed cert fetch for ${item.id}:`, err.message);
+      }
     }));
   }
 
   return (Array.isArray(items) ? items : []).map((item) => {
-    if (!item?.id || (item?.media_type !== 'movie' && item?.media_type !== 'tv')) {
+    if (!item?.id || (
+      item?.media_type !== 'movie' && item?.media_type !== 'tv' &&
+      item?.media_type !== 'Movie' && item?.media_type !== 'Series'
+    )) {
       return item;
     }
 
-    const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+    const mediaType = (item.media_type === 'tv' || item.media_type === 'Series') ? 'Series' : 'Movie';
     const match = ratingMap.get(`${mediaType}:${Number(item.id)}`);
     if (!match) {
       return item;
