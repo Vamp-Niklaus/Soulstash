@@ -8699,6 +8699,7 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
   { id: 'vidnest', match: (source) => sourceKeyText(source).includes('vidnest'), label: 'VidNest' },
   { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
+  { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' },
   { id: 'vidsrc-pro', match: (source) => sourceKeyText(source).includes('vidsrc-pro'), label: 'VidSrc PRO' },
   { id: 'vidsrc-in', match: (source) => sourceKeyText(source).includes('vidsrc-in'), label: 'VidSrc IN' },
   { id: 'vidsrc-pm', match: (source) => sourceKeyText(source).includes('vidsrc-pm'), label: 'VidSrc PM' },
@@ -8709,8 +8710,7 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'vidbinge', match: (source) => sourceKeyText(source).includes('vidbinge'), label: 'VidBinge' },
   { id: 'multiembed', match: (source) => sourceKeyText(source).includes('multiembed'), label: 'MultiEmbed' },
   { id: '2embed', match: (source) => sourceKeyText(source).includes('2embed'), label: '2Embed' },
-  { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' },
-  { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' }
+  { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
 ];
 
 function sourceKeyText(source = {}) {
