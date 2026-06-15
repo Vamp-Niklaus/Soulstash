@@ -2248,7 +2248,7 @@ async function buildHomePayload(includeAdult) {
     if (movies.length) categories[String(id)] = movies;
   }
 
-  return { trending, genres, categories };
+  return { trending, genres: [{ id: 'bollywood', name: 'Latest in India' }, ...genres], categories };
 }
 
 async function refreshHomeCache(includeAdult) {
