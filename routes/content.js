@@ -1642,11 +1642,23 @@ router.get('/movies', async (req, res) => {
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
     const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
 
-      const tvGenre = mapMovieGenreToTvGenre(genre);
-      if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
-      else tvUrl = null;
+    let movieUrl, tvUrl;
+    if (genre === 'bollywood') {
+      movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+      tvUrl = null;
+    } else {
+      movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}${adultFilter}${strictRatingFilter}${adultKeywords}${sortParam}`;
+      if (genre) movieUrl += `&with_genres=${genre}`;
+      if (year)  movieUrl += `&primary_release_year=${year}`;
+
+      tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}${adultFilter}${strictRatingFilter}${adultKeywords}${sortParam}`;
+      if (genre) {
+        const tvGenre = mapMovieGenreToTvGenre(genre);
+        if (tvGenre) tvUrl += `&with_genres=${tvGenre}`;
+        else tvUrl = null;
+      }
     }
-    if (year) tvUrl += `&first_air_date_year=${year}`;
+    if (year && tvUrl) tvUrl += `&first_air_date_year=${year}`;
 
     const requests = [
       tmdbFetch(movieUrl, opts, 'Discover Movies').then(r => r.ok ? r.json() : null).catch(() => null)
