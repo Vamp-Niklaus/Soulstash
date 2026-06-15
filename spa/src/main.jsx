@@ -6886,11 +6886,20 @@ function DetailPage({ type }) {
             <div className="mt-5 flex flex-wrap gap-2">
               {content.genres.map((genre) => {
                 const label = typeof genre === 'string' ? genre : genre?.name;
-                return label ? (
+                const genreId = genre?.id;
+                if (!label) return null;
+                if (genreId) {
+                  return (
+                    <Link key={label} to={`/genre/${genreId}`} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-[#d8d8d8] hover:bg-white/[0.1] transition-colors">
+                      {label}
+                    </Link>
+                  );
+                }
+                return (
                   <span key={label} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-[#d8d8d8]">
                     {label}
                   </span>
-                ) : null;
+                );
               })}
             </div>
           ) : null}
