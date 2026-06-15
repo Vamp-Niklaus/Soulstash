@@ -720,10 +720,7 @@ async function attachImdbIds(items = [], mediaType) {
 
 async function attachCachedRatings(items = []) {
   const normalizedItems = (Array.isArray(items) ? items : []).filter(
-    (item) => item?.id && (
-      item?.media_type === 'movie' || item?.media_type === 'tv' ||
-      item?.media_type === 'Movie' || item?.media_type === 'Series'
-    )
+    (item) => item?.id && (item?.media_type === 'movie' || item?.media_type === 'tv')
   );
 
   if (!normalizedItems.length) {
@@ -740,59 +737,12 @@ async function attachCachedRatings(items = []) {
     ratingRecords.map((record) => [`${record.mediaType}:${record.tmdbID}`, record])
   );
 
-  // Fetch TMDB certifications on the fly for obscure titles (< 600 votes) missing a cached certification
-  const needsCert = normalizedItems.filter(item => {
-    const voteCount = Number(item.vote_count) || 0;
-    if (voteCount >= 600) return false;
-    const mediaType = (item.media_type === 'tv' || item.media_type === 'Series') ? 'Series' : 'Movie';
-    const match = ratingMap.get(`${mediaType}:${Number(item.id)}`);
-    return !match || match.certification === undefined;
-  });
-
-  if (needsCert.length > 0) {
-    console.log(`[Content] Fetching missing certifications for ${needsCert.length} obscure items...`);
-    await Promise.all(needsCert.map(async (item) => {
-      try {
-        const isSeries = item.media_type === 'tv' || item.media_type === 'Series';
-        const mediaType = isSeries ? 'Series' : 'Movie';
-        const certificationUrl = isSeries
-          ? `https://api.themoviedb.org/3/tv/${item.id}/content_ratings`
-          : `https://api.themoviedb.org/3/movie/${item.id}/release_dates`;
-          
-        const certResp = await tmdbFetch(certificationUrl, { method: 'GET', headers: tmdbHeaders() }, `${mediaType} ${item.id} CertSync`).catch(() => null);
-        if (certResp && certResp.ok) {
-          const payload = await certResp.json();
-          const certification = isSeries ? pickSeriesCertification(payload) : pickMovieCertification(payload);
-          console.log(`[Content] Fetched cert for ${item.title || item.name}: "${certification}"`);
-          
-          await getDb().collection(RATINGS_COLLECTION).updateOne(
-            { tmdbID: Number(item.id), mediaType },
-            { $set: { certification: certification || '', updatedAt: new Date() } },
-            { upsert: true }
-          );
-          
-          let match = ratingMap.get(`${mediaType}:${Number(item.id)}`);
-          if (!match) {
-            match = { tmdbID: Number(item.id), mediaType };
-            ratingMap.set(`${mediaType}:${Number(item.id)}`, match);
-          }
-          match.certification = certification || '';
-        }
-      } catch (err) {
-        console.error(`[Content] Failed cert fetch for ${item.id}:`, err.message);
-      }
-    }));
-  }
-
   return (Array.isArray(items) ? items : []).map((item) => {
-    if (!item?.id || (
-      item?.media_type !== 'movie' && item?.media_type !== 'tv' &&
-      item?.media_type !== 'Movie' && item?.media_type !== 'Series'
-    )) {
+    if (!item?.id || (item?.media_type !== 'movie' && item?.media_type !== 'tv')) {
       return item;
     }
 
-    const mediaType = (item.media_type === 'tv' || item.media_type === 'Series') ? 'Series' : 'Movie';
+    const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
     const match = ratingMap.get(`${mediaType}:${Number(item.id)}`);
     if (!match) {
       return item;
@@ -803,8 +753,6 @@ async function attachCachedRatings(items = []) {
       imdb_id: String(item?.imdb_id || match?.imdbID || '').trim(),
       imdb_rating: match?.imdb_rating,
       vote_average: validVoteAverage(item?.vote_average) ?? validVoteAverage(match?.vote_average) ?? item?.vote_average,
-      certification: match?.certification,
-      age_rating: match?.certification,
       rating_lookup_attempted: true
     };
   });
@@ -1523,12 +1471,10 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     
     if (!includeAdult) {
       const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
-      finalItems = finalItems.filter(item => {
-        if (adultRegex.test(item.title || item.name || '') || adultRegex.test(item.overview || '')) return false;
-        if (item.certification === 'NR' || item.age_rating === 'NR') return false;
-        if (item.certification === '18' || item.age_rating === '18') return false;
-        return true;
-      });
+      finalItems = finalItems.filter(item => 
+        !adultRegex.test(item.title || item.name || '') && 
+        !adultRegex.test(item.overview || '')
+      );
     }
     
     const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}_adult${includeAdult}`;
@@ -1694,12 +1640,10 @@ router.get('/movies', async (req, res) => {
       
       if (!includeAdult) {
         const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
-        finalItems = finalItems.filter(item => {
-          if (adultRegex.test(item.title || item.name || '') || adultRegex.test(item.overview || '')) return false;
-          if (item.certification === 'NR' || item.age_rating === 'NR') return false;
-          if (item.certification === '18' || item.age_rating === '18') return false;
-          return true;
-        });
+        finalItems = finalItems.filter(item => 
+          !adultRegex.test(item.title || item.name || '') && 
+          !adultRegex.test(item.overview || '')
+        );
       }
 
       const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
@@ -2307,12 +2251,10 @@ async function buildHomePayload(includeAdult) {
       
       if (!includeAdult) {
         const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
-        finalItems = finalItems.filter(item => {
-          if (adultRegex.test(item.title || item.name || '') || adultRegex.test(item.overview || '')) return false;
-          if (item.certification === 'NR' || item.age_rating === 'NR') return false;
-          if (item.certification === '18' || item.age_rating === '18') return false;
-          return true;
-        });
+        finalItems = finalItems.filter(item => 
+          !adultRegex.test(item.title || item.name || '') && 
+          !adultRegex.test(item.overview || '')
+        );
       }
 
       finalItems = finalItems.slice(0, HOME_CATEGORY_LIMIT);
