@@ -3994,7 +3994,14 @@ function UserCollectionDetailPage() {
     (!isOwner && publicLoading)
   );
   if (isStillLoading) {
-    return <div className="app-loading">Loading collection...</div>;
+    return (
+      <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">
+        <div className="pb-6">
+          <div className="mb-6 h-[180px] w-full rounded-[24px] bg-white/[0.04] animate-pulse"></div>
+          <GridSkeleton count={14} />
+        </div>
+      </div>
+    );
   }
 
   if (!collection?.name) {
@@ -5516,7 +5523,7 @@ function TrendingPage() {
         <div className="mb-5 flex items-center justify-between gap-4">
           <div className="h-8 w-40 rounded bg-white/[0.08] animate-pulse"></div>
         </div>
-        <SearchResultSkeletonGrid columns="grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7" count={14} />
+        <GridSkeleton count={14} />
       </section>
     );
   }
@@ -5674,7 +5681,7 @@ function GenrePage() {
         <div className="mb-5 flex items-center justify-between gap-4">
           <div className="h-8 w-40 rounded bg-white/[0.08] animate-pulse"></div>
         </div>
-        <SearchResultSkeletonGrid columns="grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7" count={14} />
+        <GridSkeleton count={14} />
       </section>
     );
   }
@@ -5713,6 +5720,28 @@ function GenrePage() {
         </div>
       )}
     </section>
+  );
+}
+
+function ContentCardSkeleton() {
+  return (
+    <div className="card animate-pulse">
+      <div className="cardImageWrap bg-white/[0.06]"></div>
+      <div className="cardMeta space-y-2 pt-2">
+        <div className="h-3.5 w-4/5 rounded bg-white/[0.08]"></div>
+        <div className="h-2.5 w-3/5 rounded bg-white/[0.06]"></div>
+      </div>
+    </div>
+  );
+}
+
+function GridSkeleton({ count = 14 }) {
+  return (
+    <div className={HOME_GRID_CLASS}>
+      {Array.from({ length: count }).map((_, index) => (
+        <ContentCardSkeleton key={index} />
+      ))}
+    </div>
   );
 }
 
@@ -6042,7 +6071,7 @@ function HomePageSkeleton() {
           <div className="h-6 w-40 rounded bg-white/[0.08]"></div>
           <div className="h-4 w-64 rounded bg-white/[0.06]"></div>
         </div>
-        <SearchResultSkeletonGrid columns="grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7" count={12} />
+        <GridSkeleton count={14} />
       </section>
 
       <section className="content-section">
@@ -6050,16 +6079,7 @@ function HomePageSkeleton() {
           <div className="h-6 w-40 rounded bg-white/[0.08]"></div>
           <div className="h-4 w-72 rounded bg-white/[0.06]"></div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
-              <div className="h-4 w-24 rounded bg-white/[0.08]"></div>
-              <div className="h-3 w-40 rounded bg-white/[0.06]"></div>
-              <div className="h-3 w-20 rounded bg-white/[0.06]"></div>
-              <div className="h-2 w-28 rounded bg-white/[0.05]"></div>
-            </div>
-          ))}
-        </div>
+        <GridSkeleton count={14} />
       </section>
     </div>
   );
