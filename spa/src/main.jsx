@@ -979,17 +979,12 @@ function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
 
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
+  const type = String(mediaType || '').toLowerCase();
+  const isMovie = type === 'movie';
+  const s = seasonNumber || 1;
+  const e = episodeNumber || 1;
   
   return [
-    {
-      id: 'legacy-streamexa',
-      key: 'legacy-streamexa',
-      label: 'StreamExa',
-      url: buildStreamexaScrapeUrl(input),
-      urls: [buildStreamexaScrapeUrl(input)],
-      embeddable: true,
-      fallback: true
-    },
     {
       id: 'legacy-videasy-hi',
       key: 'legacy-videasy-hi',
@@ -999,6 +994,25 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       embeddable: true,
       fallback: true
     },
+    {
+      id: 'legacy-vidfast',
+      key: 'legacy-vidfast',
+      label: 'vidfast',
+      url: buildVidfastUrl(input),
+      urls: [buildVidfastUrl(input)],
+      embeddable: true,
+      fallback: true
+    },
+    { id: 'legacy-vidsrc-pro', key: 'legacy-vidsrc-pro', label: 'VidSrc PRO', url: isMovie ? `https://vidsrc.pro/embed/movie/${tmdbId}` : `https://vidsrc.pro/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.pro/embed/movie/${tmdbId}` : `https://vidsrc.pro/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-vidsrc-in', key: 'legacy-vidsrc-in', label: 'VidSrc IN', url: isMovie ? `https://vidsrc.in/embed/movie/${tmdbId}` : `https://vidsrc.in/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.in/embed/movie/${tmdbId}` : `https://vidsrc.in/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-vidsrc-pm', key: 'legacy-vidsrc-pm', label: 'VidSrc PM', url: isMovie ? `https://vidsrc.pm/embed/movie/${tmdbId}` : `https://vidsrc.pm/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.pm/embed/movie/${tmdbId}` : `https://vidsrc.pm/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-vidsrc-net', key: 'legacy-vidsrc-net', label: 'VidSrc NET', url: isMovie ? `https://vidsrc.net/embed/movie/${tmdbId}` : `https://vidsrc.net/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.net/embed/movie/${tmdbId}` : `https://vidsrc.net/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-vidsrc-xyz', key: 'legacy-vidsrc-xyz', label: 'VidSrc XYZ', url: isMovie ? `https://vidsrc.xyz/embed/movie/${tmdbId}` : `https://vidsrc.xyz/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.xyz/embed/movie/${tmdbId}` : `https://vidsrc.xyz/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-superembed', key: 'legacy-superembed', label: 'SuperEmbed', url: isMovie ? `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`, urls: [isMovie ? `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-autoembed', key: 'legacy-autoembed', label: 'AutoEmbed', url: isMovie ? `https://autoembed.co/movie/tmdb/${tmdbId}` : `https://autoembed.co/tv/tmdb/${tmdbId}-${s}-${e}`, urls: [isMovie ? `https://autoembed.co/movie/tmdb/${tmdbId}` : `https://autoembed.co/tv/tmdb/${tmdbId}-${s}-${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-vidbinge', key: 'legacy-vidbinge', label: 'VidBinge', url: isMovie ? `https://vidbinge.dev/embed/movie/${tmdbId}` : `https://vidbinge.dev/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidbinge.dev/embed/movie/${tmdbId}` : `https://vidbinge.dev/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-multiembed', key: 'legacy-multiembed', label: 'MultiEmbed', url: isMovie ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`, urls: [isMovie ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-2embed', key: 'legacy-2embed', label: '2Embed', url: isMovie ? `https://www.2embed.cc/embed/${tmdbId}` : `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`, urls: [isMovie ? `https://www.2embed.cc/embed/${tmdbId}` : `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`], embeddable: true, fallback: true },
     {
       id: 'legacy-cinesu',
       key: 'legacy-cinesu',
@@ -8666,8 +8680,17 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h4', key: 'strmp2', label: 'H4' },
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
-  { id: 'streamexa', match: (source) => sourceKeyText(source).includes('streamexa'), label: 'StreamExa' },
-  { id: 'vidrock', match: (source) => sourceKeyText(source).includes('vidrock'), label: 'Vidrock' },
+  { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
+  { id: 'vidsrc-pro', match: (source) => sourceKeyText(source).includes('vidsrc-pro'), label: 'VidSrc PRO' },
+  { id: 'vidsrc-in', match: (source) => sourceKeyText(source).includes('vidsrc-in'), label: 'VidSrc IN' },
+  { id: 'vidsrc-pm', match: (source) => sourceKeyText(source).includes('vidsrc-pm'), label: 'VidSrc PM' },
+  { id: 'vidsrc-net', match: (source) => sourceKeyText(source).includes('vidsrc-net'), label: 'VidSrc NET' },
+  { id: 'vidsrc-xyz', match: (source) => sourceKeyText(source).includes('vidsrc-xyz'), label: 'VidSrc XYZ' },
+  { id: 'superembed', match: (source) => sourceKeyText(source).includes('superembed'), label: 'SuperEmbed' },
+  { id: 'autoembed', match: (source) => sourceKeyText(source).includes('autoembed'), label: 'AutoEmbed' },
+  { id: 'vidbinge', match: (source) => sourceKeyText(source).includes('vidbinge'), label: 'VidBinge' },
+  { id: 'multiembed', match: (source) => sourceKeyText(source).includes('multiembed'), label: 'MultiEmbed' },
+  { id: '2embed', match: (source) => sourceKeyText(source).includes('2embed'), label: '2Embed' },
   { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' },
   { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' }
 ];
