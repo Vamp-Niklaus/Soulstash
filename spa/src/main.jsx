@@ -960,17 +960,37 @@ function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   return `${baseUrl}?${params.toString()}`;
 }
 
-function buildStreamexaScrapeUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+const STREAMEXA_SERVERS = [
+  'vidfast', 'vidsrcto', 'vidsrcfyi', 'vidrock', 'vidnest', 
+  'vidking', 'vidlink', 'vidup', 'videasy', '111movies', 
+  '2embed', 'multiembed', 'superflix', 'peachify'
+];
+
+function buildStreamexaScrapeUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }, server) {
   const type = String(mediaType || '').toLowerCase();
   let targetUrl = `https://streamexa.to/watch/${type}/${tmdbId}`;
   if (type === 'tv') {
     targetUrl += `/${seasonNumber || 1}/${episodeNumber || 1}`;
+  }
+  if (server) {
+    targetUrl += `?server=${server}`;
   }
   return `/api/scrape-embed?url=${encodeURIComponent(targetUrl)}`;
 }
 
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
+  
+  const streamexaSources = STREAMEXA_SERVERS.map(server => ({
+    id: `legacy-streamexa-${server}`,
+    key: `legacy-streamexa-${server}`,
+    label: server === 'vidfast' ? 'StreamExa' : `SE-${server}`,
+    url: buildStreamexaScrapeUrl(input, server),
+    urls: [buildStreamexaScrapeUrl(input, server)],
+    embeddable: true,
+    fallback: true
+  }));
+
   return [
     {
       id: 'legacy-videasy-hi',
@@ -981,24 +1001,7 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       embeddable: true,
       fallback: true
     },
-    {
-      id: 'legacy-vidfast',
-      key: 'legacy-vidfast',
-      label: 'vidfast',
-      url: buildVidfastUrl(input),
-      urls: [buildVidfastUrl(input)],
-      embeddable: true,
-      fallback: true
-    },
-    {
-      id: 'legacy-streamexa',
-      key: 'legacy-streamexa',
-      label: 'StreamExa',
-      url: buildStreamexaScrapeUrl(input),
-      urls: [buildStreamexaScrapeUrl(input)],
-      embeddable: true,
-      fallback: true
-    }
+    ...streamexaSources
   ];
     // YouTube: no fallback URL â€” button stays disabled until backend scraper finds a real video.
   ].filter((source) => source.url);
@@ -8652,6 +8655,12 @@ function RegisterPage() {
 
 const SESSION_SCRAPED = new Set();
 
+const STREAMEXA_SLOTS = STREAMEXA_SERVERS.map(server => ({
+  id: `streamexa-${server}`,
+  match: (source) => sourceKeyText(source).includes(`streamexa-${server}`),
+  label: server === 'vidfast' ? 'StreamExa' : `SE-${server}`
+}));
+
 const PLAYER_SOURCE_SLOTS = [
   { id: 'h1', key: 'smwh', label: 'H1' },
   { id: 'h2', key: 'rpmshre', label: 'H2' },
@@ -8659,8 +8668,7 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h4', key: 'strmp2', label: 'H4' },
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
-  { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
-  { id: 'streamexa', match: (source) => sourceKeyText(source).includes('streamexa'), label: 'StreamExa' },
+  ...STREAMEXA_SLOTS,
   { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
 ];
 
