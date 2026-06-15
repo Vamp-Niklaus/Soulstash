@@ -738,7 +738,7 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 }
 
 .cardSubMeta {
-  font-size: 11px;
+  font-size: 10px; /* Reduced to fit all 3 pieces of data on mobile */
   color: #919191;
   white-space: nowrap;
   overflow: hidden;
@@ -750,7 +750,7 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 .cardSubMetaItem {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px; /* Reduced gap */
   vertical-align: middle;
 }
 
@@ -765,7 +765,7 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 
 .cardSubMetaSep {
   color: #666;
-  margin: 0 5px;
+  margin: 0 3px; /* Reduced margin */
   vertical-align: middle;
 }
 
