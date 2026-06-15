@@ -1429,7 +1429,7 @@ function mapMovieGenreToTvGenre(movieGenreId) {
 async function refreshCategoryCache(genre, year, page, limit, includeAdult, allowMissingImdb) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
-    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50'; // Enforce minimum quality to avoid weird/adult/placeholder posters
+    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=300'; // Enforce minimum quality to avoid weird/adult/placeholder posters
     const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false'; // Always enforce no adult content for discovery
     const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     
@@ -1651,7 +1651,7 @@ router.get('/movies', async (req, res) => {
       return res.json({ movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } });
     }
 
-    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
+    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=300';
     const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
     const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
@@ -2216,7 +2216,7 @@ async function buildHomePayload(includeAdult) {
       return { id: genre.id, movies: cached.data.movies };
     }
     try {
-      const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
+      const voteCountFilter = includeAdult ? '' : '&vote_count.gte=300';
       const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
       const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
       
