@@ -960,22 +960,11 @@ function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   return `${baseUrl}?${params.toString()}`;
 }
 
-const STREAMEXA_SERVERS = [
-  'vidfast', 'vidsrcto', 'vidsrcfyi', 'vidrock', 'vidnest', 
-  'vidking', 'vidlink', 'vidup', 'videasy', '111movies', 
-  '2embed', 'multiembed', 'superflix', 'peachify',
-  // User dropdown additions:
-  'cine', 'vidcore', 'moviesapi', 'peach', '111', 'vidzee', 'vsembed'
-];
-
-function buildStreamexaScrapeUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }, server) {
+function buildStreamexaScrapeUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const type = String(mediaType || '').toLowerCase();
   let targetUrl = `https://streamexa.to/watch/${type}/${tmdbId}`;
   if (type === 'tv') {
     targetUrl += `/${seasonNumber || 1}/${episodeNumber || 1}`;
-  }
-  if (server) {
-    targetUrl += `?server=${server}`;
   }
   return `/api/scrape-embed?url=${encodeURIComponent(targetUrl)}`;
 }
@@ -991,17 +980,16 @@ function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
   
-  const streamexaSources = STREAMEXA_SERVERS.map(server => ({
-    id: `legacy-streamexa-${server}`,
-    key: `legacy-streamexa-${server}`,
-    label: server === 'vidfast' ? 'StreamExa' : `SE-${server}`,
-    url: buildStreamexaScrapeUrl(input, server),
-    urls: [buildStreamexaScrapeUrl(input, server)],
-    embeddable: true,
-    fallback: true
-  }));
-
   return [
+    {
+      id: 'legacy-streamexa',
+      key: 'legacy-streamexa',
+      label: 'StreamExa',
+      url: buildStreamexaScrapeUrl(input),
+      urls: [buildStreamexaScrapeUrl(input)],
+      embeddable: true,
+      fallback: true
+    },
     {
       id: 'legacy-videasy-hi',
       key: 'legacy-videasy-hi',
@@ -8672,12 +8660,6 @@ function RegisterPage() {
 
 const SESSION_SCRAPED = new Set();
 
-const STREAMEXA_SLOTS = STREAMEXA_SERVERS.map(server => ({
-  id: `streamexa-${server}`,
-  match: (source) => sourceKeyText(source).includes(`streamexa-${server}`),
-  label: server === 'vidfast' ? 'StreamExa' : `SE-${server}`
-}));
-
 const PLAYER_SOURCE_SLOTS = [
   { id: 'h1', key: 'smwh', label: 'H1' },
   { id: 'h2', key: 'rpmshre', label: 'H2' },
@@ -8686,7 +8668,7 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
   { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' },
-  ...STREAMEXA_SLOTS,
+  { id: 'streamexa', match: (source) => sourceKeyText(source).includes('streamexa'), label: 'StreamExa' },
   { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
 ];
 
