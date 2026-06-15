@@ -1429,7 +1429,7 @@ function mapMovieGenreToTvGenre(movieGenreId) {
 async function refreshCategoryCache(genre, year, page, limit, includeAdult, allowMissingImdb) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
-    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50'; // Enforce minimum quality to avoid weird/adult/placeholder posters
+    const strictRatingFilter = includeAdult ? '' : '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5'; // Enforce minimum quality to avoid weird/adult/placeholder posters
     const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false'; // Always enforce no adult content for discovery
     const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     
@@ -1636,7 +1636,7 @@ router.get('/movies', async (req, res) => {
       return res.json({ movies: finalItems, pagination: { page, limit, total: totalResults, pages: totalPages } });
     }
 
-    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
+    const strictRatingFilter = includeAdult ? '' : '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5';
     const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
     const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
