@@ -1688,10 +1688,10 @@ function CollectionSearchDrawer({ open, onClose, collection, onAdd, pendingItems
                       <h4 className="text-white font-medium text-base overflow-hidden">
                         <HoverMarqueeTitle title={item.title || item.name || 'Unknown'} />
                       </h4>
-                      <div className="flex items-center text-sm text-gray-400 mt-0.5">
-                        <span>{yearFrom(item)}</span>
-                        <span className="mx-2">|</span>
-                        <span>{mediaType}</span>
+                      <div className="flex items-center text-sm text-gray-400 mt-0.5 truncate">
+                        <span className="truncate">{yearFrom(item)}</span>
+                        <span className="mx-2 flex-shrink-0">|</span>
+                        <span className="truncate">{mediaType}</span>
                       </div>
                     </div>
                     <div className="flex-shrink-0 ml-2">
