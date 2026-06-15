@@ -980,6 +980,14 @@ function buildStreamexaScrapeUrl({ mediaType, tmdbId, seasonNumber, episodeNumbe
   return `/api/scrape-embed?url=${encodeURIComponent(targetUrl)}`;
 }
 
+function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  if (type === 'movie') {
+    return `https://cine.su/en/watch-movie/${tmdbId}`;
+  }
+  return `https://cine.su/en/watch-tv/${tmdbId}?provider=cine&season=${seasonNumber || 1}&episode=${episodeNumber || 1}`;
+}
+
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
   
@@ -1000,6 +1008,15 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       label: 'VIDEASY',
       url: buildVideasyHindiAttemptUrl(input),
       urls: [buildVideasyHindiAttemptUrl(input)],
+      embeddable: true,
+      fallback: true
+    },
+    {
+      id: 'legacy-cinesu',
+      key: 'legacy-cinesu',
+      label: 'Cine.su',
+      url: buildCinesuUrl(input),
+      urls: [buildCinesuUrl(input)],
       embeddable: true,
       fallback: true
     },
@@ -8670,6 +8687,7 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h4', key: 'strmp2', label: 'H4' },
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
+  { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' },
   ...STREAMEXA_SLOTS,
   { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
 ];
@@ -9433,7 +9451,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 </a>
               </div>
             ) : (
-              <div className="relative h-full w-full">
+              <div className={`relative h-full w-full ${currentSource.id.includes('cinesu') ? 'cine-crop-wrapper' : ''}`}>
                 <iframe
                   ref={iframeRef}
                   key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
@@ -9441,7 +9459,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   tabIndex={0}
                   onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}
                   onError={(e) => console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e)}
-                  className="h-full w-full border-0 bg-black"
+                  className={`h-full w-full border-0 bg-black ${currentSource.id.includes('cinesu') ? 'cine-crop-iframe' : ''}`}
                   style={{
                     transform: scale !== 1.0 ? `scale(${scale})` : 'none',
                     transformOrigin: 'center center',
