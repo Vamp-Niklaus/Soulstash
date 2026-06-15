@@ -960,6 +960,14 @@ function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   return `${baseUrl}?${params.toString()}`;
 }
 
+function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  if (type === 'movie') {
+    return `https://cine.su/en/watch-movie/${tmdbId}`;
+  }
+  return `https://cine.su/en/watch-tv/${tmdbId}?provider=cine&season=${seasonNumber || 1}&episode=${episodeNumber || 1}`;
+}
+
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
   return [
@@ -978,6 +986,15 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       label: 'vidfast',
       url: buildVidfastUrl(input),
       urls: [buildVidfastUrl(input)],
+      embeddable: true,
+      fallback: true
+    },
+    {
+      id: 'legacy-cinesu',
+      key: 'legacy-cinesu',
+      label: 'Cine.su',
+      url: buildCinesuUrl(input),
+      urls: [buildCinesuUrl(input)],
       embeddable: true,
       fallback: true
     }
@@ -8668,6 +8685,7 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
   { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
+  { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' },
   { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
 ];
 
