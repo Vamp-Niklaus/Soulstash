@@ -814,4 +814,10 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
   pointer-events: auto;
 }
 
+/* Mobile-only adjustment to pull the player up more and hide the text banner */
+@media (max-width: 768px) {
+  .cine-crop-iframe {
+    top: calc(-60% - 95px) !important; 
+  }
+}
 
