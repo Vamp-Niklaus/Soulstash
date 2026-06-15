@@ -6891,7 +6891,7 @@ function DetailPage({ type }) {
                 if (!label) return null;
                 if (genreId) {
                   return (
-                    <Link key={label} to={`/genre/${genreId}`} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-[#d8d8d8] hover:bg-white/[0.1] transition-colors">
+                    <Link key={label} to={`/genre/${genreId}/${encodeURIComponent(label)}`} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-[#d8d8d8] hover:bg-white/[0.1] transition-colors">
                       {label}
                     </Link>
                   );
