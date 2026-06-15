@@ -796,15 +796,15 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 
 .cine-crop-iframe {
   position: absolute !important;
-  /* Use native width/height to zoom without blurring the video! */
-  width: 118% !important;
-  height: 354% !important; /* 300% * 1.18 to match previous scale */
+  /* Use native width/height to zoom without blurring the video! 
+     Kept zoom to just 1.02x (102% width) so the fullscreen button isn't pushed off the right edge. */
+  width: 102% !important;
+  height: 306% !important; /* 300% * 1.02 to maintain aspect ratio */
   
-  left: -9% !important; /* Center the 118% width */
+  left: -1% !important; /* Center the 102% width */
   
-  /* 20vh of the new 354% height is 70.8%. 
-     We subtract 115px as requested to shift up further. */
-  top: calc(-70.8% - 115px) !important; 
+  /* 20vh of the new 306% height is 61.2%. */
+  top: calc(-61.2% - 115px) !important; 
   
   pointer-events: auto;
 }
