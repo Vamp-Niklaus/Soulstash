@@ -8666,9 +8666,10 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h4', key: 'strmp2', label: 'H4' },
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
-  { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' },
   { id: 'streamexa', match: (source) => sourceKeyText(source).includes('streamexa'), label: 'StreamExa' },
-  { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
+  { id: 'vidrock', match: (source) => sourceKeyText(source).includes('vidrock'), label: 'Vidrock' },
+  { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' },
+  { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' }
 ];
 
 function sourceKeyText(source = {}) {
