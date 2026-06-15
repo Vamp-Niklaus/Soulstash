@@ -2174,7 +2174,7 @@ async function buildHomePayload(includeAdult) {
   }
 
   // 3. First N genre shelves â€” fetch in parallel, use cache where available
-  const targetGenres = genres.slice(0, HOME_PRELOAD_GENRES);
+  const targetGenres = [{ id: "bollywood", name: "Latest in India" }, ...genres.slice(0, HOME_PRELOAD_GENRES - 1)];
   const categories = {};
 
   const fetchGenreMovies = async (genre) => {
