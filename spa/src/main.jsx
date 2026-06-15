@@ -963,7 +963,9 @@ function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
 const STREAMEXA_SERVERS = [
   'vidfast', 'vidsrcto', 'vidsrcfyi', 'vidrock', 'vidnest', 
   'vidking', 'vidlink', 'vidup', 'videasy', '111movies', 
-  '2embed', 'multiembed', 'superflix', 'peachify'
+  '2embed', 'multiembed', 'superflix', 'peachify',
+  // User dropdown additions:
+  'cine', 'vidcore', 'moviesapi', 'peach', '111', 'vidzee', 'vsembed'
 ];
 
 function buildStreamexaScrapeUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }, server) {
