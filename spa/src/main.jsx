@@ -8,7 +8,8 @@ import {
   Routes,
   useLocation,
   useNavigate,
-  useParams
+  useParams,
+  Link
 } from 'react-router-dom';
 import '@videojs/react/video/skin.css';
 import { createPlayer, videoFeatures } from '@videojs/react';
