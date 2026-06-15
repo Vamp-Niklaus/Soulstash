@@ -3078,4 +3078,33 @@ router.get('/search/users', async (req, res) => {
   }
 });
 
+
+router.get('/scrape-embed', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.status(400).send('Missing url');
+
+  try {
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+      }
+    });
+    if (!response.ok) return res.status(response.status).send('Failed to fetch');
+
+    const html = await response.text();
+    const iframeMatch = html.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+    
+    if (iframeMatch && iframeMatch[1]) {
+      let embedUrl = iframeMatch[1];
+      if (embedUrl.startsWith('//')) embedUrl = 'https:' + embedUrl;
+      return res.redirect(302, embedUrl);
+    }
+    
+    return res.status(404).send('Embed not found on page');
+  } catch (err) {
+    console.error('Scrape embed error:', err);
+    return res.status(500).send('Server error');
+  }
+});
+
 module.exports = router;

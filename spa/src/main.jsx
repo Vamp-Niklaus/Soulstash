@@ -960,12 +960,13 @@ function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   return `${baseUrl}?${params.toString()}`;
 }
 
-function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+function buildStreamexaScrapeUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
   const type = String(mediaType || '').toLowerCase();
-  if (type === 'movie') {
-    return `https://cine.su/en/watch-movie/${tmdbId}`;
+  let targetUrl = `https://streamexa.to/watch/${type}/${tmdbId}`;
+  if (type === 'tv') {
+    targetUrl += `/${seasonNumber || 1}/${episodeNumber || 1}`;
   }
-  return `https://cine.su/en/watch-tv/${tmdbId}?provider=cine&season=${seasonNumber || 1}&episode=${episodeNumber || 1}`;
+  return `/api/scrape-embed?url=${encodeURIComponent(targetUrl)}`;
 }
 
 function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
@@ -990,14 +991,15 @@ function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumb
       fallback: true
     },
     {
-      id: 'legacy-cinesu',
-      key: 'legacy-cinesu',
-      label: 'Cine.su',
-      url: buildCinesuUrl(input),
-      urls: [buildCinesuUrl(input)],
+      id: 'legacy-streamexa',
+      key: 'legacy-streamexa',
+      label: 'StreamExa',
+      url: buildStreamexaScrapeUrl(input),
+      urls: [buildStreamexaScrapeUrl(input)],
       embeddable: true,
       fallback: true
     }
+  ];
     // YouTube: no fallback URL â€” button stays disabled until backend scraper finds a real video.
   ].filter((source) => source.url);
 }
@@ -1416,51 +1418,7 @@ const CollectionPosterCard = React.forwardRef(function CollectionPosterCard({ it
   const normalized = normalizeStoredCollectionItem(item);
   const itemId = Number(item?.movieId || item?.seriesId || item?.id || item?._id || 0);
 
-  return (
-    <article className="border text-card-foreground group p-2 flex flex-col items-start gap-2 sm:gap-[6px] w-full h-full relative rounded-lg overflow-visible transition-all duration-300 border-none bg-transparent shadow-none text-left">
-      <button
-        ref={ref}
-        type="button"
-        {...props}
-        className="p-0 w-full h-full flex flex-col items-start gap-2 sm:gap-[6px] cursor-pointer rounded-lg focus:bg-white/[0.08] focus:ring-2 focus:ring-white focus:outline-none transition-all duration-300 text-left outline-none"
-        onClick={() => navigate(mediaRoute(normalized))}
-      >
-        <div className="relative w-full aspect-[2/3] overflow-hidden rounded-md max-w-full mx-auto">
-          <img
-            src={imageUrl(normalized.poster_path, 'w300_and_h450_face')}
-            alt={normalized.title}
-            className="w-full h-full object-cover rounded-md"
-            onError={(event) => {
-              event.currentTarget.src = FALLBACK_AVATAR;
-            }}
-          />
-        </div>
-        <div className="flex flex-col items-start w-full px-[2px]">
-          <div className="w-full overflow-hidden h-[16px] sm:h-[20px] flex items-center relative">
-            <h3 className="w-full text-sm opacity-80 font-medium leading-4 sm:leading-5 tracking-[0.5px] text-[#E2E2E2] text-left truncate">
-              {normalized.title}
-            </h3>
-          </div>
-          <p className="w-full text-[10px] opacity-100 font-normal leading-[18px] tracking-[0.4px] text-left text-[#C6C6C6]">
-            {normalized.media_type} | {yearFrom(normalized)} | Rating {getPreferredRating(normalized)?.toFixed(1) || 'N/A'}
-          </p>
-        </div>
-      </button>
-      {onRemove ? (
-        <button
-          type="button"
-          className="absolute top-2 right-2 remove-btn w-8 h-8 rounded-full bg-black/72 text-white hover:bg-black/90 transition-colors flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-white"
-          onClick={(event) => {
-            event.stopPropagation();
-            onRemove(itemId, normalized.title);
-          }}
-          aria-label={`Remove ${normalized.title}`}
-        >
-          <i className="fas fa-times text-[12px]"></i>
-        </button>
-      ) : null}
-    </article>
-  );
+  return <ContentCard item={normalized} onRemove={onRemove} itemId={itemId} ref={ref} {...props} />;
 });
 
 function getDrawerColumnCount() {
@@ -5039,7 +4997,7 @@ function HomeShelfHeader({ title, publisher = '', onViewAll, onPublisherClick = 
   );
 }
 
-const ContentCard = React.forwardRef(function ContentCard({ item, status = null, ...props }, ref) {
+const ContentCard = React.forwardRef(function ContentCard({ item, status = null, onRemove, itemId, ...props }, ref) {
   const navigate = useNavigate();
   const title = item.title || item.name || 'Unknown';
   const contentType = item.media_type || (item.title ? 'Movie' : 'Series');
@@ -5049,11 +5007,11 @@ const ContentCard = React.forwardRef(function ContentCard({ item, status = null,
       ref={ref}
       type="button"
       {...props}
-      className="card group"
+      className="card group relative"
       onClick={() => navigate(mediaRoute(item))}
       aria-label={title}
     >
-      <div className="cardImageWrap">
+      <div className="cardImageWrap relative">
         <img
           src={imageUrl(item.poster_path, 'w500')}
           alt={title}
@@ -5074,9 +5032,26 @@ const ContentCard = React.forwardRef(function ContentCard({ item, status = null,
             <i className="fas fa-clock text-[15px] text-black"></i>
           </span>
         ) : null}
+        {onRemove ? (
+          <div
+            className="absolute top-2 right-2 remove-btn w-8 h-8 rounded-full bg-black/72 text-white hover:bg-black/90 transition-colors flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-white z-20"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRemove(itemId || item.id, title);
+            }}
+            aria-label={`Remove ${title}`}
+            role="button"
+            tabIndex={0}
+          >
+            <i className="fas fa-times text-[12px]"></i>
+          </div>
+        ) : null}
       </div>
       <div className="cardMeta">
-        <h3 className="cardTitle">{title}</h3>
+        <div className="cardTitleWrap">
+          <h3 className={`cardTitle ${title.length > 18 ? 'marquee-on-hover' : ''}`} data-title={title}>{title}</h3>
+        </div>
         <div className="cardSubMeta">
           <span className="cardSubMetaItem">
             <svg className="cardSubMetaStar" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
@@ -8685,7 +8660,7 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
   { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
-  { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' },
+  { id: 'streamexa', match: (source) => sourceKeyText(source).includes('streamexa'), label: 'StreamExa' },
   { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
 ];
 
