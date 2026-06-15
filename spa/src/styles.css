@@ -776,7 +776,6 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
    the cine.su iframe to hide their website menus.
    Instead, we use this "CSS Crop" technique to hide the outer garbage.
 */
-.cine-crop-wrapper {
   /* ==================================================
    CINE.SU ULTIMATE RESPONSIVE CROP
    ==================================================
