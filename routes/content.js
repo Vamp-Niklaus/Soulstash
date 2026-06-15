@@ -1429,7 +1429,7 @@ function mapMovieGenreToTvGenre(movieGenreId) {
 async function refreshCategoryCache(genre, year, page, limit, includeAdult, allowMissingImdb) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
-    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=300'; // Enforce minimum quality to avoid weird/adult/placeholder posters
+    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50'; // Enforce minimum quality to avoid weird/adult/placeholder posters
     const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false'; // Always enforce no adult content for discovery
     const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     
@@ -1461,12 +1461,7 @@ async function refreshCategoryCache(genre, year, page, limit, includeAdult, allo
     let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
     let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
 
-    const all = [];
-    const maxLen = Math.max(movies.length, tvShows.length);
-    for (let i = 0; i < maxLen; i++) {
-      if (i < movies.length) all.push(movies[i]);
-      if (i < tvShows.length) all.push(tvShows[i]);
-    }
+    const all = [...movies, ...tvShows].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     let finalItems = all.slice(0, Math.max(limit * 2, limit));
 
     if (!allowMissingImdb) {
@@ -1524,12 +1519,7 @@ async function refreshTrendingCache(limit = 12) {
     const movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
     const tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
     
-    const all = [];
-    const maxLen = Math.max(movieItems.length, tvItems.length);
-    for (let i = 0; i < maxLen; i++) {
-      if (i < movieItems.length) all.push(movieItems[i]);
-      if (i < tvItems.length) all.push(tvItems[i]);
-    }
+    const all = [...movieItems, ...tvItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     
     const finalItems = all.slice(0, limit);
     if (finalItems.length > 0) {
@@ -1632,12 +1622,7 @@ router.get('/movies', async (req, res) => {
       let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
       let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
       
-      const all = [];
-      const maxLen = Math.max(movies.length, tvShows.length);
-      for (let i = 0; i < maxLen; i++) {
-        if (i < movies.length) all.push(movies[i]);
-        if (i < tvShows.length) all.push(tvShows[i]);
-      }
+      const all = [...movies, ...tvShows].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
       let finalItems = all.slice(0, Math.max(limit * 2, limit));
 
       if (!allowMissingImdb) {
@@ -1651,7 +1636,7 @@ router.get('/movies', async (req, res) => {
       return res.json({ movies: finalItems.slice(0, limit), pagination: { page, limit, total: totalResults, pages: totalPages } });
     }
 
-    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=300';
+    const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
     const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
     const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
@@ -1684,12 +1669,7 @@ router.get('/movies', async (req, res) => {
     let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
     let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
 
-    const all = [];
-    const maxLen = Math.max(movies.length, tvShows.length);
-    for (let i = 0; i < maxLen; i++) {
-      if (i < movies.length) all.push(movies[i]);
-      if (i < tvShows.length) all.push(tvShows[i]);
-    }
+    const all = [...movies, ...tvShows].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     let finalItems = all.slice(0, Math.max(limit * 2, limit));
 
     if (!allowMissingImdb) {
@@ -2047,12 +2027,7 @@ router.get('/trending', trendingLimiter, async (req, res) => {
     let movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
     let tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
     
-    const all = [];
-    const maxLen = Math.max(movieItems.length, tvItems.length);
-    for (let i = 0; i < maxLen; i++) {
-      if (i < movieItems.length) all.push(movieItems[i]);
-      if (i < tvItems.length) all.push(tvItems[i]);
-    }
+    const all = [...movieItems, ...tvItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     const finalItems = all.slice(0, limit);
 
     if (!finalItems.length) {
@@ -2176,12 +2151,7 @@ async function buildHomePayload(includeAdult) {
       let mItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
       let tItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
 
-      const all = [];
-      const maxLen = Math.max(mItems.length, tItems.length);
-      for (let i = 0; i < maxLen; i++) {
-        if (i < mItems.length) all.push(mItems[i]);
-        if (i < tItems.length) all.push(tItems[i]);
-      }
+      const all = [...mItems, ...tItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
       trending = all.slice(0, 18);
       if (trending.length && !includeAdult) { trendingCache = trending; trendingCacheTime = Date.now(); }
     } catch (e) { console.warn('[Home] Trending fetch failed:', e.message); }
@@ -2216,7 +2186,7 @@ async function buildHomePayload(includeAdult) {
       return { id: genre.id, movies: cached.data.movies };
     }
     try {
-      const voteCountFilter = includeAdult ? '' : '&vote_count.gte=300';
+      const voteCountFilter = includeAdult ? '' : '&vote_count.gte=50';
       const adultFilter = includeAdult ? '&include_adult=true' : '&include_adult=false';
       const adultKeywords = includeAdult ? '&with_keywords=190370|13054|210024|156416' : '';
       
@@ -2245,12 +2215,7 @@ async function buildHomePayload(includeAdult) {
       let mItems = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
       let tItems = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
 
-      const all = [];
-      const maxLen = Math.max(mItems.length, tItems.length);
-      for (let i = 0; i < maxLen; i++) {
-        if (i < mItems.length) all.push(mItems[i]);
-        if (i < tItems.length) all.push(tItems[i]);
-      }
+      const all = [...mItems, ...tItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
       let finalItems = all.slice(0, HOME_CATEGORY_LIMIT * 2);
 
       if (!includeAdult) {
