@@ -2061,7 +2061,7 @@ async function refreshGenresCache() {
     const resp = await tmdbFetch('https://api.themoviedb.org/3/genre/movie/list?language=en-US', { method: 'GET', headers: tmdbHeaders() }, 'Genres Bg');
     if (!resp.ok) return;
     const data = await resp.json();
-    const finalData = data.genres.filter(g => g.name.toLowerCase() !== 'documentary').map(g => ({ id: g.id, name: g.name })).sort((a,b) => a.name.localeCompare(b.name));
+    const finalData = data.genres.map(g => ({ id: g.id, name: g.name })).sort((a,b) => a.name.localeCompare(b.name));
     if (finalData.length > 0) {
       genresCache = finalData;
       genresCacheTime = Date.now();
@@ -2094,7 +2094,6 @@ router.get('/genres', async (req, res) => {
     if (!resp.ok) return res.status(500).json({ error: 'Failed to fetch genres' });
     const data = await resp.json();
     const finalData = data.genres
-      .filter(g => g.name.toLowerCase() !== 'documentary')
       .map(g => ({ id: g.id, name: g.name }))
       .sort((a,b) => a.name.localeCompare(b.name));
       
@@ -2167,7 +2166,6 @@ async function buildHomePayload(includeAdult) {
       if (resp.ok) {
         const data = await resp.json();
         genres = data.genres
-          .filter(g => g.name.toLowerCase() !== 'documentary')
           .map(g => ({ id: g.id, name: g.name }))
           .sort((a, b) => a.name.localeCompare(b.name));
         if (genres.length) { genresCache = genres; genresCacheTime = Date.now(); }
