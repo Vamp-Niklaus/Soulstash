@@ -2,7 +2,7 @@ const { getDb } = require('../db');
 
 const fetch = global.fetch;
 const TMDB_BEARER_TOKEN = process.env.TMDB_BEARER_TOKEN;
-const TMDB_BASE_URL = process.env.TMDB_BASE_URL || 'https://api.tmdb.org';
+const TMDB_BASE_URL = 'https://api.themoviedb.org';
 const OMDB_API_KEY = process.env.OMDB_API_KEY || '';
 const INVALID_IMDB_SENTINEL = 10.0;
 const RATINGS_COLLECTION = 'Ratings';
@@ -55,16 +55,22 @@ async function incrementRatingsMetric(fieldName) {
 }
 
 async function fetchTmdbJson(url, context) {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: buildTmdbHeaders()
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: buildTmdbHeaders()
+    });
 
-  if (!response.ok) {
-    throw new Error(`${context} failed with ${response.status}`);
+    if (!response.ok) {
+      console.error(`${TAG} fetchTmdbJson ERROR: ${context} failed with ${response.status} for URL ${url}`);
+      throw new Error(`${context} failed with ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (err) {
+    console.error(`${TAG} fetchTmdbJson EXCEPTION: ${context} for URL ${url} threw ${err.message}`);
+    throw err;
   }
-
-  return response.json();
 }
 
 async function fetchTmdbDetail(tmdbID, mediaType) {
