@@ -2,7 +2,7 @@ const { getDb } = require('../db');
 
 const fetch = global.fetch;
 const TMDB_BEARER_TOKEN = process.env.TMDB_BEARER_TOKEN;
-const TMDB_BASE_URL = 'https://api.themoviedb.org';
+const TMDB_BASE_URL = process.env.TMDB_BASE_URL || 'https://api.tmdb.org';
 const OMDB_API_KEY = process.env.OMDB_API_KEY || '';
 const INVALID_IMDB_SENTINEL = 10.0;
 const RATINGS_COLLECTION = 'Ratings';
