@@ -160,8 +160,8 @@ async function resolveImdbRating(tmdbID, mediaType, seedData = null, seedVoteAve
     const cacheAgeMs = cachedRecord.updatedAt ? Date.now() - cachedRecord.updatedAt.getTime() : Infinity;
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-    // Use cache if we have a valid ID, OR if it's an empty ID but we checked recently (within 7 days)
-    if (hasValidImdbId || cacheAgeMs < SEVEN_DAYS_MS) {
+    // Use cache only if we have a valid ID. Do not cache missing/empty IDs to avoid permanent 404s
+    if (hasValidImdbId) {
       return {
         tmdbID: numericTmdbID,
         type: normalizedMediaType,
