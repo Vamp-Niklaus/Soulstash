@@ -18,7 +18,7 @@ const { playwrightFetch } = require('../util/playwrightFetch');
 const ytSearch = require('yt-search');
 
 const TMDB_BEARER_TOKEN = process.env.TMDB_BEARER_TOKEN;
-const TMDB_BASE_URL = process.env.TMDB_BASE_URL || 'https://api.tmdb.org';
+const TMDB_BASE_URL = (process.env.TMDB_BASE_URL || 'https://api.tmdb.org').replace('api.themoviedb.org', 'api.tmdb.org');
 const WATCHMODE_API_KEY = process.env.WATCHMODE_API_KEY || process.env.WATCHMODE;
 const fetch = global.fetch;
 const PLAYER_SOURCES_COLLECTION = 'PlayerSources';

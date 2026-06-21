@@ -8754,7 +8754,7 @@ function firstPlayableUrl(source) {
   return '';
 }
 
-function buildPlayerSourceSlots(incomingSources = [], fallbackSources = []) {
+function buildPlayerSourceSlots(incomingSources = [], fallbackSources = [], isLoading = false) {
   const pool = [...incomingSources, ...fallbackSources].filter(Boolean);
   const used = new Set();
 
@@ -8768,6 +8768,10 @@ function buildPlayerSourceSlots(incomingSources = [], fallbackSources = []) {
     if (foundIndex >= 0) used.add(foundIndex);
 
     const url = firstPlayableUrl(found);
+    const isMissing = !url;
+    // If we're loading, any slot that hasn't found a URL yet is considered 'pending' (loading)
+    const isPending = Boolean(found?.pending) || (isLoading && isMissing);
+
     return {
       ...(found || {}),
       id: found?.id || slot.id,
@@ -8776,8 +8780,8 @@ function buildPlayerSourceSlots(incomingSources = [], fallbackSources = []) {
       url,
       urls: found?.urls || (url ? [url] : []),
       embeddable: found?.embeddable !== false,
-      pending: Boolean(found?.pending),
-      disabled: Boolean(found?.pending) || !url
+      pending: isPending,
+      disabled: isPending || isMissing
     };
   });
 }
@@ -9020,14 +9024,21 @@ export function VideoPlayerModal({ request, onClose }) {
         const playable = resolvedSources.filter(s => s.url);
         if (!playable.length) return '';
 
-        // Priority 1: Videasy
+        // Priority 1: VidNest
+        const vidnest = playable.find(s => {
+          const l = s.label?.toLowerCase() || '';
+          return l.includes('vidnest') || s.id?.toLowerCase().includes('vidnest');
+        });
+        if (vidnest) return vidnest.url;
+
+        // Priority 2: Videasy
         const videasy = playable.find(s => {
           const l = s.label?.toLowerCase() || '';
           return l.includes('videasy') || l.includes('vid-easy') || s.id?.includes('videasy');
         });
         if (videasy) return videasy.url;
 
-        // Priority 2: YouTube
+        // Priority 3: YouTube
         const youtube = playable.find(s => {
           const l = s.label?.toLowerCase() || '';
           return l.includes('youtube') || s.id?.includes('youtube');
@@ -9067,7 +9078,7 @@ export function VideoPlayerModal({ request, onClose }) {
           payload = await apiFetch(`/api/player/sources?${queryParams.toString()}`);
         } catch (fetchError) {
           if (ignore) return;
-          // 503 = TMDB down but backend may still scrape via fallback Ã¢â‚¬â€ keep polling
+          // 503 = TMDB down but backend may still scrape via fallback Ã¢â‚¬â€  keep polling
           if (fetchError?.status === 503 && pollAttempt < MAX_POLL_ATTEMPTS) {
             pollAttempt++;
             setSourceState((prev) => ({
@@ -9121,15 +9132,19 @@ export function VideoPlayerModal({ request, onClose }) {
 
   // legacySources removed Ã¢â‚¬â€ buildPlayerSourceSlots covers all 8 fixed slots.
 
-  const sources = useMemo(() => buildPlayerSourceSlots(hindiSources, fallbackSources), [hindiSources, fallbackSources]);
+  const sources = useMemo(() => buildPlayerSourceSlots(hindiSources, fallbackSources, sourceState.loading), [hindiSources, fallbackSources, sourceState.loading]);
 
   // Auto-select a default source whenever sources load and nothing is playing yet.
-  // Priority: VIDEASY Ã¢â€ â€™ YouTube Ã¢â€ â€™ first available.
+  // Priority: VidNest -> VIDEASY -> YouTube -> first available.
   useEffect(() => {
     setActiveUrl((current) => {
       if (current && sources.some((s) => s.url === current)) return current;
       const playable = sources.filter((s) => s.url);
       if (!playable.length) return current;
+      const vidnest = playable.find((s) =>
+        s.id?.toLowerCase().includes('vidnest') || s.label?.toLowerCase().includes('vidnest')
+      );
+      if (vidnest) return vidnest.url;
       const videasy = playable.find((s) =>
         s.id?.toLowerCase().includes('videasy') || s.label?.toLowerCase().includes('videasy')
       );
@@ -9360,18 +9375,7 @@ export function VideoPlayerModal({ request, onClose }) {
             >
             <div className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
               <div className="flex min-w-max items-center gap-2 pr-2">
-                {sourceState.loading ? (
-                  PLAYER_SOURCE_SLOTS.map((dummy) => (
-                    <button
-                      key={`loading-${dummy.id}`}
-                      type="button"
-                      disabled
-                      className={`${sourceButtonClass} animate-pulse cursor-wait bg-white/5 text-white/30`}
-                    >
-                      {dummy.label}
-                    </button>
-                  ))
-                ) : sources.length ? (
+                {sources.length ? (
                   sources.map((source) => (
                     <button
                       key={source.id}
