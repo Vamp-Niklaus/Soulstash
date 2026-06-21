@@ -8726,13 +8726,13 @@ const PLAYER_SOURCE_SLOTS = [
   { id: 'h3', key: 'upnshr', label: 'H3' },
   { id: 'h4', key: 'strmp2', label: 'H4' },
   { id: 'h5', key: 'flls', label: 'H5' },
-  { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
   { id: 'vidnest', match: (source) => sourceKeyText(source).includes('vidnest'), label: 'VidNest' },
-  { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
   { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' },
+  { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
+  { id: 'vidsrc-pm', match: (source) => sourceKeyText(source).includes('vidsrc-pm'), label: 'VidSrc PM' },
+  { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
   { id: 'vidsrc-pro', match: (source) => sourceKeyText(source).includes('vidsrc-pro'), label: 'VidSrc PRO' },
   { id: 'vidsrc-in', match: (source) => sourceKeyText(source).includes('vidsrc-in'), label: 'VidSrc IN' },
-  { id: 'vidsrc-pm', match: (source) => sourceKeyText(source).includes('vidsrc-pm'), label: 'VidSrc PM' },
   { id: 'vidsrc-net', match: (source) => sourceKeyText(source).includes('vidsrc-net'), label: 'VidSrc NET' },
   { id: 'vidsrc-xyz', match: (source) => sourceKeyText(source).includes('vidsrc-xyz'), label: 'VidSrc XYZ' },
   { id: 'superembed', match: (source) => sourceKeyText(source).includes('superembed'), label: 'SuperEmbed' },
@@ -9142,7 +9142,8 @@ export function VideoPlayerModal({ request, onClose }) {
     });
   }, [sources]);
 
-  const activeSource = sources.find((source) => source.url === activeUrl) || sources.find((source) => source.url) || sources[0];
+  const defaultSource = sources.find((source) => source.id === 'vidnest' && source.url) || sources.find((source) => source.url) || sources[0];
+  const activeSource = sources.find((source) => source.url === activeUrl) || defaultSource;
   const availableSources = useMemo(() => sources.filter((source) => source?.url), [sources]);
 
 
@@ -9510,7 +9511,10 @@ export function VideoPlayerModal({ request, onClose }) {
                   tabIndex={0}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}
-                  onError={(e) => console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e)}
+                  onError={(e) => {
+                    console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e);
+                    handleSwitchSource();
+                  }}
                   className={`h-full w-full border-0 bg-black ${activeSource?.id?.includes('cinesu') ? 'cine-crop-iframe' : ''}`}
                   style={{
                     transform: scale !== 1.0 ? `scale(${scale})` : 'none',
