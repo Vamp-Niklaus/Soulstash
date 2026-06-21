@@ -55,21 +55,30 @@ async function incrementRatingsMetric(fieldName) {
 }
 
 async function fetchTmdbJson(url, context) {
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: buildTmdbHeaders()
-    });
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: buildTmdbHeaders()
+      });
 
-    if (!response.ok) {
-      console.error(`${TAG} fetchTmdbJson ERROR: ${context} failed with ${response.status} for URL ${url}`);
-      throw new Error(`${context} failed with ${response.status}`);
+      if (!response.ok) {
+        console.error(`${TAG} fetchTmdbJson ERROR: ${context} failed with ${response.status} on attempt ${attempt}`);
+        if (response.status === 404) return null; // If TMDB returns 404, just return null
+        if (attempt === maxRetries) throw new Error(`${context} failed with ${response.status}`);
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+        continue;
+      }
+
+      return await response.json();
+    } catch (err) {
+      console.warn(`${TAG} fetchTmdbJson network error: ${context} attempt ${attempt} threw ${err.message}`);
+      if (attempt === maxRetries) {
+        throw err;
+      }
+      await new Promise(r => setTimeout(r, 1000 * attempt));
     }
-
-    return await response.json();
-  } catch (err) {
-    console.error(`${TAG} fetchTmdbJson EXCEPTION: ${context} for URL ${url} threw ${err.message}`);
-    throw err;
   }
 }
 
