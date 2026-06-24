@@ -24,6 +24,8 @@ const collectionController = new UserCollectionController(userRepository);
 // Routing
 app.post('/register', (req, res) => authController.register(req, res));
 app.post('/login', (req, res) => authController.login(req, res));
+app.post('/send-otp', (req, res) => authController.sendOtp(req, res));
+app.post('/verify-otp-and-register', (req, res) => authController.verifyOtpAndRegister(req, res));
 app.get('/check-username', (req, res) => authController.checkUsername(req, res));
 app.get('/me', (req, res) => authController.me(req, res));
 
@@ -273,6 +275,102 @@ app.post('/collections/:id/enrich-metadata', async (req: any, res: any) => {
   } catch (err: any) {
     logger.error(`[UserService] enrich metadata error: ${err.message}`);
     res.status(500).json({ error: 'Failed to enrich collection metadata' });
+  }
+});
+
+// Social API
+app.get('/:username/followers', extractUser, async (req: any, res: any) => {
+  try {
+    const coll = await userRepository.connect();
+    const targetUser = await coll.findOne({ username: req.params.username });
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+    
+    const loggedInUser = req.user ? await coll.findOne({ username: req.user.username }) : null;
+    const loggedInFollowing = Array.isArray(loggedInUser?.following) ? loggedInUser!.following : [];
+
+    const followerUsernames = Array.isArray(targetUser.followers) ? targetUser.followers : [];
+    if (!followerUsernames.length) return res.json({ users: [] });
+
+    const followerDocs = await coll.find({ username: { $in: followerUsernames } }).toArray();
+    const users = followerDocs.map((u: any) => ({
+      username: u.username,
+      avatar: u.avatar || null,
+      fullName: u.fullName || [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.username,
+      bio: u.bio || '',
+      isFollowing: !!loggedInUser && loggedInFollowing.includes(u.username)
+    }));
+    
+    res.json({ users });
+  } catch (err) {
+    logger.error('Followers fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch followers' });
+  }
+});
+
+app.get('/:username/following', extractUser, async (req: any, res: any) => {
+  try {
+    const coll = await userRepository.connect();
+    const targetUser = await coll.findOne({ username: req.params.username });
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+    
+    const loggedInUser = req.user ? await coll.findOne({ username: req.user.username }) : null;
+    const loggedInFollowing = Array.isArray(loggedInUser?.following) ? loggedInUser!.following : [];
+
+    const followingUsernames = Array.isArray(targetUser.following) ? targetUser.following : [];
+    if (!followingUsernames.length) return res.json({ users: [] });
+
+    const followingDocs = await coll.find({ username: { $in: followingUsernames } }).toArray();
+    const users = followingDocs.map((u: any) => ({
+      username: u.username,
+      avatar: u.avatar || null,
+      fullName: u.fullName || [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.username,
+      bio: u.bio || '',
+      isFollowing: !!loggedInUser && loggedInFollowing.includes(u.username)
+    }));
+    
+    res.json({ users });
+  } catch (err) {
+    logger.error('Following fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch following' });
+  }
+});
+
+app.post('/follow', extractUser, async (req: any, res: any) => {
+  try {
+    const username = req.user?.username;
+    const targetUsername = req.body?.username;
+    if (!username) return res.status(401).json({ error: 'Unauthorized' });
+    if (!targetUsername || username === targetUsername) return res.status(400).json({ error: 'Invalid target' });
+
+    const coll = await userRepository.connect();
+    const target = await coll.findOne({ username: targetUsername });
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
+    await coll.updateOne({ username }, { $addToSet: { following: targetUsername } });
+    await coll.updateOne({ username: targetUsername }, { $addToSet: { followers: username } });
+
+    res.json({ success: true, message: `Followed ${targetUsername}` });
+  } catch (err) {
+    logger.error('Follow error:', err);
+    res.status(500).json({ error: 'Failed to follow user' });
+  }
+});
+
+app.post('/unfollow', extractUser, async (req: any, res: any) => {
+  try {
+    const username = req.user?.username;
+    const targetUsername = req.body?.username;
+    if (!username) return res.status(401).json({ error: 'Unauthorized' });
+    if (!targetUsername) return res.status(400).json({ error: 'Invalid target' });
+
+    const coll = await userRepository.connect();
+    await coll.updateOne({ username }, { $pull: { following: targetUsername } });
+    await coll.updateOne({ username: targetUsername }, { $pull: { followers: username } });
+
+    res.json({ success: true, message: `Unfollowed ${targetUsername}` });
+  } catch (err) {
+    logger.error('Unfollow error:', err);
+    res.status(500).json({ error: 'Failed to unfollow user' });
   }
 });
 

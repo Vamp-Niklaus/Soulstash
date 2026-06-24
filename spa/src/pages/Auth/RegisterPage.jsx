@@ -12,7 +12,8 @@ export function RegisterPage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuthSession();
   const [pageReady, setPageReady] = useState(false);
-  const [fullName, setFullName] = useSessionState('auth:register:fullName', '');
+  const [firstName, setFirstName] = useSessionState('auth:register:firstName', '');
+  const [lastName, setLastName] = useSessionState('auth:register:lastName', '');
   const [username, setUsername] = useSessionState('auth:register:username', '');
   const [email, setEmail] = useSessionState('auth:register:email', '');
   const [password, setPassword] = useSessionState('auth:register:password', '');
@@ -112,7 +113,7 @@ export function RegisterPage() {
         body: JSON.stringify({
           email: email.trim(),
           username: username.trim(),
-          fullName: fullName.trim()
+          fullName: `${firstName.trim()} ${lastName.trim()}`.trim()
         })
       });
       const payload = await response.json().catch(() => ({}));
@@ -138,7 +139,7 @@ export function RegisterPage() {
     event.preventDefault();
     setError('');
 
-    if (!fullName.trim() || !username.trim() || !email.trim() || !password || !confirmPassword) {
+    if (!firstName.trim() || !lastName.trim() || !username.trim() || !email.trim() || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
     }
@@ -196,7 +197,7 @@ export function RegisterPage() {
           username: username.trim(),
           password,
           otp,
-          fullName: fullName.trim()
+          fullName: `${firstName.trim()} ${lastName.trim()}`.trim()
         })
       });
       const payload = await response.json().catch(() => ({}));
@@ -205,7 +206,8 @@ export function RegisterPage() {
       }
 
       saveAuthSession(payload.token, payload.user);
-      sessionStorage.removeItem('auth:register:fullName');
+      sessionStorage.removeItem('auth:register:firstName');
+      sessionStorage.removeItem('auth:register:lastName');
       sessionStorage.removeItem('auth:register:username');
       sessionStorage.removeItem('auth:register:email');
       sessionStorage.removeItem('auth:register:password');
@@ -240,15 +242,27 @@ export function RegisterPage() {
     >
       {!otpStage ? (
       <form className="space-y-4" onSubmit={handleSubmit}>
-        <div>
-          <label className="mb-2 block text-sm font-medium text-[#d7d7d7]">Full Name</label>
-          <input
-            autoComplete="name"
-            className="h-11 w-full rounded-2xl border border-white/10 bg-[#181818] px-4 text-white outline-none transition-colors placeholder:text-[#6f6f6f] focus:border-white/20"
-            value={fullName}
-            onChange={(event) => setFullName(event.target.value)}
-            placeholder="Enter your full name"
-          />
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <label className="mb-2 block text-sm font-medium text-[#d7d7d7]">First Name</label>
+            <input
+              autoComplete="given-name"
+              className="h-11 w-full rounded-2xl border border-white/10 bg-[#181818] px-4 text-white outline-none transition-colors placeholder:text-[#6f6f6f] focus:border-white/20"
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
+              placeholder="First name"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="mb-2 block text-sm font-medium text-[#d7d7d7]">Last Name</label>
+            <input
+              autoComplete="family-name"
+              className="h-11 w-full rounded-2xl border border-white/10 bg-[#181818] px-4 text-white outline-none transition-colors placeholder:text-[#6f6f6f] focus:border-white/20"
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
+              placeholder="Last name"
+            />
+          </div>
         </div>
         <div>
           <label className="mb-2 block text-sm font-medium text-[#d7d7d7]">Username</label>

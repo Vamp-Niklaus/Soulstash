@@ -192,6 +192,7 @@ export class GatewayFacade {
     this.app.get('/api/series/:id/credits', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/credits`));
     this.app.get('/api/series/:id/season/:season', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/season/${req.params.season}`));
     this.app.get('/api/person/:id', (req, res) => proxyTMDB(req, res, `/3/person/${req.params.id}?append_to_response=combined_credits`));
+    this.app.get('/api/person/:id/credits', (req, res) => proxyTMDB(req, res, `/3/person/${req.params.id}/combined_credits`));
 
     this.app.use('/api/search', async (req: Request, res: Response) => {
       try {

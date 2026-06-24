@@ -326,6 +326,26 @@ export function DetailPage({ type }) {
           }
         }
       } else {
+        if (targetCollection === 'Watched' && status.watchlist) {
+          if (window.CollectionStore?.removeFromCollection) {
+            await window.CollectionStore.removeFromCollection('Watchlist', payload.movieId, payload.seriesId);
+          } else {
+            await apiFetch(`/api/user/collections/Watchlist/remove`, {
+              method: 'POST',
+              body: JSON.stringify({ id: Number(id) })
+            });
+          }
+        } else if (targetCollection === 'Watchlist' && status.watched) {
+          if (window.CollectionStore?.removeFromCollection) {
+            await window.CollectionStore.removeFromCollection('Watched', payload.movieId, payload.seriesId);
+          } else {
+            await apiFetch(`/api/user/collections/Watched/remove`, {
+              method: 'POST',
+              body: JSON.stringify({ id: Number(id) })
+            });
+          }
+        }
+
         if (window.CollectionStore?.addToCollection) {
           await window.CollectionStore.addToCollection(targetCollection, payload);
         } else {

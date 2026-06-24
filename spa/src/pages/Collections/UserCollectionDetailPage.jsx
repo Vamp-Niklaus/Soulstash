@@ -162,7 +162,8 @@ export function UserCollectionDetailPage() {
 
   async function confirmRemoveFromCollection() {
     if (!removeTarget) return;
-    if (!collection?._id) return;
+    const collectionId = collection?._id || collection?.name || decodedCollectionName;
+    if (!collectionId) return;
     const pendingRemoval = removeTarget;
     const target = (collection.movies || []).find(
       (item) => Number(item.movieId || item.seriesId || item.id || item._id || 0) === Number(pendingRemoval.itemId)
@@ -170,7 +171,6 @@ export function UserCollectionDetailPage() {
     if (!target) return;
     setRemoveTarget(null);
 
-    const collectionId = collection._id;
     const itemId = Number(target.movieId || target.seriesId || target.id || target._id || 0);
 
     // Optimistically move item out of collection cache and into trash
@@ -185,8 +185,7 @@ export function UserCollectionDetailPage() {
           {
             method: 'POST',
             body: JSON.stringify({
-              ...(target.movieId ? { movieId: Number(target.movieId) } : {}),
-              ...(target.seriesId ? { seriesId: Number(target.seriesId) } : {})
+              id: itemId
             })
           }
         );
@@ -223,26 +222,25 @@ export function UserCollectionDetailPage() {
     );
   }
 
-  if (!collection?.name) {
-    return <div className="app-error">{publicError || 'Collection not found.'}</div>;
-  }
-
-
   return (
     <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">
-      <div className="pb-6">
-        <CollectionDetailPane
-          username={username}
-          collection={collection}
-          filters={filters}
-          setFilters={setFilters}
-          watchedIds={watchedIds}
-          onOpenDrawer={() => setDrawerOpen(true)}
-          onRemoveFromCollection={handleRemoveFromCollection}
-          isOwner={isOwner}
-          useBannerAsBackdrop
-        />
-      </div>
+      {collection?.name ? (
+        <div className="pb-6">
+          <CollectionDetailPane
+            username={username}
+            collection={collection}
+            filters={filters}
+            setFilters={setFilters}
+            watchedIds={watchedIds}
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onRemoveFromCollection={handleRemoveFromCollection}
+            isOwner={isOwner}
+            useBannerAsBackdrop
+          />
+        </div>
+      ) : (
+        <div className="app-error">{publicError || 'Collection not found.'}</div>
+      )}
       {isOwner ? (
         <CollectionSearchDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} collection={collection} onAdd={handleAddToCollection} pendingItems={pendingItems} />
       ) : null}

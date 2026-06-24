@@ -409,27 +409,53 @@ export class ContentController {
         return;
       }
 
-      // Simplified placeholder for the original IMDB resolution.
       const results = [];
+      const OMDB_API_KEY = process.env.OMDB_API_KEY || '8c17fc8a'; // Fallback to free test key like original monolith
+      const fetch = global.fetch || require('node-fetch');
+
       for (const rawItem of rawItems) {
         const tmdbID = Number(rawItem?.tmdbID || rawItem?.contentId || rawItem?.id || 0);
-        const mediaType = String(rawItem?.mediaType || rawItem?.media_type || rawItem?.type);
+        let mediaType = String(rawItem?.mediaType || rawItem?.media_type || rawItem?.type).toLowerCase();
+        if (mediaType === 'series') mediaType = 'tv';
         if (!tmdbID) continue;
-        
-        results.push({
-          tmdbID,
-          mediaType,
-          imdbID: '',
-          imdb_rating: null,
-          vote_average: null,
-          source: 'error'
-        });
+
+        try {
+          // First, get the IMDB ID from TMDB
+          const tmdbApiKey = config.get('tmdbApiKey') || process.env.TMDB_API_KEY;
+          const tmdbRes = await fetch(`https://api.themoviedb.org/3/${mediaType === 'movie' ? 'movie' : 'tv'}/${tmdbID}/external_ids?api_key=${tmdbApiKey}`);
+          const tmdbData = await tmdbRes.json().catch(() => ({}));
+
+          const imdbId = tmdbData.imdb_id;
+          if (!imdbId) {
+             results.push({ tmdbID, mediaType, imdb_rating: null, source: 'no_imdb_id' });
+             continue;
+          }
+
+          // Next, fetch rating from OMDB API using the IMDB ID
+          const omdbRes = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=${OMDB_API_KEY}`);
+          const omdbData = await omdbRes.json().catch(() => ({}));
+
+          if (omdbData.Response === 'True' && omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
+             results.push({ 
+               tmdbID, 
+               mediaType, 
+               imdbID: imdbId,
+               imdb_rating: parseFloat(omdbData.imdbRating),
+               source: 'omdb'
+             });
+          } else {
+             results.push({ tmdbID, mediaType, imdbID: imdbId, imdb_rating: null, source: 'omdb_failed' });
+          }
+        } catch (itemErr) {
+          logger.error(`[ContentController] Error enriching rating for tmdbID=${tmdbID}:`, itemErr);
+          results.push({ tmdbID, mediaType, imdb_rating: null, source: 'error' });
+        }
       }
 
       res.json({ items: results });
     } catch (error: any) {
       logger.error(`[ContentController] Error enriching ratings: ${error.message}`);
-      res.status(500).json({ error: 'Failed to enrich IMDB ratings' });
+      res.status(500).json({ error: 'Failed to enrich ratings' });
     }
   }
 }

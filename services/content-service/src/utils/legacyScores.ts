@@ -91,7 +91,7 @@ export function normalize(item: any, type: string) {
 export function normalizePerson(person: any) {
   return {
     id: person.id,
-    media_type: 'person',
+    media_type: 'Person',
     title: person.name || '',
     name: person.name || '',
     poster_path: person.profile_path || null,

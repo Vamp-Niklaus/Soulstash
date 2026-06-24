@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
-import { cachedApiFetch, getToken, apiFetch } from '../../api/client.js';
+import { cachedApiFetch, getToken, apiFetch, clearClientDataCaches } from '../../api/client.js';
 import { toast } from '../../utils/toast.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
@@ -65,6 +65,7 @@ export function FollowListPage({ listType }) {
           user.username === targetUsername ? { ...user, isFollowing: !isFollowing } : user
         )
       );
+      clearClientDataCaches();
     } catch (err) {
       toast(err.message, 'error');
     }
