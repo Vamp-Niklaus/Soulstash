@@ -53,17 +53,18 @@ export function EditProfilePage() {
           throw new Error(payload.error || 'Failed to load profile');
         }
         if (!cancelled) {
+          const userObj = payload.user || payload;
           setDraft({
-            username: payload.username || '',
-            firstName: payload.firstName || '',
-            lastName: payload.lastName || '',
-            dateOfBirth: payload.dateOfBirth || '',
-            bio: payload.bio || '',
-            instagramHandle: payload.instagramHandle || '',
-            xHandle: payload.xHandle || '',
-            youtubeHandle: payload.youtubeHandle || ''
+            username: userObj.username || '',
+            firstName: userObj.firstName || '',
+            lastName: userObj.lastName || '',
+            dateOfBirth: userObj.dateOfBirth || '',
+            bio: userObj.bio || '',
+            instagramHandle: userObj.instagramHandle || '',
+            xHandle: userObj.xHandle || '',
+            youtubeHandle: userObj.youtubeHandle || ''
           });
-          setAvatarPreview(payload.avatar || FALLBACK_AVATAR);
+          setAvatarPreview(userObj.avatar || FALLBACK_AVATAR);
         }
       })
       .catch((fetchError) => {
@@ -157,9 +158,9 @@ export function EditProfilePage() {
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {[
-              ['Username', 'username', true],
               ['First name', 'firstName', false],
               ['Last name', 'lastName', false],
+              ['Username', 'username', true],
               ['Date of birth', 'dateOfBirth', false]
             ].map(([label, key, disabled]) => (
               <div key={key}>

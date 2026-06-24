@@ -4,6 +4,7 @@ import { config } from '../../shared/src/utils/ConfigManager';
 import { logger } from '../../shared/src/utils/Logger';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 
 export class UserService {
   constructor(private userRepository: IUserRepository) {}
@@ -17,7 +18,7 @@ export class UserService {
     const hashedPassword = await bcrypt.hash(userData.passwordHash!, 10);
     
     const newUser = User.create({
-      id: userData.id || '',
+      id: userData.id || randomUUID(),
       username: userData.username!,
       email: userData.email!,
       passwordHash: hashedPassword

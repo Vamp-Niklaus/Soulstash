@@ -97,9 +97,9 @@ export function CollectionSearchDrawer({ open, onClose, collection, onAdd, pendi
     };
   }, [open, query]);
 
-  if (!open || !collection) return null;
+  if (!open) return null;
 
-  const existingIds = new Set((collection.movies || []).map((item) => Number(item.movieId || item.seriesId || item.id || item._id || 0)));
+  const existingIds = new Set((collection?.movies || []).map((item) => Number(item.movieId || item.seriesId || item.id || item._id || 0)));
   const contentResults = results.filter((item) => item.media_type === 'Movie' || item.media_type === 'Series' || item.media_type === 'tv');
 
   function handleDrawerInputKey(event) {
