@@ -7,12 +7,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/css': 'http://localhost:3001',
-      '/js': 'http://localhost:3001',
-      '/images': 'http://localhost:3001',
-      '/components': 'http://localhost:3001',
-      '/sw.js': 'http://localhost:3001'
+      '/api': 'http://127.0.0.1:3000'
     }
   },
   build: {
