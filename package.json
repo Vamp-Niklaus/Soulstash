@@ -18,6 +18,7 @@
     "@capacitor/core": "^8.3.4",
     "@capacitor/screen-orientation": "^8.0.1",
     "@videojs/react": "^10.0.0-beta.5",
+    "@vitejs/plugin-react": "^6.0.3",
     "acorn": "^8.16.0",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
@@ -46,7 +47,6 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.0.0",
-    "@vitejs/plugin-react": "^6.0.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },
