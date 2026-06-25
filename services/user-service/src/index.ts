@@ -28,6 +28,8 @@ app.post('/send-otp', (req, res) => authController.sendOtp(req, res));
 app.post('/verify-otp-and-register', (req, res) => authController.verifyOtpAndRegister(req, res));
 app.get('/check-username', (req, res) => authController.checkUsername(req, res));
 app.get('/me', (req, res) => authController.me(req, res));
+app.post('/forgot-password', (req, res) => authController.forgotPassword(req, res));
+app.post('/reset-password', (req, res) => authController.resetPassword(req, res));
 
 
 // User Collections (Proxied from Gateway)

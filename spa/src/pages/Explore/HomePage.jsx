@@ -52,7 +52,7 @@ export function HomePage() {
         console.log('[NAV-DEBUG] HomePage: jumping focus to firstCardRef');
         firstCardRef.current?.focus();
       } else {
-        console.log('[NAV-DEBUG] HomePage: focus already on content Ã¢â‚¬â€ letting useGridKeyNav handle it');
+        console.log('[NAV-DEBUG] HomePage: focus already on content - letting useGridKeyNav handle it');
       }
     };
 
@@ -109,7 +109,7 @@ export function HomePage() {
   }, [retryTick]);
 
   // Enrich ratings for any collection not yet attempted this session.
-  // We deliberately do NOT include `collections` in the dep array Ã¢â‚¬â€ we only
+  // We deliberately do NOT include `collections` in the dep array - we only
   // want to kick off enrichment once per load, not every time setCollections
   // updates state (which would create an infinite loop).
   useEffect(() => {
@@ -121,11 +121,11 @@ export function HomePage() {
       return !enrichedCollectionIdsRef.current.has(key);
     });
     if (!pending.length) {
-      console.log('[Soulstash][React][HomePage] enrichment effect Ã¢â‚¬â€ all collections already attempted, skipping');
+      console.log('[Soulstash][React][HomePage] enrichment effect - all collections already attempted, skipping');
       return undefined;
     }
 
-    console.log(`[Soulstash][React][HomePage] enrichment effect Ã¢â‚¬â€ queuing ${pending.length} collection(s):`, pending.map(c => c.name));
+    console.log(`[Soulstash][React][HomePage] enrichment effect - queuing ${pending.length} collection(s):`, pending.map(c => c.name));
 
     // Mark them as attempted immediately so re-renders don't re-queue them
     pending.forEach((c) => enrichedCollectionIdsRef.current.add(String(c._id || c.name)));

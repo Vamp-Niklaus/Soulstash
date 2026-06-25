@@ -114,8 +114,12 @@ export async function streamApiFetch(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const { signal, onEvent } = options;
-  const response = await fetch(path, { signal, headers });
+  const { signal, onEvent, method, body } = options;
+  if (body !== undefined && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const response = await fetch(path, { signal, headers, method, body });
+
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       clearAuthSession();

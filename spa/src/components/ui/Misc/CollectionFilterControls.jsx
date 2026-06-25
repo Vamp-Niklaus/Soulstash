@@ -102,7 +102,7 @@ export function CollectionFilterControls({
     };
   }, [animeMenuOpen, sortMenuOpen]);
 
-  // Close on outside click Ã¢â‚¬â€ but ignore clicks on the trigger itself (handled by toggle)
+  // Close on outside click - but ignore clicks on the trigger itself (handled by toggle)
   useEffect(() => {
     if (!animeMenuOpen && !sortMenuOpen) return undefined;
 
@@ -240,7 +240,7 @@ export function CollectionFilterControls({
         ))}
       </div>
 
-      {/* Anime filter trigger Ã¢â‚¬â€ dropdown rendered via portal into document.body */}
+      {/* Anime filter trigger - dropdown rendered via portal into document.body */}
       <div className={`relative flex-shrink-0 ${stacked ? 'max-w-full' : ''}`}>
         <button
           ref={triggerRef}

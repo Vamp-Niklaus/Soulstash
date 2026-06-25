@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams, useLocation, NavLink, Link } from 'react-router-dom';
-import { cachedApiFetch, apiFetch, getToken, getCurrentUsername } from '../../api/client.js';
-import { formatRuntime, getLanguageName, imageUrl, normalizeStoredCollectionItem, yearFrom, getPreferredRating, creditItemKey, creditMatchesCollectionItem, filterCreditsByCollectionItems, isContentInCollection, mediaRoute, getDirectorLabel, getDirectorPeople, getValidImdbRating, getValidVoteAverage, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters } from '../../utils/formatters.js';
-import { broadcastCollections, loadUserCollections, normalizeCollections, getCollectionStatus, getCachedUserCollections, refreshCollectionsView, loadRatingsTable, ratingsCacheKey, mergeRatingsTableCache, mergeImdbRatings, normalizeCredit } from '../../utils/helpers.js';
+import { cachedApiFetch, apiFetch, streamApiFetch, getToken, getCurrentUsername } from '../../api/client.js';
+import { formatRuntime, getLanguageName, imageUrl, normalizeStoredCollectionItem, yearFrom, getPreferredRating, creditItemKey, creditMatchesCollectionItem, filterCreditsByCollectionItems, isContentInCollection, mediaRoute, getDirectorLabel, getDirectorPeople, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters } from '../../utils/formatters.js';
+import { broadcastCollections, loadUserCollections, normalizeCollections, getCollectionStatus, getCachedUserCollections, refreshCollectionsView, normalizeCredit, mergeImdbRatings } from '../../utils/helpers.js';
 
 import { useAuthSession, useLiveCollections, useSessionState, useDropdownKeyNav } from '../../hooks/index.js';
 import { FALLBACK_AVATAR, FALLBACK_POSTER, CREDIT_PAGE_SIZE, AUTO_RECOVERY_RETRIES } from '../../utils/constants.js';
@@ -268,7 +268,6 @@ export function PersonPage() {
   const [retryTick, setRetryTick] = useState(0);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const { collections: liveCollections, loading: collectionsLoading } = useLiveCollections();
-  const attemptedCreditRatingBackfillRef = useRef('');
   const availableCollections = useMemo(
     () => normalizeCollections(liveCollections.length ? liveCollections : userCollections),
     [liveCollections, userCollections]
@@ -308,23 +307,42 @@ export function PersonPage() {
       setLoading(true);
       setLoadError('');
       try {
-        const [personData, creditData] = await Promise.all([
-          cachedApiFetch(`/api/person/${id}`),
-          cachedApiFetch(`/api/person/${id}/credits`)
-        ]);
+        // Fetch person info and stream credits in parallel.
+        // The credits stream sends 3 event types:
+        //   { type: 'credits', cast, crew }  — raw credits, render the grid immediately
+        //   { type: 'ratings', items }        — one batch of 6 resolved ratings, merge in
+        //   { type: 'done' }                  — stream finished
+        const personPromise = cachedApiFetch(`/api/person/${id}`);
+
+        let creditsResolved = false;
+        const creditsPromise = streamApiFetch(`/api/person/${id}/credits`, {
+          method: 'GET',
+          onEvent(event) {
+            if (ignore) return;
+            if (event?.type === 'credits') {
+              // First event: raw cast — stop showing skeleton immediately.
+              const rawCast = (event.cast || []).filter(
+                (item) => item.media_type === 'movie' || item.media_type === 'tv'
+              );
+              setCredits(rawCast);
+              setUserCollections(normalizeCollections(getCachedUserCollections()));
+              setLoading(false);
+              creditsResolved = true;
+            } else if (event?.type === 'ratings' && Array.isArray(event.items)) {
+              // Each batch of 6: paint ratings onto cards as they arrive.
+              setCredits((current) => mergeImdbRatings(current, event.items));
+            }
+          }
+        });
+
+        const [personData] = await Promise.all([personPromise, creditsPromise]);
 
         if (!ignore) {
           setPerson(personData);
-          setCredits(
-            (creditData.cast || []).filter((item) => {
-              if (item.media_type !== 'movie' && item.media_type !== 'tv') return false;
-              return true;
-            })
-          );
-          setUserCollections(normalizeCollections(getCachedUserCollections()));
+          document.title = `${personData.name} | Soulstash`;
           setFailedAttempts(0);
           setLoadError('');
-          document.title = `${personData.name} | Soulstash`;
+          if (!creditsResolved) setLoading(false);
         }
       } catch (error) {
         if (!ignore) {
@@ -334,16 +352,11 @@ export function PersonPage() {
               setLoadError(error.message || 'Unable to load this person right now.');
             } else {
               retryTimeout = window.setTimeout(() => {
-                if (!ignore) {
-                  setRetryTick((currentTick) => currentTick + 1);
-                }
+                if (!ignore) setRetryTick((currentTick) => currentTick + 1);
               }, 2500);
             }
             return next;
           });
-        }
-      } finally {
-        if (!ignore) {
           setLoading(false);
         }
       }
@@ -352,11 +365,10 @@ export function PersonPage() {
     load();
     return () => {
       ignore = true;
-      if (retryTimeout) {
-        window.clearTimeout(retryTimeout);
-      }
+      if (retryTimeout) window.clearTimeout(retryTimeout);
     };
   }, [auth.user?.admin, auth.user?.showAdult, id, retryTick]);
+
 
   useEffect(() => {
     setBioExpanded(false);
@@ -401,75 +413,6 @@ export function PersonPage() {
       ignore = true;
     };
   }, [liveCollections]);
-
-
-  useEffect(() => {
-    // Backfill items missing imdb_rating OR vote_average
-    const needsEnrich = credits.filter(
-      (item) => getValidImdbRating(item?.imdb_rating) == null || getValidVoteAverage(item?.vote_average) == null
-    );
-    const backfillKey = needsEnrich
-      .map((item) => `${mediaTypeFromItem(item)}:${contentIdFromItem(item)}`)
-      .sort()
-      .join('|');
-
-    if (!backfillKey || attemptedCreditRatingBackfillRef.current === backfillKey) {
-      if (needsEnrich.length) console.log(`[Soulstash][React][PersonPage] rating backfill already attempted for this credit set, skipping`);
-      return;
-    }
-    attemptedCreditRatingBackfillRef.current = backfillKey;
-
-    console.log(`[Soulstash][React][PersonPage] rating backfill START personId=${id} needsEnrich=${needsEnrich.length}`, needsEnrich.map(i => ({ title: i.title || i.name, imdb_rating: i.imdb_rating, vote_average: i.vote_average })));
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const cachedRatings = await loadRatingsTable();
-        const ratingsByKey = new Map(
-          (cachedRatings || []).map((item) => [ratingsCacheKey(item.tmdbID, item.mediaType), item])
-        );
-        const missingFromCache = needsEnrich.filter(
-          (item) => !ratingsByKey.has(ratingsCacheKey(contentIdFromItem(item), mediaTypeFromItem(item)))
-        );
-
-        let resolvedItems = needsEnrich
-          .map((item) => ratingsByKey.get(ratingsCacheKey(contentIdFromItem(item), mediaTypeFromItem(item))))
-          .filter(Boolean);
-
-        if (missingFromCache.length) {
-          const response = await apiFetch('/api/ratings/imdb/enrich', {
-            method: 'POST',
-            body: JSON.stringify({
-              items: missingFromCache.map((item) => ({
-                contentId: contentIdFromItem(item),
-                mediaType: mediaTypeFromItem(item)
-              }))
-            })
-          });
-          const fetchedItems = Array.isArray(response?.items) ? response.items : [];
-          mergeRatingsTableCache(fetchedItems);
-          resolvedItems = [...resolvedItems, ...fetchedItems];
-        }
-
-        if (!cancelled && resolvedItems.length) {
-          console.log(`[Soulstash][React][PersonPage] rating backfill DONE personId=${id} updatedCount=${resolvedItems.length}`, resolvedItems.map(i => ({ tmdbID: i.tmdbID, imdb_rating: i.imdb_rating, vote_average: i.vote_average, source: i.source })));
-          setCredits((current) => mergeImdbRatings(current, resolvedItems));
-        }
-      } catch (enrichError) {
-        if (!cancelled) {
-          console.warn('[Soulstash][React][PersonPage] Failed to enrich ratings', {
-            personId: id,
-            message: enrichError.message
-          });
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [credits, id]);
 
 
 

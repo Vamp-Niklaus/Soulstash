@@ -135,6 +135,24 @@ export class GatewayFacade {
     });
 
     // Content Service Proxy (Port 3002)
+    this.app.use('/api/player/sources', async (req: Request, res: Response) => {
+      try {
+        const fetch = global.fetch || require('node-fetch');
+        const queryStr = new URLSearchParams(req.query as any).toString();
+        const proxyUrl = `http://127.0.0.1:3002/player/sources${queryStr ? '?' + queryStr : ''}`;
+        const initOpts: any = { method: req.method, headers: { ...req.headers } };
+        delete initOpts.headers['content-length'];
+        delete initOpts.headers['content-type'];
+        delete initOpts.headers['host'];
+        const proxyRes = await fetch(proxyUrl, initOpts);
+        const data = await proxyRes.json();
+        res.status(proxyRes.status).json(data);
+      } catch (err) {
+        logger.error(`Content Service Proxy Error (/api/player/sources): ${err}`);
+        res.status(502).json({ error: 'Content Service is unavailable' });
+      }
+    });
+
     this.app.use('/api/home', async (req: Request, res: Response) => {
       try {
         const fetch = global.fetch || require('node-fetch');
