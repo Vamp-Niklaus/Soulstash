@@ -4,6 +4,8 @@ import { useAuthSession } from '../../hooks/index.js';
 import { toast } from '../../utils/toast.js';
 import { AuthPageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { AuthPageLayout } from '../../components/ui/Auth/AuthPageLayout.jsx';
+import { apiFetch } from '../../api/client.js';
+
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
   const { isLoggedIn } = useAuthSession();
@@ -44,19 +46,15 @@ export function ForgotPasswordPage() {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/forgot-password', {
+      const payload = await apiFetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim() })
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.error || 'Failed to send OTP');
-      }
       toast(payload.message || 'OTP sent to your email!');
       setStage('verify');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || err.payload?.error || 'Failed to send OTP');
     } finally {
       setLoading(false);
     }
@@ -85,7 +83,7 @@ export function ForgotPasswordPage() {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/reset-password', {
+      const payload = await apiFetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -94,14 +92,10 @@ export function ForgotPasswordPage() {
           newPassword
         })
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.error || 'Failed to reset password');
-      }
       toast(payload.message || 'Password reset successfully!', 'success');
       navigate('/login');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || err.payload?.error || 'Failed to reset password');
     } finally {
       setLoading(false);
     }
@@ -232,4 +226,3 @@ export function ForgotPasswordPage() {
     </AuthPageLayout>
   );
 }
-

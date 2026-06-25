@@ -14,7 +14,7 @@ export function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') 
 
       const container = containerRef.current;
       if (!container) {
-        console.log('[NAV-DEBUG] useGridKeyNav: key pressed but container still null Ã¢â‚¬â€ skipping');
+        console.log('[NAV-DEBUG] useGridKeyNav: key pressed but container still null - skipping');
         return;
       }
 
@@ -24,7 +24,7 @@ export function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') 
       console.log(`[NAV-DEBUG] useGridKeyNav key=${event.key} | cards found=${cards.length} | currentIndex=${currentIndex} | activeEl=`, current);
 
       if (currentIndex === -1) {
-        console.log('[NAV-DEBUG] useGridKeyNav: focused element not in card list Ã¢â‚¬â€ no-op');
+        console.log('[NAV-DEBUG] useGridKeyNav: focused element not in card list - no-op');
         return;
       }
 
@@ -49,14 +49,14 @@ export function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') 
         cards[nextIndex].focus();
         cards[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       } else {
-        console.log(`[NAV-DEBUG] useGridKeyNav: nextIndex=${nextIndex} out of range [0..${cards.length-1}] Ã¢â‚¬â€ at edge`);
+        console.log(`[NAV-DEBUG] useGridKeyNav: nextIndex=${nextIndex} out of range [0..${cards.length-1}] - at edge`);
       }
     };
 
     console.log('[NAV-DEBUG] useGridKeyNav: window keydown listener registered (will resolve container on each key press)');
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  // Empty deps Ã¢â‚¬â€ register once, resolve ref dynamically on every key press
+  // Empty deps - register once, resolve ref dynamically on every key press
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

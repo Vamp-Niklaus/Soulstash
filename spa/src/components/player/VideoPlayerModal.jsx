@@ -258,7 +258,7 @@ export function VideoPlayerModal({ request, onClose }) {
           payload = await apiFetch(`/api/player/sources?${queryParams.toString()}`);
         } catch (fetchError) {
           if (ignore) return;
-          // 503 = TMDB down but backend may still scrape via fallback Ã¢â‚¬â€  keep polling
+          // 503 = TMDB down but backend may still scrape via fallback -  keep polling
           if (fetchError?.status === 503 && pollAttempt < MAX_POLL_ATTEMPTS) {
             pollAttempt++;
             setSourceState((prev) => ({
@@ -270,7 +270,7 @@ export function VideoPlayerModal({ request, onClose }) {
             setTimeout(() => !ignore && fetchSources(false), 4000);
             return;
           }
-          // Hard failure Ã¢â‚¬â€ show error but don't hide fallback sources
+          // Hard failure - show error but don't hide fallback sources
           setSourceState({
             loading: false,
             cacheHit: false,
@@ -285,7 +285,7 @@ export function VideoPlayerModal({ request, onClose }) {
         applyPayload(payload);
 
         if (payload?.scraping && pollAttempt < MAX_POLL_ATTEMPTS) {
-          // Backend is still scraping Ã¢â‚¬â€ keep polling until it finishes or we hit the limit
+          // Backend is still scraping - keep polling until it finishes or we hit the limit
           pollAttempt++;
           setTimeout(() => !ignore && fetchSources(false), 4000);
         } else {
@@ -310,7 +310,7 @@ export function VideoPlayerModal({ request, onClose }) {
     };
   }, [request]);
 
-  // legacySources removed Ã¢â‚¬â€ buildPlayerSourceSlots covers all 8 fixed slots.
+  // legacySources removed - buildPlayerSourceSlots covers all 8 fixed slots.
 
   const sources = useMemo(() => buildPlayerSourceSlots(hindiSources, fallbackSources, sourceState.loading), [hindiSources, fallbackSources, sourceState.loading]);
 
@@ -429,7 +429,7 @@ export function VideoPlayerModal({ request, onClose }) {
     if (!isAndroidViewport || event.pointerType !== 'touch') return;
     if (!event.target.closest('[data-player-drag-handle]')) return;
     if (event.target.closest('button, a')) return;
-    // Don't preventDefault here Ã¢â‚¬â€ wait for movement threshold so taps
+    // Don't preventDefault here - wait for movement threshold so taps
     // pass through to the iframe for play/pause controls.
 
     dragStateRef.current = {

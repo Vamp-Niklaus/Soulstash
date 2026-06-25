@@ -103,7 +103,7 @@ function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') {
 
       const container = containerRef.current;
       if (!container) {
-        console.log('[NAV-DEBUG] useGridKeyNav: key pressed but container still null Ã¢â‚¬â€ skipping');
+        console.log('[NAV-DEBUG] useGridKeyNav: key pressed but container still null - skipping');
         return;
       }
 
@@ -113,7 +113,7 @@ function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') {
       console.log(`[NAV-DEBUG] useGridKeyNav key=${event.key} | cards found=${cards.length} | currentIndex=${currentIndex} | activeEl=`, current);
 
       if (currentIndex === -1) {
-        console.log('[NAV-DEBUG] useGridKeyNav: focused element not in card list Ã¢â‚¬â€ no-op');
+        console.log('[NAV-DEBUG] useGridKeyNav: focused element not in card list - no-op');
         return;
       }
 
@@ -138,14 +138,14 @@ function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') {
         cards[nextIndex].focus();
         cards[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       } else {
-        console.log(`[NAV-DEBUG] useGridKeyNav: nextIndex=${nextIndex} out of range [0..${cards.length-1}] Ã¢â‚¬â€ at edge`);
+        console.log(`[NAV-DEBUG] useGridKeyNav: nextIndex=${nextIndex} out of range [0..${cards.length-1}] - at edge`);
       }
     };
 
     console.log('[NAV-DEBUG] useGridKeyNav: window keydown listener registered (will resolve container on each key press)');
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  // Empty deps Ã¢â‚¬â€ register once, resolve ref dynamically on every key press
+  // Empty deps - register once, resolve ref dynamically on every key press
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
@@ -241,7 +241,7 @@ function HomePage() {
         console.log('[NAV-DEBUG] HomePage: jumping focus to firstCardRef');
         firstCardRef.current?.focus();
       } else {
-        console.log('[NAV-DEBUG] HomePage: focus already on content Ã¢â‚¬â€ letting useGridKeyNav handle it');
+        console.log('[NAV-DEBUG] HomePage: focus already on content - letting useGridKeyNav handle it');
       }
     };
 
@@ -298,7 +298,7 @@ function HomePage() {
   }, [retryTick]);
 
   // Enrich ratings for any collection not yet attempted this session.
-  // We deliberately do NOT include `collections` in the dep array Ã¢â‚¬â€ we only
+  // We deliberately do NOT include `collections` in the dep array - we only
   // want to kick off enrichment once per load, not every time setCollections
   // updates state (which would create an infinite loop).
   useEffect(() => {
@@ -310,11 +310,11 @@ function HomePage() {
       return !enrichedCollectionIdsRef.current.has(key);
     });
     if (!pending.length) {
-      console.log('[Soulstash][React][HomePage] enrichment effect Ã¢â‚¬â€ all collections already attempted, skipping');
+      console.log('[Soulstash][React][HomePage] enrichment effect - all collections already attempted, skipping');
       return undefined;
     }
 
-    console.log(`[Soulstash][React][HomePage] enrichment effect Ã¢â‚¬â€ queuing ${pending.length} collection(s):`, pending.map(c => c.name));
+    console.log(`[Soulstash][React][HomePage] enrichment effect - queuing ${pending.length} collection(s):`, pending.map(c => c.name));
 
     // Mark them as attempted immediately so re-renders don't re-queue them
     pending.forEach((c) => enrichedCollectionIdsRef.current.add(String(c._id || c.name)));

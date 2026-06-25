@@ -208,4 +208,100 @@ export class AuthController {
       res.status(400).json({ error: error.message || 'Failed to register' });
     }
   }
+
+  public async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ error: 'Email is required' });
+        return;
+      }
+      
+      const coll = await (this.userService as any).userRepository.connect();
+      const existingUser = await coll.findOne({ email });
+      if (!existingUser) {
+        res.status(404).json({ error: 'Email not registered' });
+        return;
+      }
+
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      otpStore.set(email, { otp, expiresAt: Date.now() + 10 * 60 * 1000 });
+      
+      try {
+        const BREVO_API_KEY = process.env.BREVO_API_KEY;
+        if (BREVO_API_KEY) {
+          const fetch = global.fetch || require('node-fetch');
+          const html = `<html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+            <h2>Soulstash Password Reset</h2>
+            <p>Your password reset OTP:</p>
+            <div style="background:#f4f4f4;padding:20px;text-align:center;margin:20px 0;border-radius:5px">
+              <h1 style="font-size:32px;letter-spacing:5px;color:#007bff;margin:0">${otp}</h1>
+            </div>
+            <p>Expires in 10 minutes. Do not share.</p>
+          </body></html>`;
+          
+          await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+              'accept': 'application/json',
+              'api-key': BREVO_API_KEY,
+              'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+              sender: { name: 'Soulstash', email: process.env.SENDER_EMAIL || 'soulstash.onrender@gmail.com' },
+              to: [{ email, name: existingUser.fullName || existingUser.username }],
+              subject: 'Password Reset - Soulstash',
+              htmlContent: html
+            })
+          });
+        } else {
+          logger.warn('BREVO_API_KEY not found, skipping email send');
+        }
+      } catch (emailErr) {
+        logger.error('Forgot password email failed:', emailErr);
+      }
+
+      res.json({ message: 'OTP sent to email', otp: process.env.NODE_ENV === 'development' ? otp : undefined });
+    } catch (err) {
+      logger.error('Forgot password error:', err);
+      res.status(500).json({ error: 'Failed to process request' });
+    }
+  }
+
+  public async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email, otp, newPassword } = req.body;
+      const record = otpStore.get(email);
+      if (!record || record.otp !== otp) {
+        res.status(400).json({ error: 'Invalid or expired OTP' });
+        return;
+      }
+      if (Date.now() > record.expiresAt) {
+        otpStore.delete(email);
+        res.status(400).json({ error: 'OTP has expired' });
+        return;
+      }
+
+      const coll = await (this.userService as any).userRepository.connect();
+      const existingUser = await coll.findOne({ email });
+      if (!existingUser) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      const bcrypt = require('bcryptjs');
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      
+      await coll.updateOne({ email }, { $set: { password: hashedPassword } });
+
+      otpStore.delete(email);
+
+      res.status(200).json({ 
+        message: 'Password reset successfully!'
+      });
+    } catch (error: any) {
+      logger.error('Password reset failed', error);
+      res.status(400).json({ error: error.message || 'Failed to reset password' });
+    }
+  }
 }

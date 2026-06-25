@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, buildLegacyPlayerSources, getPreferredRating, getValidImdbRating, getValidVoteAverage, yearFrom } from './formatters.js';
+import { contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, buildLegacyPlayerSources, getPreferredRating, getValidImdbRating, getValidVoteAverage, yearFrom, normalizeMediaType } from './formatters.js';
 import { HOME_TRENDING_TTL } from './constants.js';
 import { cachedApiFetch, getToken, getCurrentUsername, emitAuthChange } from '../api/client.js';
 import { Capacitor } from '@capacitor/core';
@@ -437,7 +437,7 @@ export async function enrichCollectionRatingsInBackground(collection, logPrefix 
       (getValidImdbRating(item?.imdb_rating) == null || getValidVoteAverage(item?.vote_average) == null)
   );
   if (!needsEnrich.length) {
-    console.log(`${logPrefix} enrichCollectionRatingsInBackground SKIP Ã¢â‚¬â€ all ratings present collection="${collection.name}"`);
+    console.log(`${logPrefix} enrichCollectionRatingsInBackground SKIP - all ratings present collection="${collection.name}"`);
     return null;
   }
 
@@ -452,22 +452,31 @@ export async function enrichCollectionRatingsInBackground(collection, logPrefix 
   );
 
   if (needsBackendEnrich.length) {
-    const ratingsResponse = await apiFetch('/api/ratings/imdb/enrich', {
+    // Stream results back item-by-item instead of waiting for the whole
+    // batch: each rating gets merged into the local cache and written back
+    // to the collection as soon as it arrives, so already-resolved titles
+    // show up in the UI while the rest are still being looked up.
+    const streamedItems = [];
+    await streamApiFetch('/api/ratings/imdb/enrich', {
       method: 'POST',
       body: JSON.stringify({
         items: needsBackendEnrich.map((item) => ({
           contentId: contentIdFromItem(item),
           mediaType: mediaTypeFromItem(item)
         }))
-      })
+      }),
+      onEvent(event) {
+        if (event?.type !== 'item' || !event.item) return;
+        console.log(`${logPrefix} enrichCollectionRatingsInBackground /enrich item`, event.item, `(${event.resolved}/${event.total})`);
+        streamedItems.push(event.item);
+        mergeRatingsTableCache([event.item]);
+        ratingsByKey.set(ratingsCacheKey(event.item.tmdbID, event.item.mediaType), event.item);
+      }
     });
 
-    console.log(`${logPrefix} enrichCollectionRatingsInBackground /enrich response`, ratingsResponse?.items);
-    mergeRatingsTableCache(ratingsResponse?.items || []);
-    (ratingsResponse?.items || []).forEach((item) => {
-      ratingsByKey.set(ratingsCacheKey(item.tmdbID, item.mediaType), item);
-    });
+    console.log(`${logPrefix} enrichCollectionRatingsInBackground /enrich stream DONE count=${streamedItems.length}`);
   }
+
 
   const items = needsEnrich
     .map((item) => {
@@ -815,13 +824,13 @@ export function hasActivePersonFilters({ contentType, quickFilter, collectionFil
 
 export function mergeImdbRatings(items, ratingItems) {
   const ratingsByKey = new Map(
-    (ratingItems || []).map((item) => [`${item.mediaType}:${item.tmdbID}`, item])
+    (ratingItems || []).map((item) => [ratingsCacheKey(item.tmdbID, item.mediaType), item])
   );
 
   return (items || []).map((item) => {
     const contentId = contentIdFromItem(item);
     const mediaType = mediaTypeFromItem(item);
-    const ratingMatch = ratingsByKey.get(`${mediaType}:${contentId}`);
+    const ratingMatch = ratingsByKey.get(ratingsCacheKey(contentId, mediaType));
     if (!ratingMatch) return item;
 
     const nextRating = getValidImdbRating(ratingMatch.imdb_rating);
@@ -976,7 +985,7 @@ export function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') 
 
       const container = containerRef.current;
       if (!container) {
-        console.log('[NAV-DEBUG] useGridKeyNav: key pressed but container still null Ã¢â‚¬â€ skipping');
+        console.log('[NAV-DEBUG] useGridKeyNav: key pressed but container still null - skipping');
         return;
       }
 
@@ -986,7 +995,7 @@ export function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') 
       console.log(`[NAV-DEBUG] useGridKeyNav key=${event.key} | cards found=${cards.length} | currentIndex=${currentIndex} | activeEl=`, current);
 
       if (currentIndex === -1) {
-        console.log('[NAV-DEBUG] useGridKeyNav: focused element not in card list Ã¢â‚¬â€ no-op');
+        console.log('[NAV-DEBUG] useGridKeyNav: focused element not in card list - no-op');
         return;
       }
 
@@ -1011,14 +1020,14 @@ export function useGridKeyNav(containerRef, itemSelector = 'button[data-card]') 
         cards[nextIndex].focus();
         cards[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       } else {
-        console.log(`[NAV-DEBUG] useGridKeyNav: nextIndex=${nextIndex} out of range [0..${cards.length-1}] Ã¢â‚¬â€ at edge`);
+        console.log(`[NAV-DEBUG] useGridKeyNav: nextIndex=${nextIndex} out of range [0..${cards.length-1}] - at edge`);
       }
     };
 
     console.log('[NAV-DEBUG] useGridKeyNav: window keydown listener registered (will resolve container on each key press)');
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  // Empty deps Ã¢â‚¬â€ register once, resolve ref dynamically on every key press
+  // Empty deps - register once, resolve ref dynamically on every key press
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

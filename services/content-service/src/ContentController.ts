@@ -4,8 +4,27 @@ import { IContentProvider } from '../../shared/src/interfaces/IContentProvider';
 import { logger } from '../../shared/src/utils/Logger';
 import { config } from '../../shared/src/utils/ConfigManager';
 
-import { MongoRatingsRepository } from './repositories/MongoRatingsRepository';
+import { MongoRatingsRepository, INVALID_IMDB_SENTINEL, SEVEN_DAYS_MS } from './repositories/MongoRatingsRepository';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { scrapeImdbFilmography, matchCreditsToFilmography } = require('./utils/imdbScraper');
+
+let omdbKeyIndex = 0;
+function getOmdbKey(): string {
+  const keys = [
+    process.env.OMDB_API_KEY1,
+    process.env.OMDB_API_KEY2,
+    process.env.OMDB_API_KEY3,
+    process.env.OMDB_API_KEY4,
+    process.env.OMDB_API_KEY5,
+  ].filter(k => typeof k === 'string' && k.trim() !== '');
+
+  if (keys.length === 0) return 'e2abb062';
+  
+  const key = keys[omdbKeyIndex % keys.length] as string;
+  omdbKeyIndex++;
+  return key;
+}
 /**
  * Controller for Content-related routes.
  */
@@ -349,6 +368,362 @@ export class ContentController {
     }
   }
 
+  // Same "looks fake / not a real rating" guard used on the frontend
+  // (getValidImdbRating / getValidVoteAverage): treat <=0, exactly 10, or
+  // >=9.4 as unreliable and report it as null so it renders "N/A" instead
+  // of a number nobody asked to fetch.
+  private static sanitizeRating(value: any): number | null {
+    const rating = Number(value);
+    if (!Number.isFinite(rating) || rating <= 0 || rating === 10 || rating >= 9.4) return null;
+    return rating;
+  }
+
+  /**
+   * Resolve ratings for a batch of credit items.
+   *
+   * Strategy per item:
+   *  1. Check DB cache via findCachedRating (cache-first, no external call needed).
+   *  2. Cache miss → fetch TMDB detail to get imdb_id + vote_average.
+   *  3. If imdb_id found → fetch OMDB for imdb_rating (retries on network fail).
+   *  4. If OMDB network fails after all retries → fall back to vote_average only.
+   *  5. If OMDB returns N/A or no rating → sentinel stored, vote_average used.
+   *  6. If no imdb_id from TMDB → sentinel stored, vote_average used.
+   *  7. vote_average >= 9.4 is stripped (treated as unreliable placeholder).
+   *
+   * Both imdb_rating and vote_average are included in the result so the UI
+   * can prefer imdb_rating and fall back to vote_average automatically.
+   */
+  private async resolveAllRatings(items: any[] = []): Promise<any[]> {
+    const list = Array.isArray(items) ? items : [];
+    const eligible = list.filter(
+      (item) => item?.id && (item?.media_type === 'movie' || item?.media_type === 'tv')
+    );
+    if (!eligible.length || !this.ratingsRepo) return list;
+
+    // ── Step 1: Bulk cache lookup for all items at once ──────────────────────
+    const tmdbIds = [...new Set(eligible.map((item) => Number(item.id)).filter(Boolean))];
+    const cachedRecords = await this.ratingsRepo.getRatings({ tmdbID: { $in: tmdbIds } }, tmdbIds.length).catch(() => []);
+
+    // Build a map of valid cached records (same rules as findCachedRating).
+    const cacheMap = new Map<string, any>();
+    for (const record of cachedRecords) {
+      const isSentinel = record.imdb_rating === INVALID_IMDB_SENTINEL;
+      const hasRealRating = typeof record.imdb_rating === 'number' &&
+        Number.isFinite(record.imdb_rating) &&
+        record.imdb_rating > 0 &&
+        !isSentinel;
+
+      if (hasRealRating) {
+        cacheMap.set(`${record.mediaType}:${record.tmdbID}`, record);
+        continue;
+      }
+      if (isSentinel) {
+        const ageMs = record.updatedAt ? Date.now() - new Date(record.updatedAt).getTime() : Infinity;
+        if (ageMs < SEVEN_DAYS_MS) {
+          cacheMap.set(`${record.mediaType}:${record.tmdbID}`, record);
+        }
+        // Older than 7 days → not added to cacheMap → will be re-fetched.
+      }
+      // null rating with no sentinel → not added → will be re-fetched.
+    }
+
+    // ── Step 2: Live-fetch everything not in cache (parallel, concurrency=6) ─
+    const needsFetch = eligible.filter((item) => {
+      const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+      return !cacheMap.has(`${mediaType}:${Number(item.id)}`);
+    });
+
+    if (needsFetch.length) {
+      logger.info(`[resolveAllRatings] cache=${eligible.length - needsFetch.length} fetch=${needsFetch.length}`);
+      const CONCURRENCY = 6;
+      let nextIndex = 0;
+      const worker = async () => {
+        while (true) {
+          const idx = nextIndex++;
+          if (idx >= needsFetch.length) return;
+          const item = needsFetch[idx];
+          const tmdbID = Number(item.id);
+          const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+          const tmdbEndpoint = item.media_type === 'tv' ? 'tv' : 'movie';
+          const cacheKey = `${mediaType}:${tmdbID}`;
+
+          try {
+            const tmdbApiKey = config.get('tmdbApiKey') || process.env.TMDB_API_KEY;
+
+            // Use imdb_id already on the TMDB credit object when available
+            // (movies usually have it; TV shows don't — need external_ids).
+            let imdbId: string = typeof item.imdb_id === 'string' ? item.imdb_id.trim() : '';
+            let voteAverage: number | null = null;
+
+            // Always fetch TMDB detail: we need vote_average + imdb_id for TV,
+            // and vote_average is more accurate from the detail endpoint anyway.
+            const tmdbData = await this.fetchTmdbDetailWithRetry(
+              `https://api.themoviedb.org/3/${tmdbEndpoint}/${tmdbID}?api_key=${tmdbApiKey}&append_to_response=external_ids&language=en-US`,
+              `TMDB detail tmdbID=${tmdbID}`
+            );
+            imdbId = imdbId || tmdbData.imdb_id || tmdbData.external_ids?.imdb_id || '';
+            voteAverage = ContentController.sanitizeRating(tmdbData.vote_average ?? item.vote_average);
+
+            if (!imdbId) {
+              // No IMDB ID available — store sentinel, use vote_average only.
+              const doc = {
+                tmdbID, mediaType, imdbID: '',
+                imdb_rating: INVALID_IMDB_SENTINEL,
+                vote_average: voteAverage,
+                lookup_attempted: true, source: 'no_imdb_id'
+              };
+              await this.ratingsRepo!.saveRating(doc).catch(() => {});
+              cacheMap.set(cacheKey, doc);
+              continue;
+            }
+
+            // Fetch OMDB. fetchOmdbWithRetry already retries on network failure.
+            const omdbData: any = await this.fetchOmdbWithRetry(imdbId);
+            const omdbRatingStr: string = omdbData?.imdbRating || '';
+            const imdbRating = omdbRatingStr && omdbRatingStr !== 'N/A'
+              ? ContentController.sanitizeRating(parseFloat(omdbRatingStr))
+              : null;
+
+            const doc = {
+              tmdbID, mediaType, imdbID: imdbId,
+              // Store sentinel when imdb_rating is null so we don't re-fetch for 7 days.
+              imdb_rating: imdbRating ?? INVALID_IMDB_SENTINEL,
+              vote_average: voteAverage,
+              lookup_attempted: true,
+              source: imdbRating != null ? 'omdb'
+                : omdbRatingStr === 'N/A' ? 'omdb_na'
+                : Object.keys(omdbData).length === 0 ? 'omdb_network_fail'
+                : 'omdb_failed'
+            };
+            await this.ratingsRepo!.saveRating(doc).catch(() => {});
+            cacheMap.set(cacheKey, doc);
+
+          } catch (err: any) {
+            // Transient error — don't write sentinel, allow retry next time.
+            logger.warn(`[resolveAllRatings] error tmdbID=${tmdbID}: ${err.message}`);
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, needsFetch.length) }, () => worker()));
+    }
+
+    // ── Step 3: Merge resolved ratings back onto the original list ───────────
+    return list.map((item) => {
+      if (!item?.id || (item?.media_type !== 'movie' && item?.media_type !== 'tv')) return item;
+
+      const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+      const record = cacheMap.get(`${mediaType}:${Number(item.id)}`);
+      if (!record) return item; // fetch failed transiently — send raw item
+
+      const isSentinel = record.imdb_rating === INVALID_IMDB_SENTINEL;
+      return {
+        ...item,
+        imdb_id: String(record.imdbID || item.imdb_id || '').trim(),
+        // Return null when sentinel — UI will show N/A.
+        imdb_rating: isSentinel ? null : ContentController.sanitizeRating(record.imdb_rating),
+        // Prefer the more-accurate detail-endpoint vote_average from our record;
+        // sanitizeRating strips >= 9.4 here too.
+        vote_average: record.vote_average ?? ContentController.sanitizeRating(item.vote_average),
+        rating_lookup_attempted: true
+      };
+    });
+  }
+
+
+  public async getPersonCredits(req: Request, res: Response): Promise<void> {
+    try {
+      const personId = req.params.id;
+      logger.info(`[ContentController] Fetching person credits personId=${personId}`);
+
+      // Fetch person detail (for imdb_id) + credits in parallel
+      const [personDetail, payload] = await Promise.all([
+        this.provider.getRawTMDB(`/3/person/${personId}?language=en-US`).catch(() => ({})),
+        this.provider.getRawTMDB(`/3/person/${personId}/combined_credits?language=en-US`)
+      ]);
+      const imdbPersonId: string = (personDetail as any)?.imdb_id || '';
+
+      const cast: any[] = Array.isArray(payload.cast) ? payload.cast : [];
+      const crew: any[] = Array.isArray(payload.crew) ? payload.crew : [];
+
+      // Stream response as NDJSON so the frontend can render credits immediately
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders?.();
+
+      let clientClosed = false;
+      req.on('close', () => { clientClosed = true; });
+
+      const write = (obj: any) => {
+        if (!clientClosed && !res.writableEnded) res.write(`${JSON.stringify(obj)}\n`);
+      };
+
+      // First line: raw credits — frontend renders the grid instantly.
+      write({ type: 'credits', cast, crew });
+
+      // De-dupe by tmdbID+mediaType
+      const eligible = [...cast, ...crew].filter(
+        (item) => item?.id && (item?.media_type === 'movie' || item?.media_type === 'tv')
+      );
+      const seen = new Set<string>();
+      const unique = eligible.filter((item) => {
+        const key = `${item.media_type === 'tv' ? 'Series' : 'Movie'}:${Number(item.id)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (!unique.length || !this.ratingsRepo) {
+        write({ type: 'done' });
+        if (!res.writableEnded) res.end();
+        return;
+      }
+
+      // Kick off IMDB scrape in parallel with the DB cache check (if we have an imdb person id)
+      const imdbScrapePromise: Promise<Map<string, any>> = imdbPersonId
+        ? scrapeImdbFilmography(imdbPersonId)
+            .then((filmography: any[]) => matchCreditsToFilmography(unique, filmography))
+            .catch((err: any) => {
+              logger.warn(`[getPersonCredits] IMDB scrape failed: ${err.message}`);
+              return new Map<string, any>();
+            })
+        : Promise.resolve(new Map<string, any>());
+
+      // Bulk cache check up-front
+      const tmdbIds = unique.map((item) => Number(item.id));
+      const cachedRecords = await this.ratingsRepo.getRatings({ tmdbID: { $in: tmdbIds } }, tmdbIds.length).catch(() => []);
+      const cacheMap = new Map<string, any>();
+      for (const record of cachedRecords) {
+        const isSentinel = record.imdb_rating === INVALID_IMDB_SENTINEL;
+        const hasRealRating = typeof record.imdb_rating === 'number' &&
+          Number.isFinite(record.imdb_rating) && record.imdb_rating > 0 && !isSentinel;
+        if (hasRealRating) { cacheMap.set(`${record.mediaType}:${record.tmdbID}`, record); continue; }
+        if (isSentinel) {
+          const ageMs = record.updatedAt ? Date.now() - new Date(record.updatedAt).getTime() : Infinity;
+          if (ageMs < SEVEN_DAYS_MS) cacheMap.set(`${record.mediaType}:${record.tmdbID}`, record);
+        }
+      }
+
+      // Flush cached items immediately
+      const cachedResults: any[] = [];
+      const needsFetch: any[] = [];
+      for (const item of unique) {
+        const key = `${item.media_type === 'tv' ? 'Series' : 'Movie'}:${Number(item.id)}`;
+        const record = cacheMap.get(key);
+        if (record) {
+          const isSentinel = record.imdb_rating === INVALID_IMDB_SENTINEL;
+          cachedResults.push({
+            tmdbID: Number(item.id),
+            mediaType: item.media_type === 'tv' ? 'Series' : 'Movie',
+            imdb_id: String(record.imdbID || item.imdb_id || '').trim(),
+            imdb_rating: isSentinel ? null : ContentController.sanitizeRating(record.imdb_rating),
+            vote_average: record.vote_average ?? ContentController.sanitizeRating(item.vote_average),
+            rating_lookup_attempted: true
+          });
+        } else {
+          needsFetch.push(item);
+        }
+      }
+
+      if (cachedResults.length) write({ type: 'ratings', items: cachedResults });
+
+      if (needsFetch.length) {
+        // Wait for the IMDB scrape to settle before processing needsFetch
+        const imdbMatchMap = await imdbScrapePromise;
+        logger.info(`[getPersonCredits] IMDB scrape matched ${imdbMatchMap.size}/${needsFetch.length} items`);
+
+        // Split: IMDB-matched (fast path) vs still-needs-TMDB+OMDB
+        const imdbMatched: any[] = [];
+        const stillNeedsFetch: any[] = [];
+
+        for (const item of needsFetch) {
+          const tmdbID = Number(item.id);
+          const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+          const mapKey = `${tmdbID}:${mediaType}`;
+          const match = imdbMatchMap.get(mapKey);
+          if (match && match.imdb_rating != null) {
+            imdbMatched.push({ item, match });
+          } else {
+            stillNeedsFetch.push(item);
+          }
+        }
+
+        // Flush IMDB-scraped ratings immediately + persist to DB
+        if (imdbMatched.length) {
+          const imdbResults = await Promise.all(imdbMatched.map(async ({ item, match }) => {
+            const tmdbID = Number(item.id);
+            const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+            const imdbRating = ContentController.sanitizeRating(match.imdb_rating);
+            const voteAverage = ContentController.sanitizeRating(item.vote_average);
+            const imdbId: string = match.imdb_id || '';
+            const doc = {
+              tmdbID, mediaType, imdbID: imdbId,
+              imdb_rating: imdbRating ?? INVALID_IMDB_SENTINEL,
+              vote_average: voteAverage,
+              lookup_attempted: true,
+              source: 'imdb_scrape'
+            };
+            await this.ratingsRepo!.saveRating(doc).catch(() => {});
+            return { tmdbID, mediaType, imdb_id: imdbId, imdb_rating: imdbRating, vote_average: voteAverage, rating_lookup_attempted: true };
+          }));
+          write({ type: 'ratings', items: imdbResults });
+        }
+
+        // Fall through to TMDB+OMDB for anything the scrape didn't cover
+        const BATCH_SIZE = 6;
+        let i = 0;
+        while (!clientClosed && i < stillNeedsFetch.length) {
+          const batch = stillNeedsFetch.slice(i, i + BATCH_SIZE);
+          i += BATCH_SIZE;
+
+          const batchResults = await Promise.all(batch.map(async (item) => {
+            const tmdbID = Number(item.id);
+            const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+            const tmdbEndpoint = item.media_type === 'tv' ? 'tv' : 'movie';
+            try {
+              const tmdbApiKey = config.get('tmdbApiKey') || process.env.TMDB_API_KEY;
+              let imdbId: string = typeof item.imdb_id === 'string' ? item.imdb_id.trim() : '';
+              const tmdbData = await this.fetchTmdbDetailWithRetry(
+                `https://api.themoviedb.org/3/${tmdbEndpoint}/${tmdbID}?api_key=${tmdbApiKey}&append_to_response=external_ids&language=en-US`,
+                `TMDB detail tmdbID=${tmdbID}`
+              );
+              imdbId = imdbId || tmdbData.imdb_id || tmdbData.external_ids?.imdb_id || '';
+              const voteAverage = ContentController.sanitizeRating(tmdbData.vote_average ?? item.vote_average);
+
+              if (!imdbId) {
+                const doc = { tmdbID, mediaType, imdbID: '', imdb_rating: INVALID_IMDB_SENTINEL, vote_average: voteAverage, lookup_attempted: true, source: 'no_imdb_id' };
+                await this.ratingsRepo!.saveRating(doc).catch(() => {});
+                return { tmdbID, mediaType, imdb_id: '', imdb_rating: null, vote_average: voteAverage, rating_lookup_attempted: true };
+              }
+
+              const omdbData: any = await this.fetchOmdbWithRetry(imdbId);
+              const omdbRatingStr: string = omdbData?.imdbRating || '';
+              const imdbRating = omdbRatingStr && omdbRatingStr !== 'N/A'
+                ? ContentController.sanitizeRating(parseFloat(omdbRatingStr)) : null;
+
+              const doc = { tmdbID, mediaType, imdbID: imdbId, imdb_rating: imdbRating ?? INVALID_IMDB_SENTINEL, vote_average: voteAverage, lookup_attempted: true, source: imdbRating != null ? 'omdb' : omdbRatingStr === 'N/A' ? 'omdb_na' : 'omdb_failed' };
+              await this.ratingsRepo!.saveRating(doc).catch(() => {});
+              return { tmdbID, mediaType, imdb_id: imdbId, imdb_rating: imdbRating, vote_average: voteAverage, rating_lookup_attempted: true };
+            } catch (err: any) {
+              logger.warn(`[getPersonCredits] error tmdbID=${tmdbID}: ${err.message}`);
+              return null;
+            }
+          }));
+
+          const validResults = batchResults.filter(Boolean);
+          if (validResults.length) write({ type: 'ratings', items: validResults });
+        }
+      }
+
+      write({ type: 'done' });
+      if (!res.writableEnded) res.end();
+    } catch (error: any) {
+      logger.error(`[ContentController] Error fetching person credits: ${error.message}`);
+      if (!res.headersSent) res.status(500).json({ error: 'Failed to fetch person credits', details: error.message });
+      else if (!res.writableEnded) res.end();
+    }
+  }
+
   public async proxyTMDB(req: Request, res: Response): Promise<void> {
     try {
       const endpoint = req.header('x-tmdb-endpoint');
@@ -401,61 +776,239 @@ export class ContentController {
     }
   }
 
+  // Small retry-with-backoff wrapper for the TMDB detail call. A dropped
+  // connection (ECONNRESET, timeout, DNS hiccup) shouldn't permanently sink
+  // an item — retry a couple of times with a short backoff before giving up.
+  private async fetchTmdbDetailWithRetry(url: string, context: string, maxRetries = 3): Promise<any> {
+    const fetch = global.fetch || require('node-fetch');
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          if (response.status === 404) return {};
+          if (attempt === maxRetries) {
+            logger.warn(`[ContentController] ${context} failed with status ${response.status} after ${attempt} attempts`);
+            return {};
+          }
+          await new Promise((r) => setTimeout(r, 300 * attempt));
+          continue;
+        }
+        return await response.json().catch(() => ({}));
+      } catch (err: any) {
+        if (attempt === maxRetries) {
+          logger.warn(`[ContentController] ${context} network error after ${attempt} attempts: ${err.message}`);
+          return {};
+        }
+        logger.warn(`[ContentController] ${context} network error attempt ${attempt}/${maxRetries}, retrying: ${err.message}`);
+        await new Promise((r) => setTimeout(r, 300 * attempt));
+      }
+    }
+    return {};
+  }
+
+  // Same idea for OMDB, but layered on top of the existing key-rotation logic:
+  // an "Invalid API key" response rotates to the next key immediately (no
+  // delay needed), while a network-level failure (ECONNRESET, timeout) gets
+  // a short backoff before retrying with a (possibly different) key.
+  private async fetchOmdbWithRetry(imdbId: string, maxAttempts = 4): Promise<any> {
+    const fetch = global.fetch || require('node-fetch');
+    let networkFailures = 0;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const currentOmdbKey = getOmdbKey();
+      try {
+        logger.info(`Fetching OMDB data for imdbID=${imdbId} using key starting with ${currentOmdbKey.substring(0, 2)}... (attempt ${attempt}/${maxAttempts})`);
+        const omdbRes = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=${currentOmdbKey}`);
+        const omdbData = await omdbRes.json().catch(() => ({}));
+
+        if (omdbData.Response === 'False' && omdbData.Error === 'Invalid API key!') {
+          logger.warn(`OMDB Key Invalid (${currentOmdbKey.substring(0, 2)}...), retrying with next key...`);
+          continue;
+        }
+        return omdbData;
+      } catch (err: any) {
+        networkFailures++;
+        if (attempt === maxAttempts) {
+          logger.warn(`[ContentController] OMDB fetch network error imdbID=${imdbId} after ${attempt} attempts: ${err.message}`);
+          return {};
+        }
+        logger.warn(`[ContentController] OMDB fetch network error imdbID=${imdbId} attempt ${attempt}/${maxAttempts}, retrying: ${err.message}`);
+        await new Promise((r) => setTimeout(r, 300 * networkFailures));
+      }
+    }
+    return {};
+  }
+
+  private async resolveOneRating(rawItem: any): Promise<any> {
+    const tmdbID = Number(rawItem?.tmdbID || rawItem?.contentId || rawItem?.id || 0);
+    let mediaType = String(rawItem?.mediaType || rawItem?.media_type || rawItem?.type).toLowerCase();
+    if (mediaType === 'series') mediaType = 'tv';
+    const normalizedMediaType = mediaType === 'tv' ? 'Series' : 'Movie';
+    if (!tmdbID) return null;
+
+    // ── Cache-first: check DB before hitting any external API ──────────────
+    // findCachedRating returns the record if it's still valid (real rating or
+    // sentinel < 7 days old). A null means we must go fetch.
+    try {
+      const cached = await this.ratingsRepo?.findCachedRating(tmdbID, normalizedMediaType);
+      if (cached) {
+        const isSentinel = cached.imdb_rating === INVALID_IMDB_SENTINEL;
+        logger.info(`[resolveOneRating] cache HIT tmdbID=${tmdbID} mediaType=${normalizedMediaType} sentinel=${isSentinel}`);
+        return {
+          tmdbID,
+          mediaType: normalizedMediaType,
+          imdbID: cached.imdbID || '',
+          // Sentinel means we successfully determined there's no real rating.
+          // Return null so the UI shows "N/A" — but we still report lookup_attempted
+          // so the UI knows we tried and won't re-queue this item.
+          imdb_rating: isSentinel ? null : ContentController.sanitizeRating(cached.imdb_rating),
+          vote_average: ContentController.sanitizeRating(cached.vote_average),
+          lookup_attempted: true,
+          source: cached.source || 'cache'
+        };
+      }
+    } catch (cacheErr: any) {
+      // Non-fatal — just log and continue to live fetch.
+      logger.warn(`[resolveOneRating] cache lookup failed tmdbID=${tmdbID}: ${cacheErr.message}`);
+    }
+
+    // ── Live fetch: TMDB → OMDB ────────────────────────────────────────────
+    try {
+      // If the frontend already gave us the IMDB ID on the item, use it directly
+      // to skip one TMDB round-trip.
+      let imdbId: string = typeof rawItem?.imdb_id === 'string' ? rawItem.imdb_id.trim() : '';
+      let voteAverage: number | null = null;
+
+      if (!imdbId) {
+        const tmdbApiKey = config.get('tmdbApiKey') || process.env.TMDB_API_KEY;
+        logger.info(`[resolveOneRating] TMDB fetch START tmdbID=${tmdbID} mediaType=${mediaType}`);
+        const tmdbData = await this.fetchTmdbDetailWithRetry(
+          `https://api.themoviedb.org/3/${mediaType === 'movie' ? 'movie' : 'tv'}/${tmdbID}?api_key=${tmdbApiKey}&append_to_response=external_ids&language=en-US`,
+          `TMDB detail tmdbID=${tmdbID}`
+        );
+        imdbId = tmdbData.imdb_id || tmdbData.external_ids?.imdb_id || '';
+        voteAverage = tmdbData.vote_average ?? null;
+        logger.info(`[resolveOneRating] TMDB response tmdbID=${tmdbID} imdb_id=${imdbId || 'null'} vote_average=${voteAverage}`);
+      } else {
+        voteAverage = rawItem?.vote_average ?? null;
+      }
+
+      if (!imdbId) {
+        // No IMDB ID found — save sentinel so we don't hammer TMDB for 7 days.
+        const sentinelDoc = {
+          tmdbID,
+          mediaType: normalizedMediaType,
+          imdbID: '',
+          imdb_rating: INVALID_IMDB_SENTINEL,
+          vote_average: ContentController.sanitizeRating(voteAverage),
+          lookup_attempted: true,
+          source: 'no_imdb_id'
+        };
+        await this.ratingsRepo?.saveRating(sentinelDoc).catch(() => {});
+        return { ...sentinelDoc, imdb_rating: null }; // return null to UI (sentinel is internal)
+      }
+
+      // Fetch OMDB rating using the IMDB ID.
+      const omdbData: any = await this.fetchOmdbWithRetry(imdbId);
+
+      if (omdbData.Response === 'True' && omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
+        const realRating = ContentController.sanitizeRating(parseFloat(omdbData.imdbRating));
+        const doc = {
+          tmdbID,
+          mediaType: normalizedMediaType,
+          imdbID: imdbId,
+          // If sanitizeRating filtered it out (e.g. suspicious score), store sentinel
+          // so we don't keep retrying, but return null to the UI.
+          imdb_rating: realRating ?? INVALID_IMDB_SENTINEL,
+          vote_average: ContentController.sanitizeRating(voteAverage),
+          lookup_attempted: true,
+          source: 'omdb'
+        };
+        await this.ratingsRepo?.saveRating(doc).catch(() => {});
+        return { ...doc, imdb_rating: realRating };
+      }
+
+      // OMDB returned N/A or nothing usable — save sentinel for 7-day cooldown.
+      if (omdbData.imdbRating === 'N/A') {
+        logger.info(`[resolveOneRating] OMDB N/A for imdbID=${imdbId} (unreleased/unknown)`);
+      } else {
+        logger.warn(`[resolveOneRating] OMDB miss for imdbID=${imdbId}: ${omdbData.Error || 'no rating field'}`);
+      }
+
+      const sentinelDoc = {
+        tmdbID,
+        mediaType: normalizedMediaType,
+        imdbID: imdbId,
+        imdb_rating: INVALID_IMDB_SENTINEL,
+        vote_average: ContentController.sanitizeRating(voteAverage),
+        lookup_attempted: true,
+        source: omdbData.imdbRating === 'N/A' ? 'omdb_na' : 'omdb_failed'
+      };
+      await this.ratingsRepo?.saveRating(sentinelDoc).catch(() => {});
+      return { ...sentinelDoc, imdb_rating: null }; // return null to UI
+
+    } catch (itemErr: any) {
+      logger.error(`[resolveOneRating] unhandled error tmdbID=${tmdbID}: ${itemErr.message}`);
+      // Do NOT save sentinel here — this was a network/runtime error, not a
+      // confirmed "no rating" result. Let the next request retry.
+      return { tmdbID, mediaType: normalizedMediaType, imdbID: '', imdb_rating: null, lookup_attempted: true, source: 'error' };
+    }
+  }
+
+
   public async enrichRatings(req: Request, res: Response): Promise<void> {
     try {
       const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
+      logger.info(`Received enrichRatings request with ${rawItems.length} items`);
       if (!rawItems.length) {
         res.status(400).json({ error: 'Items are required' });
         return;
       }
 
-      const results = [];
-      const OMDB_API_KEY = process.env.OMDB_API_KEY || '8c17fc8a'; // Fallback to free test key like original monolith
-      const fetch = global.fetch || require('node-fetch');
+      // Stream results back as NDJSON: each item is resolved (TMDB -> imdbID -> OMDB
+      // rating) and written to the response the moment it's ready, instead of
+      // buffering the whole batch and sending one big JSON payload at the end.
+      // A small worker pool keeps several lookups in flight at once without making
+      // any single item wait on the rest of a fixed-size chunk to finish.
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders?.();
 
-      for (const rawItem of rawItems) {
-        const tmdbID = Number(rawItem?.tmdbID || rawItem?.contentId || rawItem?.id || 0);
-        let mediaType = String(rawItem?.mediaType || rawItem?.media_type || rawItem?.type).toLowerCase();
-        if (mediaType === 'series') mediaType = 'tv';
-        if (!tmdbID) continue;
+      let clientClosed = false;
+      req.on('close', () => { clientClosed = true; });
 
-        try {
-          // First, get the IMDB ID from TMDB
-          const tmdbApiKey = config.get('tmdbApiKey') || process.env.TMDB_API_KEY;
-          const tmdbRes = await fetch(`https://api.themoviedb.org/3/${mediaType === 'movie' ? 'movie' : 'tv'}/${tmdbID}/external_ids?api_key=${tmdbApiKey}`);
-          const tmdbData = await tmdbRes.json().catch(() => ({}));
+      const writeEvent = (payload: any) => {
+        if (!clientClosed && !res.writableEnded) res.write(`${JSON.stringify(payload)}\n`);
+      };
 
-          const imdbId = tmdbData.imdb_id;
-          if (!imdbId) {
-             results.push({ tmdbID, mediaType, imdb_rating: null, source: 'no_imdb_id' });
-             continue;
+      const CONCURRENCY = 6;
+      let nextIndex = 0;
+      let resolvedCount = 0;
+
+      const worker = async () => {
+        while (!clientClosed) {
+          const index = nextIndex++;
+          if (index >= rawItems.length) return;
+          const result = await this.resolveOneRating(rawItems[index]);
+          resolvedCount++;
+          if (result) {
+            writeEvent({ type: 'item', item: result, resolved: resolvedCount, total: rawItems.length });
           }
-
-          // Next, fetch rating from OMDB API using the IMDB ID
-          const omdbRes = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=${OMDB_API_KEY}`);
-          const omdbData = await omdbRes.json().catch(() => ({}));
-
-          if (omdbData.Response === 'True' && omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
-             results.push({ 
-               tmdbID, 
-               mediaType, 
-               imdbID: imdbId,
-               imdb_rating: parseFloat(omdbData.imdbRating),
-               source: 'omdb'
-             });
-          } else {
-             results.push({ tmdbID, mediaType, imdbID: imdbId, imdb_rating: null, source: 'omdb_failed' });
-          }
-        } catch (itemErr) {
-          logger.error(`[ContentController] Error enriching rating for tmdbID=${tmdbID}:`, itemErr);
-          results.push({ tmdbID, mediaType, imdb_rating: null, source: 'error' });
         }
-      }
+      };
 
-      res.json({ items: results });
+      const workers = Array.from({ length: Math.min(CONCURRENCY, rawItems.length) }, () => worker());
+      await Promise.all(workers);
+
+      writeEvent({ type: 'done', total: rawItems.length, resolved: resolvedCount });
+      res.end();
     } catch (error: any) {
       logger.error(`[ContentController] Error enriching ratings: ${error.message}`);
-      res.status(500).json({ error: 'Failed to enrich ratings' });
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to enrich ratings' });
+      } else {
+        res.end();
+      }
     }
   }
 }

@@ -202,11 +202,11 @@ export function UserCollectionsPage() {
       return !enrichedCollectionIdsRef.current.has(key);
     });
     if (!pending.length) {
-      console.log('[Soulstash][React][CollectionsPage] enrichment effect Ã¢â‚¬â€ all needy collections already attempted, skipping');
+      console.log('[Soulstash][React][CollectionsPage] enrichment effect - all needy collections already attempted, skipping');
       return undefined;
     }
 
-    console.log(`[Soulstash][React][CollectionsPage] enrichment effect Ã¢â‚¬â€ queuing ${pending.length} collection(s):`, pending.map(c => c.name));
+    console.log(`[Soulstash][React][CollectionsPage] enrichment effect - queuing ${pending.length} collection(s):`, pending.map(c => c.name));
 
     // Mark as attempted immediately to prevent re-queuing on re-renders
     pending.forEach((c) => enrichedCollectionIdsRef.current.add(String(c._id || c.name)));
@@ -397,11 +397,11 @@ export function UserCollectionsPage() {
           await refreshCollectionsView();
         }
       }
-      // Backend confirmed Ã¢â‚¬â€ permanently purge from trash
+      // Backend confirmed - permanently purge from trash
       confirmTrashItem(collectionId, itemId);
       toast(`Removed ${pendingRemoval.title}`);
     } catch (error) {
-      // Backend failed Ã¢â‚¬â€ restore item from trash back into the collection
+      // Backend failed - restore item from trash back into the collection
       restoreTrashItem(collectionId, itemId);
       setRemoveTarget(pendingRemoval);
       toast(error.message, 'error');

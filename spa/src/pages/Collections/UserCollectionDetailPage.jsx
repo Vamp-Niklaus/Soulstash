@@ -45,7 +45,7 @@ export function UserCollectionDetailPage() {
   }, [decodedCollectionName]);
 
   useEffect(() => {
-    // Owner sees their own collection from the live cache Ã¢â‚¬â€ no public fetch needed.
+    // Owner sees their own collection from the live cache - no public fetch needed.
     if (isOwner) {
       setPublicLoading(false);
       return;
@@ -195,11 +195,11 @@ export function UserCollectionDetailPage() {
           await refreshCollectionsView();
         }
       }
-      // Backend confirmed Ã¢â‚¬â€ permanently purge from trash
+      // Backend confirmed - permanently purge from trash
       confirmTrashItem(collectionId, itemId);
       toast(`Removed ${pendingRemoval.title}`);
     } catch (error) {
-      // Backend failed Ã¢â‚¬â€ restore item from trash back into the collection
+      // Backend failed - restore item from trash back into the collection
       restoreTrashItem(collectionId, itemId);
       setRemoveTarget(pendingRemoval);
       toast(error.message, 'error');
