@@ -11,7 +11,7 @@ export class TMDBAdapter implements IContentProvider {
   private readonly token: string;
 
   constructor() {
-    this.baseUrl = config.get('tmdbBaseUrl') || 'https://api.themoviedb.org';
+    this.baseUrl = (config.get('tmdbBaseUrl') || 'https://api.tmdb.org').replace('api.themoviedb.org', 'api.tmdb.org');
     this.token = config.get('tmdbBearerToken') || '';
   }
 

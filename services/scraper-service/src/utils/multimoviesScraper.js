@@ -1268,7 +1268,9 @@ async function scrapeMultimoviesTitle(input, options = {}) {
 
         const servers = await resolveServersFromPlayerPage(effectiveUrl, html, fetchImpl, logger, 0, new Set(), { onSource: options.onSource });
         if (servers.some((s) => s.available)) playerResults.push({ playerUrl: effectiveUrl, playerTitle: extractPlayerTitle(html), years: extractPlayerYears(html), languageHint: /hindi|\u0939\u093f\u0928\u094d\u0926\u0940|\u0939\u093f\u0902\u0926\u0940/i.test(html) ? 'hindi' : '', servers, downloads: dls });
-      } catch {}
+      } catch (err) {
+        logger.log(`[Scraper] Failed to fetch embed URL ${url}: ${err.message}`);
+      }
     }));
   }
 

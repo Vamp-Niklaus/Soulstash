@@ -78,7 +78,7 @@ async function fetchTmdbPlayerIdentity({ mediaType, tmdbId, seasonNumber, episod
   const detail = await detailResp.json();
   const episodeDetail = episodeResp?.ok ? await episodeResp.json() : {};
   const ep1Detail = ep1Resp?.ok ? await ep1Resp.json() : {};
-  
+
   const title = normalizedMediaType === 'movie' ? detail.title || detail.original_title || '' : detail.name || detail.original_name || '';
   const yearValue = detail.release_date || detail.first_air_date || '';
   const year = Number(String(yearValue).slice(0, 4)) || null;
@@ -205,7 +205,7 @@ async function refreshPlayerSourceRecord(identity) {
     return { ok: false, reason: 'failed' };
   });
 
-  // YouTube Scraper (no API key â€” uses yt-search public scraping)
+  // YouTube Scraper (no API key — uses yt-search public scraping)
   const youtubePromise = (async () => {
     try {
       const tmdbRuntimeMin = (identity.mediaType === 'series' ? identity.episodeRuntime : identity.runtime) || 0;
@@ -259,7 +259,7 @@ async function refreshPlayerSourceRecord(identity) {
         const vt = normTitle(videoTitle);
         if (!titleWords.length) return 0;
         const matched = titleWords.filter(w => vt.includes(w)).length;
-        return matched / titleWords.length; // 0â€“1
+        return matched / titleWords.length; // 0–1
       };
 
       const scoreVideo = (v, queryIndex) => {
@@ -267,7 +267,7 @@ async function refreshPlayerSourceRecord(identity) {
         let score = 0;
         // Query-position bonus (earlier = more specific)
         score += (ytQueries.length - queryIndex) * 4;
-        // Title similarity (0â€“100 points)
+        // Title similarity (0–100 points)
         score += titleSimilarity(v.title) * 100;
         // Language
         if (vt.includes('hindi dubbed')) score += 50;
@@ -307,7 +307,7 @@ async function refreshPlayerSourceRecord(identity) {
             const s = scoreVideo(v, qi);
             if (
               s > bestScore ||
-              // Same score â€” prefer longer video
+              // Same score — prefer longer video
               (s === bestScore && bestYtVideo && v.seconds > bestYtVideo.seconds)
             ) {
               bestScore = s;
@@ -324,7 +324,7 @@ async function refreshPlayerSourceRecord(identity) {
 
       if (bestYtVideo) {
         const durationMin = Math.round(bestYtVideo.seconds / 60);
-        console.log(`[YouTube Scraper] âœ“ Best match (query #${bestQueryIndex + 1}): "${bestYtVideo.title}" | ${durationMin} min | score=${Math.round(bestScore)} | titleSim=${(titleSimilarity(bestYtVideo.title) * 100).toFixed(0)}%`);
+        console.log(`[YouTube Scraper] ✔ Best match (query #${bestQueryIndex + 1}): "${bestYtVideo.title}" | ${durationMin} min | score=${Math.round(bestScore)} | titleSim=${(titleSimilarity(bestYtVideo.title) * 100).toFixed(0)}%`);
         const ytPlayer = {
           sourceKey: 'youtube',
           serverName: 'YOUTUBE',
@@ -889,13 +889,112 @@ async function scrapeWithMultimoviesConfig(identity, options = {}) {
             console.log(`${logPrefix} Handing verified URL over to Method 3 scraper: ${preMatchedUrl}`);
           }
         }
-      } else if (expectedDesc && expectedDesc.length > 20) {
-        const movieSource = await db.collection(MOVIE_SOURCES_COLLECTION).findOne({ overview: overviewStr });
+      } else {
+        // Method 2 for movies: domain-agnostic search (base URL changes over time)
+        const { normalizeMultimoviesSlug, synopsisStats } = require('./multimoviesScraper');
+        let movieSource = null;
+
+        // Helper: extract just the path slug from any stored URL (e.g. "/movies/your-name/")
+        // Then re-attach the current active base URL so stale domains don't break lookups.
+        const extractMoviePath = (url) => {
+          try {
+            return new URL(url).pathname; // e.g. "/movies/your-name/"
+          } catch (e) { return null; }
+        };
+
+        // Priority 1: tmdbId match (most reliable — set after first successful scrape)
+        if (identity.tmdbId) {
+          movieSource = await db.collection(MOVIE_SOURCES_COLLECTION).findOne({ tmdbId: identity.tmdbId });
+          if (movieSource) {
+            console.log(`${logPrefix} [Priority 1] tmdbId match found in Movie_Sources: ${movieSource.url}`);
+          }
+        }
+
+        // Priority 2: path-slug search (domain-agnostic regex on the path portion)
+        if (!movieSource && identity.title) {
+          const slug = normalizeMultimoviesSlug(identity.title);
+          // Match only the path slug, not the full URL, so old and new domains both match
+          const candidateDocs = await db.collection(MOVIE_SOURCES_COLLECTION).find({
+            url: { $regex: `/movies/${slug}`, $options: 'i' }
+          }).toArray();
+
+          for (const doc of candidateDocs) {
+            if (doc.description && overviewStr && overviewStr.length > 20) {
+              const stats = synopsisStats(overviewStr, doc.description);
+              if (stats.phraseMatched || stats.overlapRatio >= 0.35) {
+                movieSource = doc;
+                console.log(`${logPrefix} [Priority 2] Slug+synopsis match found in Movie_Sources: ${doc.url}`);
+                // Link tmdbId for future fast lookups
+                if (identity.tmdbId) {
+                  db.collection(MOVIE_SOURCES_COLLECTION).updateOne(
+                    { _id: doc._id },
+                    { $set: { tmdbId: identity.tmdbId } }
+                  ).catch(() => {});
+                }
+                break;
+              }
+            } else if (candidateDocs.length === 1) {
+              // Only one slug candidate — safe to trust it
+              movieSource = doc;
+              console.log(`${logPrefix} [Priority 2] Single slug match in Movie_Sources: ${doc.url}`);
+              if (identity.tmdbId) {
+                db.collection(MOVIE_SOURCES_COLLECTION).updateOne(
+                  { _id: doc._id },
+                  { $set: { tmdbId: identity.tmdbId } }
+                ).catch(() => {});
+              }
+              break;
+            }
+          }
+        }
+
+        // Priority 3: exact overview string fallback
+        if (!movieSource && overviewStr && overviewStr.length > 20) {
+          movieSource = await db.collection(MOVIE_SOURCES_COLLECTION).findOne({ overview: overviewStr });
+          if (movieSource) {
+            console.log(`${logPrefix} [Priority 3] Exact overview match found in Movie_Sources: ${movieSource.url}`);
+          }
+        }
+
         if (movieSource && movieSource.url) {
-          console.log(`[Player Sources] Movie_Sources overview match for movie: ${identity.title}`);
-          preMatchedUrl = movieSource.url;
+          // Always reconstruct URL using the current active base URL (domain-agnostic)
+          const moviePath = extractMoviePath(movieSource.url);
+          preMatchedUrl = moviePath
+            ? `${currentBaseUrl.replace(/\/$/, '')}${moviePath}`
+            : movieSource.url;
+
+          if (preMatchedUrl !== movieSource.url) {
+            console.log(`${logPrefix} Domain remapped: ${movieSource.url} → ${preMatchedUrl}`);
+          }
+
+          // If cached sources already exist, return them immediately — skip Method 3 entirely
+          if (movieSource.sources && PREFERRED_SERVER_ORDER.some(k => (movieSource.sources[k] || []).length > 0)) {
+            const players = PREFERRED_SERVER_ORDER.map(sourceKey => {
+              const urls = movieSource.sources[sourceKey] || [];
+              const url = urls[0] || '';
+              if (!url) return null;
+              return { sourceKey, serverName: sourceKey.toUpperCase(), url, available: true, preferred: true };
+            }).filter(Boolean);
+
+            if (players.length) {
+              console.log(`${logPrefix} [✓ Cache Hit] Returning ${players.length} sources from Movie_Sources — skipping scrape.`);
+              const tableResult = {
+                ok: true,
+                status: 'success',
+                reason: 'movie-sources-hit',
+                searchKey: buildSearchKey(input),
+                pageUrl: preMatchedUrl,
+                players,
+                downloads: movieSource.downloads || []
+              };
+              if (typeof onTableHit === 'function') {
+                await onTableHit(tableResult).catch(err => console.error(`${logPrefix} onTableHit failed:`, err.message));
+              }
+              return tableResult;
+            }
+          }
         } else {
-          console.log(`[Method 2] Failed. No match found in Movie_Sources by synopsis.`);
+          console.log(`${logPrefix} [Method 2] Failed. No match found in Movie_Sources.`);
         }
       }
 
@@ -904,7 +1003,7 @@ async function scrapeWithMultimoviesConfig(identity, options = {}) {
       let pageResult;
       if (preMatchedUrl) {
          if (preMatchedHtml) {
-             // Use the HTML already fetched during Method 2 verification â€” no re-fetch needed!
+             // Use the HTML already fetched during Method 2 verification — no re-fetch needed!
              console.log(`[Player Sources] Using pre-fetched HTML from Method 2 verification for: ${preMatchedUrl}`);
              pageResult = {
                  ok: true,
@@ -964,7 +1063,7 @@ async function scrapeWithMultimoviesConfig(identity, options = {}) {
          } else {
             db.collection(MOVIE_SOURCES_COLLECTION).updateOne(
               { url: pageResult.pageUrl },
-              { $set: { overview: overviewStr } }
+              { $set: { overview: overviewStr, ...(identity.tmdbId ? { tmdbId: identity.tmdbId } : {}) } }
             ).catch(() => {});
          }
       }
@@ -1174,8 +1273,12 @@ function sanitizeProviderUrls(urls = []) {
   });
 }
 
+// ─── Exports ──────────────────────────────────────────────────────────────────
 
-
+/**
+ * Legacy Express handler — still used by index.ts directly.
+ * All new code should call PlayerSourcesService + PlayerSourcesController instead.
+ */
 exports.getPlayerSources = async (req, res) => {
   try {
     const mediaType = normalizePlayerMediaType(req.query.mediaType);
@@ -1236,17 +1339,17 @@ exports.getPlayerSources = async (req, res) => {
               cast: []
            };
 
-           // Per-episode lock: actively scraping â†’ skip TMDB calls entirely.
+           // Per-episode lock: actively scraping → skip TMDB calls entirely.
            const epLock = `series-${tmdbId}-s${seasonNumber}e${episodeNumber}`;
            if (refreshLocks.has(epLock) && !forceRefresh) {
-             console.log(`[Method 1] Episode ${seasonNumber}x${episodeNumber} is actively being scraped â€” skipping TMDB calls.`);
+             console.log(`[Method 1] Episode ${seasonNumber}x${episodeNumber} is actively being scraped — skipping TMDB calls.`);
              // return the "Wait for source" logic later? 
              // Actually, if it's already scraping, we can just proceed to the wait loop.
              identity = fastIdentity; 
            } else {
              const epStamp = masterDoc.episodes?.[`s${seasonNumber}e${episodeNumber}`]?.lastScrapeAttempt || 0;
              if (epStamp && (Date.now() - epStamp) < 120000 && !forceRefresh) {
-               console.log(`[Method 1] Episode ${seasonNumber}x${episodeNumber} recently attempted (${Math.round((Date.now()-epStamp)/1000)}s ago) â€” throttled, returning scraping:false.`);
+               console.log(`[Method 1] Episode ${seasonNumber}x${episodeNumber} recently attempted (${Math.round((Date.now()-epStamp)/1000)}s ago) — throttled, returning scraping:false.`);
                return res.json({ sources: [], cacheHit: false, scraping: false, notAvailable: false });
              }
            }
@@ -1398,85 +1501,37 @@ exports.getPlayerSources = async (req, res) => {
     // Start the scraper immediately so it can run while we check other fast paths
     const scrapePromise = refreshPlayerSourceRecord(identity);
 
-    // --- STEP 3: Fast-Path Synchronous Table Lookup (Movie_Sources) ---
-    // We do this in parallel by NOT awaiting the scrapePromise yet
-    if (!cachedRecord || forceRefresh) {
-      const cfg = await getMultimoviesConfig();
-      const activeBase = (cfg.baseUrls[0] || DEFAULT_MULTIMOVIES_BASE_URL).replace(/\/+$/, '');
-      const mediaSegment = identity.mediaType === 'movie' ? 'movies' : 'series';
-      const guessUrls = [
-        `${activeBase}/${mediaSegment}/${searchKey}/`,
-        `${activeBase}/${mediaSegment}/${searchKey}-${identity.year}/`,
-        `${activeBase}/${mediaSegment}/${searchKey}-2/`,
-      ];
+    // --- STEP 3: Return immediately with direct sources + pending placeholders while scraping ---
+    const epLock = identity.mediaType === 'series'
+      ? `series-${tmdbId}-s${seasonNumber}e${episodeNumber}`
+      : null;
+    const pendingDoc = cachedRecord || { mediaType, tmdbId, seasonNumber, episodeNumber };
+    const pendingPayload = buildPlayerSourcePayload(pendingDoc, identity, true);
+    res.json({
+      ...pendingPayload,
+      cacheHit: Boolean(cachedRecord),
+      scraping: true
+    });
 
-      for (const url of guessUrls) {
-        try {
-          const doc = await getDb().collection(MOVIE_SOURCES_COLLECTION).findOne({ url });
-          if (doc && doc.sources) {
-            const players = PREFERRED_SERVER_ORDER.map((sourceKey) => {
-              const urls = doc.sources[sourceKey] || [];
-              const u = urls[0] || '';
-              return u ? { sourceKey, serverName: sourceKey.toUpperCase(), url: u, available: true, preferred: true } : null;
-            }).filter(Boolean);
-
-            if (players.length) {
-              const tableResult = {
-                ok: true,
-                status: 'success',
-                reason: 'table-hit-guess',
-                searchKey,
-                pageUrl: url,
-                players,
-                downloads: doc.downloads || []
-              };
-              const incomingRecord = buildSourceHistoryRecord(tableResult, identity);
-              const mergedRecord = mergeSourceHistoryRecord(cachedRecord || {}, incomingRecord);
-
-              await collection.updateOne(
-                { searchKey },
-                {
-                  $set: Object.fromEntries(Object.entries(mergedRecord).filter(([k]) => k !== 'createdAt')),
-                  $unset: { metadata: '', pageUrl: '', pagePath: '' },
-                  $setOnInsert: { createdAt: new Date() }
-                },
-                { upsert: true }
-              );
-
-              const payload = buildPlayerSourcePayload(mergedRecord, identity, false);
-              if (!isRecentlyAttempted) {
-                refreshPlayerSourceRecord(identity).catch(() => {});
-              }
-              const isScrapingNow = refreshLocks.has(searchKey) || !isRecentlyAttempted;
-              console.log("************************** Movie_Sources Hit (Fast Path)");
-              return res.json({ ...payload, cacheHit: false, fastPath: true, scraping: isScrapingNow });
-            }
-          }
-        } catch (e) {
-          console.error('[Player Sources] Fast-path error:', e.message);
-        }
-      }
-    }
-
-    // --- STEP 5: Wait for at least one source (Incremental Resolution) ---
-    // If we still have no sources, wait up to 60 seconds for the background scraper to find one
-    console.log(`[Player Sources] Waiting up to 60s for first source from background scraper...`);
+    // --- STEP 5: Wait for first source to appear ---
     let waitAttempts = 0;
-    const epLock = mediaType === 'series' ? `series-${tmdbId}-s${seasonNumber}e${episodeNumber}` : null;
-    
-    while (waitAttempts < 120) {
+    const maxWaitAttempts = 120; // 60 seconds max (120 * 500ms)
+    while (waitAttempts < maxWaitAttempts) {
+      await new Promise(r => setTimeout(r, 500));
       const currentDoc = await collection.findOne({ tmdbId, mediaType });
-      let currentSourcesCount = 0;
-      if (currentDoc) {
+      const currentSourcesCount = (() => {
+        if (!currentDoc) return 0;
         if (mediaType === 'series') {
-          const epData = currentDoc.episodes?.[`s${seasonNumber}e${episodeNumber}`];
-          if (epData?.sources) {
-            currentSourcesCount = Object.values(epData.sources).flat().filter(Boolean).length;
-          }
-        } else if (currentDoc.sources) {
-          currentSourcesCount = Object.values(currentDoc.sources).flat().filter(Boolean).length;
+          const epKey = `s${seasonNumber}e${episodeNumber}`;
+          const epData = currentDoc.episodes?.[epKey];
+          return epData?.sources
+            ? Object.values(epData.sources).flat().filter(Boolean).length
+            : 0;
         }
-      }
+        return currentDoc.sources
+          ? Object.values(currentDoc.sources).flat().filter(Boolean).length
+          : 0;
+      })();
       
       if (currentSourcesCount > 0) {
         console.log(`[Player Sources] First source found after ${waitAttempts * 0.5}s!`);
@@ -1509,3 +1564,17 @@ exports.getPlayerSources = async (req, res) => {
     res.status(500).json({ error: 'Failed to resolve player sources', details: err.message });
   }
 };
+
+/**
+ * Core scraping pipeline — exported so MultimoviesScraperService can wrap it
+ * behind the IVideoScraper interface without importing the whole module.
+ */
+exports.scrapeWithMultimoviesConfig = scrapeWithMultimoviesConfig;
+
+/**
+ * Response-payload builder — exported for PlayerSourcesController.
+ */
+exports.buildPlayerSourcePayload = buildPlayerSourcePayload;
+
+exports.fetchTmdbPlayerIdentity = fetchTmdbPlayerIdentity;
+exports.refreshPlayerSourceRecord = refreshPlayerSourceRecord;

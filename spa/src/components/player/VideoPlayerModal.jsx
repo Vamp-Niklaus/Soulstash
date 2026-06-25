@@ -252,6 +252,7 @@ export function VideoPlayerModal({ request, onClose }) {
         if (isManualRefresh) {
           queryParams.set('refresh', '1');
         }
+        queryParams.set('t', Date.now().toString());
 
         let payload;
         try {

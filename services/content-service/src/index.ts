@@ -9,9 +9,8 @@ const app = express();
 app.use(express.json());
 
 import { MongoRatingsRepository } from './repositories/MongoRatingsRepository';
+import { PlayerSourcesController } from './PlayerSourcesController';
 const { initDb } = require('./utils/dbProvider');
-const { getPlayerSources } = require('./utils/legacyPlayerSources');
-
 // Bootstrapping dependencies
 const tmdbAdapter = new TMDBAdapter();
 const cachingProvider = new CachingDecorator(tmdbAdapter);
@@ -28,11 +27,12 @@ app.get('/person/:id/credits', contentController.getPersonCredits.bind(contentCo
 app.get('/ratings', contentController.getRatings.bind(contentController));
 app.get('/ratings/:mediaType/:tmdbID', contentController.getRating.bind(contentController));
 app.post('/ratings/imdb/enrich', contentController.enrichRatings.bind(contentController));
-
-app.get('/player/sources', getPlayerSources);
-
 initDb().then(() => {
   logger.info('Database initialized for player sources.');
+
+  const playerSourcesController = new PlayerSourcesController();
+  app.get('/player/sources', playerSourcesController.getPlayerSources.bind(playerSourcesController));
+
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Content Service listening on port ${PORT}`);
   });

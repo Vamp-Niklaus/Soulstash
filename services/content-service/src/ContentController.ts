@@ -5,9 +5,10 @@ import { logger } from '../../shared/src/utils/Logger';
 import { config } from '../../shared/src/utils/ConfigManager';
 
 import { MongoRatingsRepository, INVALID_IMDB_SENTINEL, SEVEN_DAYS_MS } from './repositories/MongoRatingsRepository';
+import { ContentCacheRepository } from './repositories/ContentCacheRepository';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { scrapeImdbFilmography, matchCreditsToFilmography } = require('./utils/imdbScraper');
+import fetch from 'node-fetch';
 
 let omdbKeyIndex = 0;
 function getOmdbKey(): string {
@@ -30,6 +31,7 @@ function getOmdbKey(): string {
  */
 export class ContentController {
   private usersClient: MongoClient | null = null;
+  private cacheRepo = new ContentCacheRepository();
 
   constructor(
     private readonly provider: IContentProvider,
@@ -59,41 +61,101 @@ export class ContentController {
       .catch(() => []);
   }
 
+  private async fetchHomePayload() {
+    // Only apply vote_count filter to these genres (IDs from TMDB)
+    const VOTE_FILTERED_GENRE_IDS = new Set(['27', '10749', '99']); // Horror, Romance, Documentary
+    const MIN_VOTE_COUNT = 1000;
+    const TARGET_COUNT = 20;   // minimum items per filtered genre in cache
+    const MAX_PAGES = 5;       // max pages to try per filtered genre
+
+    /**
+     * For vote-filtered genres: keep fetching pages until we have TARGET_COUNT items
+     * with vote_count >= MIN_VOTE_COUNT, or we exhaust MAX_PAGES.
+     */
+    const fetchFilteredGenre = async (genreId: string): Promise<any[]> => {
+      const collected: any[] = [];
+      for (let page = 1; page <= MAX_PAGES && collected.length < TARGET_COUNT; page++) {
+        try {
+          const { movies } = await this.provider.getCategoryItems(genreId, page, 20);
+          const passing = movies.filter((m: any) => (m.vote_count || 0) >= MIN_VOTE_COUNT);
+          collected.push(...passing);
+          logger.info(`[ContentController] Genre ${genreId} page ${page}: ${movies.length} raw, ${passing.length} passing vote filter — total ${collected.length}/${TARGET_COUNT}`);
+          if (movies.length === 0) break; // TMDB returned no more results
+        } catch (err: any) {
+          logger.warn(`[ContentController] Genre ${genreId} page ${page} fetch failed: ${err.message}`);
+          break;
+        }
+      }
+      return collected.slice(0, TARGET_COUNT);
+    };
+
+    const trendingRaw = await this.provider.getTrending();
+    const genresList = await this.provider.getGenres();
+
+    const targetGenres = [{ id: 'bollywood', name: 'Latest in India' }, ...genresList];
+    const categories: Record<string, any[]> = {};
+
+    const genreResults = await Promise.all(
+      targetGenres.map(async (genre) => {
+        const gid = String(genre.id);
+        try {
+          let movies: any[];
+          if (VOTE_FILTERED_GENRE_IDS.has(gid)) {
+            movies = await fetchFilteredGenre(gid);
+            logger.info(`[ContentController] Genre ${gid} (filtered): ${movies.length} items cached after vote_count>=${MIN_VOTE_COUNT} filter.`);
+          } else {
+            const result = await this.provider.getCategoryItems(gid);
+            movies = result.movies;
+            logger.info(`[ContentController] Genre ${gid}: ${movies.length} movies.`);
+          }
+          return { id: gid, movies };
+        } catch (err: any) {
+          logger.warn(`Failed to fetch category ${gid}: ${err.message}`);
+          return { id: gid, movies: [] };
+        }
+      })
+    );
+
+    genreResults.forEach(result => {
+      if (result.movies.length > 0) {
+        categories[String(result.id)] = result.movies;
+      } else {
+        logger.warn(`[ContentController] Skipping genre ${result.id} because movies array is empty.`);
+      }
+    });
+
+    logger.info(`[ContentController] Successfully fetched ${Object.keys(categories).length} categories out of ${targetGenres.length} target genres.`);
+
+    return {
+      trending: trendingRaw,
+      genres: [{ id: 'bollywood', name: 'Latest in India' }, ...genresList],
+      categories
+    };
+  }
+
   public async getHome(req: Request, res: Response): Promise<void> {
     try {
-      logger.info('[ContentController] Building home payload');
-      
-      const trending = await this.provider.getTrending();
-      const genresList = await this.provider.getGenres();
-      
-      // Fetch the first 8 predefined genres as it was in the old monolith
-      const targetGenres = [{ id: 'bollywood', name: 'Latest in India' }, ...genresList.slice(0, 7)];
-      const categories: Record<string, any[]> = {};
+      const cacheKey = 'home_payload';
+      const cached = await this.cacheRepo.getCache(cacheKey);
 
-      // Fetch all genres in parallel
-      const genreResults = await Promise.all(
-        targetGenres.map(async (genre) => {
-          try {
-            const { movies } = await this.provider.getCategoryItems(String(genre.id));
-            return { id: genre.id, movies };
-          } catch (err) {
-            logger.warn(`Failed to fetch category ${genre.id}`);
-            return { id: genre.id, movies: [] };
-          }
-        })
-      );
-
-      genreResults.forEach(result => {
-        if (result.movies.length > 0) {
-          categories[String(result.id)] = result.movies;
+      if (cached && cached.data) {
+        const ageHours = (Date.now() - new Date(cached.updatedAt).getTime()) / (1000 * 60 * 60);
+        if (ageHours > 24) {
+          logger.info(`[ContentController] home_payload cache stale (${ageHours.toFixed(1)}h). Triggering background refresh.`);
+          this.fetchHomePayload()
+            .then(data => this.cacheRepo.setCache(cacheKey, data))
+            .catch(err => logger.error(`Background refresh failed: ${err.message}`));
+        } else {
+          logger.info('[ContentController] Serving home_payload from cache');
         }
-      });
+        res.json(cached.data);
+        return;
+      }
 
-      res.json({
-        trending,
-        genres: [{ id: 'bollywood', name: 'Latest in India' }, ...genresList],
-        categories
-      });
+      logger.info('[ContentController] Cache miss for home_payload. Fetching live...');
+      const payload = await this.fetchHomePayload();
+      await this.cacheRepo.setCache(cacheKey, payload);
+      res.json(payload);
     } catch (error: any) {
       logger.error(`[ContentController] Error fetching home payload: ${error.message} (Cause: ${error.cause})`);
       res.status(500).json({ error: 'Failed to load home data' });
@@ -104,8 +166,34 @@ export class ContentController {
     try {
       const limit = parseInt(req.query.limit as string) || 12;
       const page = parseInt(req.query.page as string) || 1;
-      logger.info(`[ContentController] Fetching trending page=${page} limit=${limit}`);
 
+      if (page === 1 && limit === 12) {
+        const cacheKey = 'trending_page_1';
+        const cached = await this.cacheRepo.getCache(cacheKey);
+
+        if (cached && cached.data) {
+          const ageHours = (Date.now() - new Date(cached.updatedAt).getTime()) / (1000 * 60 * 60);
+          if (ageHours > 24) {
+            logger.info(`[ContentController] trending_page_1 cache stale (${ageHours.toFixed(1)}h). Triggering background refresh.`);
+            this.provider.getTrending(page, limit)
+              .then(trending => this.cacheRepo.setCache(cacheKey, { movies: trending, pagination: { page, limit, pages: 500 } }))
+              .catch(err => logger.error(`Trending background refresh failed: ${err.message}`));
+          } else {
+            logger.info('[ContentController] Serving trending_page_1 from cache');
+          }
+          res.json(cached.data);
+          return;
+        }
+
+        logger.info(`[ContentController] Cache miss for trending_page_1. Fetching live...`);
+        const trending = await this.provider.getTrending(page, limit);
+        const payload = { movies: trending, pagination: { page, limit, pages: 500 } };
+        await this.cacheRepo.setCache(cacheKey, payload);
+        res.json(payload);
+        return;
+      }
+
+      logger.info(`[ContentController] Fetching trending page=${page} limit=${limit}`);
       const trending = await this.provider.getTrending(page, limit);
       res.json({ movies: trending, pagination: { page, limit, pages: 500 } });
     } catch (error: any) {
@@ -122,6 +210,32 @@ export class ContentController {
 
       if (!genre) {
         res.status(400).json({ error: 'genre query param is required' });
+        return;
+      }
+
+      if (page === 1 && limit === 36) {
+        const cacheKey = `genre_${genre}_page_1`;
+        const cached = await this.cacheRepo.getCache(cacheKey);
+
+        if (cached && cached.data) {
+          const ageHours = (Date.now() - new Date(cached.updatedAt).getTime()) / (1000 * 60 * 60);
+          if (ageHours > 24) {
+            logger.info(`[ContentController] ${cacheKey} cache stale (${ageHours.toFixed(1)}h). Triggering background refresh.`);
+            this.provider.getCategoryItems(genre, page, limit)
+              .then(({ movies, totalPages }) => this.cacheRepo.setCache(cacheKey, { movies, pagination: { page, limit, pages: totalPages } }))
+              .catch(err => logger.error(`Genre background refresh failed: ${err.message}`));
+          } else {
+            logger.info(`[ContentController] Serving ${cacheKey} from cache`);
+          }
+          res.json(cached.data);
+          return;
+        }
+
+        logger.info(`[ContentController] Cache miss for ${cacheKey}. Fetching live...`);
+        const { movies, totalPages } = await this.provider.getCategoryItems(genre, page, limit);
+        const payload = { movies, pagination: { page, limit, pages: totalPages } };
+        await this.cacheRepo.setCache(cacheKey, payload);
+        res.json(payload);
         return;
       }
 
@@ -581,13 +695,29 @@ export class ContentController {
 
       // Kick off IMDB scrape in parallel with the DB cache check (if we have an imdb person id)
       const imdbScrapePromise: Promise<Map<string, any>> = imdbPersonId
-        ? scrapeImdbFilmography(imdbPersonId)
-            .then((filmography: any[]) => matchCreditsToFilmography(unique, filmography))
-            .catch((err: any) => {
-              logger.warn(`[getPersonCredits] IMDB scrape failed: ${err.message}`);
-              return new Map<string, any>();
+        ? fetch(`http://localhost:3004/api/imdb/person/${imdbPersonId}/filmography`)
+            .then(res => res.json())
+            .then(filmography => {
+               // Ported matchCreditsToFilmography logic locally since it's just array mapping
+               const imdbMap = new Map<string, any>();
+               if (Array.isArray(filmography)) {
+                  filmography.forEach((entry: any) => {
+                     const normTitle = String(entry.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                     const year = Number(entry.year) || 0;
+                     if (normTitle && year) {
+                       imdbMap.set(`${normTitle}_${year}`, entry);
+                       imdbMap.set(`${normTitle}_${year - 1}`, entry);
+                       imdbMap.set(`${normTitle}_${year + 1}`, entry);
+                     }
+                  });
+               }
+               return imdbMap;
             })
-        : Promise.resolve(new Map<string, any>());
+            .catch(err => {
+              logger.error(`[getPersonCredits] IMDB scrape failed for ${imdbPersonId}: ${err.message}`);
+              return new Map();
+            })
+        : Promise.resolve(new Map());
 
       // Bulk cache check up-front
       const tmdbIds = unique.map((item) => Number(item.id));

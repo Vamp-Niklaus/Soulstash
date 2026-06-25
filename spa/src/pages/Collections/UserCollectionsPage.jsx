@@ -662,8 +662,9 @@ export function UserCollectionsPage() {
                   <div key={collection._id} style={{ opacity: 1 }}>
                     {(() => {
                       const collectionId = String(collection._id || collection.name);
-                      const isDragged = draggedCollectionId === collectionId;
-                      const isDropTarget = dragOverCollectionId === collectionId && draggedCollectionId && draggedCollectionId !== collectionId;
+                      const isFixed = ['Watched', 'Watchlist'].includes(collection.name);
+                      const isDragged = !isFixed && draggedCollectionId === collectionId;
+                      const isDropTarget = !isFixed && dragOverCollectionId === collectionId && draggedCollectionId && draggedCollectionId !== collectionId;
                       return (
                     <div
                       className={`relative flex items-center gap-2 p-3 rounded-[24px] cursor-pointer border transition-all duration-300 outline-none focus:bg-white/[0.08] focus:ring-2 focus:ring-white focus:border-transparent ${
@@ -675,16 +676,13 @@ export function UserCollectionsPage() {
                           ? 'bg-white/[0.08] border-transparent shadow-[0_14px_32px_rgba(0,0,0,0.18)]'
                           : 'bg-transparent border-transparent hover:bg-white/[0.04]'
                       }`}
-                      draggable
+                      draggable={!isFixed}
                       tabIndex={0}
-                      onDragStart={(event) => handleCollectionDragStart(event, collectionId)}
-                      onDragEnter={() => handleCollectionDragEnter(collectionId)}
-                      onDragOver={(event) => {
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = 'move';
-                      }}
-                      onDrop={(event) => handleCollectionDrop(event, collectionId)}
-                      onDragEnd={resetCollectionDragState}
+                      onDragStart={!isFixed ? (event) => handleCollectionDragStart(event, collectionId) : undefined}
+                      onDragEnter={!isFixed ? () => handleCollectionDragEnter(collectionId) : undefined}
+                      onDragOver={!isFixed ? (event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } : undefined}
+                      onDrop={!isFixed ? (event) => handleCollectionDrop(event, collectionId) : undefined}
+                      onDragEnd={!isFixed ? resetCollectionDragState : undefined}
                       onClick={() => {
                         setSelectedCollectionName(collection.name);
                         if (window.innerWidth < 1024) {
@@ -703,6 +701,7 @@ export function UserCollectionsPage() {
                         }
                       }}
                     >
+                      {!isFixed ? (
                       <button
                         type="button"
                         className="flex h-9 w-5 cursor-grab items-center justify-center text-[#8d8d8d] hover:text-white transition-colors focus:bg-white/[0.08] focus:ring-2 focus:ring-white focus:outline-none rounded-full"
@@ -720,6 +719,9 @@ export function UserCollectionsPage() {
                           <span className="h-[3px] w-[3px] rounded-full bg-current"></span>
                         </span>
                       </button>
+                      ) : (
+                        <span className="h-9 w-5 flex-shrink-0" aria-hidden="true" />
+                      )}
                       <div className="w-[48px] h-[48px] rounded-[16px] overflow-hidden flex-shrink-0">
                         <img
                           src={collection.banner || FALLBACK_AVATAR}
