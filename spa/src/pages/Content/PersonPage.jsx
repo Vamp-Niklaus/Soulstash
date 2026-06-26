@@ -311,9 +311,18 @@ export function PersonPage() {
         // Fetch person info and stream credits in parallel.
         // The credits stream sends 3 event types:
         //   { type: 'credits', cast, crew }  — raw credits, render the grid immediately
-        //   { type: 'ratings', items }        — one batch of 6 resolved ratings, merge in
+        //   { type: 'ratings', items }        — one batch of resolved ratings, merge in
         //   { type: 'done' }                  — stream finished
-        const personPromise = cachedApiFetch(`/api/person/${id}`);
+        const personPromise = cachedApiFetch(`/api/person/${id}`)
+          .then((personData) => {
+            if (ignore) return null;
+            setPerson(personData);
+            document.title = `${personData.name} | Soulstash`;
+            setFailedAttempts(0);
+            setLoadError('');
+            setLoading(false);
+            return personData;
+          });
 
         let creditsResolved = false;
         const creditsPromise = streamApiFetch(`/api/person/${id}/credits`, {
@@ -341,21 +350,15 @@ export function PersonPage() {
               setLoading(false);
               creditsResolved = true;
             } else if (event?.type === 'ratings' && Array.isArray(event.items)) {
-              // Each batch of 6: paint ratings onto cards as they arrive.
+              // Paint rating batches onto cards as they arrive.
               setCredits((current) => mergeImdbRatings(current, event.items));
             }
           }
         });
 
-        const [personData] = await Promise.all([personPromise, creditsPromise]);
+        await Promise.all([personPromise, creditsPromise]);
 
-        if (!ignore) {
-          setPerson(personData);
-          document.title = `${personData.name} | Soulstash`;
-          setFailedAttempts(0);
-          setLoadError('');
-          if (!creditsResolved) setLoading(false);
-        }
+        if (!ignore && !creditsResolved) setLoading(false);
       } catch (error) {
         if (!ignore) {
           setFailedAttempts((current) => {

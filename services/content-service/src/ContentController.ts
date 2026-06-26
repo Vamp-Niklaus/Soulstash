@@ -3,6 +3,7 @@ import { MongoClient } from 'mongodb';
 import { IContentProvider } from '../../shared/src/interfaces/IContentProvider';
 import { logger } from '../../shared/src/utils/Logger';
 import { config } from '../../shared/src/utils/ConfigManager';
+import jwt from 'jsonwebtoken';
 
 import { MongoRatingsRepository, INVALID_IMDB_SENTINEL, SEVEN_DAYS_MS } from './repositories/MongoRatingsRepository';
 import { ContentCacheRepository } from './repositories/ContentCacheRepository';
@@ -59,6 +60,50 @@ export class ContentController {
       .limit(Math.max(limit, 10))
       .toArray()
       .catch(() => []);
+  }
+
+  private async canViewAdultContent(req: Request): Promise<boolean> {
+    try {
+      const authHeader = req.headers.authorization || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+      if (!token) return false;
+
+      const secret = config.get('jwtSecret') || 'fallback_secret';
+      const decoded: any = jwt.verify(token, secret);
+      const username = String(decoded?.username || '').trim();
+      if (!username) return false;
+
+      const mongoUri = config.get('mongoUri');
+      if (!mongoUri) return false;
+
+      if (!this.usersClient) {
+        this.usersClient = new MongoClient(mongoUri);
+        await this.usersClient.connect();
+      }
+
+      const dbName = config.get('mongoDbName') || 'test';
+      const user = await this.usersClient.db(dbName).collection('users').findOne(
+        { username: { $regex: new RegExp(`^${username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+        { projection: { admin: 1, showAdult: 1 } }
+      );
+      return user?.admin === true && user?.showAdult === true;
+    } catch {
+      return false;
+    }
+  }
+
+  private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
+    if (canViewAdult) return true;
+    if (item?.adult === true) return false;
+    if (Number(item?.vote_count || 0) <= 0) return false;
+    // if (Number(item?.imdbRating || 0) <= 0) {
+    //   console.log(item.title);  
+    //   return false;
+    // }
+
+    const releaseDate = String(item?.release_date || item?.first_air_date || '').trim();
+    const year = Number(item?.year || item?.release_year || 0);
+    return !!releaseDate || (Number.isFinite(year) && year > 0);
   }
 
   private async fetchHomePayload() {
@@ -492,6 +537,12 @@ export class ContentController {
     return rating;
   }
 
+  private static sanitizePosterUrl(value: any): string {
+    const url = String(value || '').trim();
+    if (!url || url === 'N/A') return '';
+    return /^https?:\/\//i.test(url) ? url : '';
+  }
+
   /**
    * Resolve ratings for a batch of credit items.
    *
@@ -597,12 +648,14 @@ export class ContentController {
             const imdbRating = omdbRatingStr && omdbRatingStr !== 'N/A'
               ? ContentController.sanitizeRating(parseFloat(omdbRatingStr))
               : null;
+            const posterUrl = ContentController.sanitizePosterUrl(omdbData?.Poster);
 
             const doc = {
               tmdbID, mediaType, imdbID: imdbId,
               // Store sentinel when imdb_rating is null so we don't re-fetch for 7 days.
               imdb_rating: imdbRating ?? INVALID_IMDB_SENTINEL,
               vote_average: voteAverage,
+              poster_path: posterUrl,
               lookup_attempted: true,
               source: imdbRating != null ? 'omdb'
                 : omdbRatingStr === 'N/A' ? 'omdb_na'
@@ -639,6 +692,8 @@ export class ContentController {
         // Prefer the more-accurate detail-endpoint vote_average from our record;
         // sanitizeRating strips >= 9.4 here too.
         vote_average: record.vote_average ?? ContentController.sanitizeRating(item.vote_average),
+        poster_path: item.poster_path || ContentController.sanitizePosterUrl(record.poster_path || record.poster_url || record.imdb_poster_url),
+        imdb_poster_url: ContentController.sanitizePosterUrl(record.poster_path || record.poster_url || record.imdb_poster_url),
         rating_lookup_attempted: true
       };
     });
@@ -649,6 +704,7 @@ export class ContentController {
     try {
       const personId = req.params.id;
       logger.info(`[ContentController] Fetching person credits personId=${personId}`);
+      const canViewAdult = await this.canViewAdultContent(req);
 
       // Fetch person detail (for imdb_id) + credits in parallel
       const [personDetail, payload] = await Promise.all([
@@ -657,8 +713,12 @@ export class ContentController {
       ]);
       const imdbPersonId: string = (personDetail as any)?.imdb_id || '';
 
-      const cast: any[] = Array.isArray(payload.cast) ? payload.cast : [];
-      const crew: any[] = Array.isArray(payload.crew) ? payload.crew : [];
+      const cast: any[] = (Array.isArray(payload.cast) ? payload.cast : []).filter(
+        (item: any) => this.shouldSendPersonCredit(item, canViewAdult)
+      );
+      const crew: any[] = (Array.isArray(payload.crew) ? payload.crew : []).filter(
+        (item: any) => this.shouldSendPersonCredit(item, canViewAdult)
+      );
 
       // Stream response as NDJSON so the frontend can render credits immediately
       res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
@@ -670,6 +730,11 @@ export class ContentController {
 
       const write = (obj: any) => {
         if (!clientClosed && !res.writableEnded) res.write(`${JSON.stringify(obj)}\n`);
+      };
+      const writeRatingBatches = (items: any[], batchSize = 10) => {
+        for (let i = 0; !clientClosed && i < items.length; i += batchSize) {
+          write({ type: 'ratings', items: items.slice(i, i + batchSize) });
+        }
       };
 
       // First line: raw credits — frontend renders the grid instantly.
@@ -749,6 +814,8 @@ export class ContentController {
             imdb_id: String(record.imdbID || item.imdb_id || '').trim(),
             imdb_rating: isSentinel ? null : ContentController.sanitizeRating(record.imdb_rating),
             vote_average: record.vote_average ?? ContentController.sanitizeRating(item.vote_average),
+            poster_path: ContentController.sanitizePosterUrl(record.poster_path || record.poster_url || record.imdb_poster_url),
+            imdb_poster_url: ContentController.sanitizePosterUrl(record.poster_path || record.poster_url || record.imdb_poster_url),
             rating_lookup_attempted: true
           });
         } else {
@@ -756,7 +823,7 @@ export class ContentController {
         }
       }
 
-      if (cachedResults.length) write({ type: 'ratings', items: cachedResults });
+      if (cachedResults.length) writeRatingBatches(cachedResults);
 
       if (needsFetch.length) {
         // Wait for the IMDB scrape to settle before processing needsFetch
@@ -797,11 +864,11 @@ export class ContentController {
             await this.ratingsRepo!.saveRating(doc).catch(() => {});
             return { tmdbID, mediaType, imdb_id: imdbId, imdb_rating: imdbRating, vote_average: voteAverage, rating_lookup_attempted: true };
           }));
-          write({ type: 'ratings', items: imdbResults });
+          writeRatingBatches(imdbResults);
         }
 
         // Fall through to TMDB+OMDB for anything the scrape didn't cover
-        const BATCH_SIZE = 6;
+        const BATCH_SIZE = 10;
         let i = 0;
         while (!clientClosed && i < stillNeedsFetch.length) {
           const batch = stillNeedsFetch.slice(i, i + BATCH_SIZE);
@@ -831,10 +898,11 @@ export class ContentController {
               const omdbRatingStr: string = omdbData?.imdbRating || '';
               const imdbRating = omdbRatingStr && omdbRatingStr !== 'N/A'
                 ? ContentController.sanitizeRating(parseFloat(omdbRatingStr)) : null;
+              const posterUrl = ContentController.sanitizePosterUrl(omdbData?.Poster);
 
-              const doc = { tmdbID, mediaType, imdbID: imdbId, imdb_rating: imdbRating ?? INVALID_IMDB_SENTINEL, vote_average: voteAverage, lookup_attempted: true, source: imdbRating != null ? 'omdb' : omdbRatingStr === 'N/A' ? 'omdb_na' : 'omdb_failed' };
+              const doc = { tmdbID, mediaType, imdbID: imdbId, imdb_rating: imdbRating ?? INVALID_IMDB_SENTINEL, vote_average: voteAverage, poster_path: posterUrl, lookup_attempted: true, source: imdbRating != null ? 'omdb' : omdbRatingStr === 'N/A' ? 'omdb_na' : 'omdb_failed' };
               await this.ratingsRepo!.saveRating(doc).catch(() => {});
-              return { tmdbID, mediaType, imdb_id: imdbId, imdb_rating: imdbRating, vote_average: voteAverage, rating_lookup_attempted: true };
+              return { tmdbID, mediaType, imdb_id: imdbId, imdb_rating: imdbRating, vote_average: voteAverage, poster_path: posterUrl, imdb_poster_url: posterUrl, rating_lookup_attempted: true };
             } catch (err: any) {
               logger.warn(`[getPersonCredits] error tmdbID=${tmdbID}: ${err.message}`);
               return null;
@@ -994,6 +1062,8 @@ export class ContentController {
           // so the UI knows we tried and won't re-queue this item.
           imdb_rating: isSentinel ? null : ContentController.sanitizeRating(cached.imdb_rating),
           vote_average: ContentController.sanitizeRating(cached.vote_average),
+          poster_path: ContentController.sanitizePosterUrl(cached.poster_path || cached.poster_url || cached.imdb_poster_url),
+          imdb_poster_url: ContentController.sanitizePosterUrl(cached.poster_path || cached.poster_url || cached.imdb_poster_url),
           lookup_attempted: true,
           source: cached.source || 'cache'
         };
@@ -1041,6 +1111,7 @@ export class ContentController {
 
       // Fetch OMDB rating using the IMDB ID.
       const omdbData: any = await this.fetchOmdbWithRetry(imdbId);
+      const posterUrl = ContentController.sanitizePosterUrl(omdbData?.Poster);
 
       if (omdbData.Response === 'True' && omdbData.imdbRating && omdbData.imdbRating !== 'N/A') {
         const realRating = ContentController.sanitizeRating(parseFloat(omdbData.imdbRating));
@@ -1052,11 +1123,12 @@ export class ContentController {
           // so we don't keep retrying, but return null to the UI.
           imdb_rating: realRating ?? INVALID_IMDB_SENTINEL,
           vote_average: ContentController.sanitizeRating(voteAverage),
+          poster_path: posterUrl,
           lookup_attempted: true,
           source: 'omdb'
         };
         await this.ratingsRepo?.saveRating(doc).catch(() => {});
-        return { ...doc, imdb_rating: realRating };
+        return { ...doc, imdb_rating: realRating, imdb_poster_url: posterUrl };
       }
 
       // OMDB returned N/A or nothing usable — save sentinel for 7-day cooldown.
@@ -1072,11 +1144,12 @@ export class ContentController {
         imdbID: imdbId,
         imdb_rating: INVALID_IMDB_SENTINEL,
         vote_average: ContentController.sanitizeRating(voteAverage),
+        poster_path: posterUrl,
         lookup_attempted: true,
         source: omdbData.imdbRating === 'N/A' ? 'omdb_na' : 'omdb_failed'
       };
       await this.ratingsRepo?.saveRating(sentinelDoc).catch(() => {});
-      return { ...sentinelDoc, imdb_rating: null }; // return null to UI
+      return { ...sentinelDoc, imdb_rating: null, imdb_poster_url: posterUrl }; // return null to UI
 
     } catch (itemErr: any) {
       logger.error(`[resolveOneRating] unhandled error tmdbID=${tmdbID}: ${itemErr.message}`);

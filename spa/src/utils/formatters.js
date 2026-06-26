@@ -306,7 +306,9 @@ export function isContentInCollection(collections, collectionName, contentId, me
 }
 
 export function imageUrl(path, size = 'w500') {
-  return path ? `${IMAGE_BASE}/${size}${path}` : FALLBACK_AVATAR;
+  if (!path) return FALLBACK_AVATAR;
+  if (/^https?:\/\//i.test(String(path))) return path;
+  return `${IMAGE_BASE}/${size}${path}`;
 }
 
 export function getLanguageName(languageCode, fallback = 'Unknown') {
