@@ -410,7 +410,7 @@ export function UserCollectionsPage() {
           })
         });
         if (Array.isArray(response?.collections)) {
-          broadcastCollections(response.collections, response?.collectionVersion);
+          broadcastCollections(normalizeCollections(response.collections), response?.collectionVersion);
         } else {
           await refreshCollectionsView();
         }

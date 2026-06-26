@@ -72,10 +72,23 @@ export class UserCollectionController {
         res.status(400).json({ error: 'Collection name is required' });
         return;
       }
+
+      const coll = await this.repository.connect();
+
+      // Duplicate-name check (case-insensitive)
+      const existing = await coll.findOne({ username: user.username });
+      const nameLower = String(payload.name).trim().toLowerCase();
+      const duplicate = (existing?.collections || []).find(
+        (c: any) => String(c.name).trim().toLowerCase() === nameLower
+      );
+      if (duplicate) {
+        res.status(409).json({ error: `A collection named "${payload.name}" already exists` });
+        return;
+      }
       
       const newCollection = {
         _id: new ObjectId().toString(),
-        name: payload.name,
+        name: payload.name.trim(),
         description: payload.description || '',
         banner: payload.banner || DEFAULT_COLLECTION_BANNER,
         isDeletable: true,
@@ -87,13 +100,18 @@ export class UserCollectionController {
         updatedAt: new Date()
       };
       
-      const coll = await this.repository.connect();
-      await coll.updateOne(
+      const latest = await coll.findOneAndUpdate(
         { username: user.username },
-        { $push: { collections: newCollection } } as any
+        { $push: { collections: newCollection } as any, $inc: { collectionVersion: 1 } },
+        { returnDocument: 'after' }
       );
-      
-      res.json(newCollection);
+
+      res.json({
+        success: true,
+        collection: newCollection,
+        collections: latest?.collections || [],
+        collectionVersion: Number(latest?.collectionVersion || 0)
+      });
     } catch (error: any) {
       logger.error(`[UserCollectionController] createCollection error: ${error.message}`);
       res.status(500).json({ error: 'Failed to create collection' });
