@@ -379,21 +379,21 @@ export class UserCollectionController {
       // above actually matched, and return the refreshed collections so the
       // frontend can update its local cache without a follow-up GET.
       const afterPull = await coll.findOne({ username: user.username });
-      const recountedCollections = (afterPull?.collections || []).map((c: any) =>
-        String(c._id) === String(collectionId) || c.name === collectionId
-          ? { ...c, movieCount: Array.isArray(c.movies) ? c.movies.length : 0 }
-          : c
-      );
-
+      const targetColl = (afterPull?.collections || []).find((c: any) => String(c._id) === String(collectionId) || c.name === collectionId);
+      const actualLength = Array.isArray(targetColl?.movies) ? targetColl.movies.length : 0;
+  
       const latest = await coll.findOneAndUpdate(
-        { username: user.username },
-        { $set: { collections: recountedCollections }, $inc: { collectionVersion: 1 } },
+        { username: user.username, $or: [{ 'collections._id': collectionId }, { 'collections.name': collectionId }] },
+        { 
+          $set: { 'collections.$.movieCount': actualLength },
+          $inc: { collectionVersion: 1 } 
+        },
         { returnDocument: 'after' }
       );
 
       res.json({
         success: true,
-        collections: latest?.collections || recountedCollections,
+        collections: latest?.collections || [],
         collectionVersion: Number(latest?.collectionVersion || 0)
       });
     } catch (error: any) {
