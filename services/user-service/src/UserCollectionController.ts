@@ -24,8 +24,27 @@ export class UserCollectionController {
         res.status(404).json({ error: 'User not found' });
         return;
       }
-      
-      res.json(doc.collections || []);
+
+      // Deduplicate by name (keep first occurrence). Heals any duplicates
+      // created before the 409 check was added.
+      const raw: any[] = doc.collections || [];
+      const seenNames = new Set<string>();
+      const deduplicated = raw.filter((c: any) => {
+        const key = String(c.name || '').trim().toLowerCase();
+        if (seenNames.has(key)) return false;
+        seenNames.add(key);
+        return true;
+      });
+
+      if (deduplicated.length !== raw.length) {
+        // Write the cleaned-up list back so the DB is healed too
+        await coll.updateOne(
+          { username: user.username },
+          { $set: { collections: deduplicated } }
+        );
+      }
+
+      res.json(deduplicated);
     } catch (error: any) {
       logger.error(`[UserCollectionController] getCollections error: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch collections' });
