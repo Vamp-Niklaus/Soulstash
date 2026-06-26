@@ -7,6 +7,7 @@
     "build": "vite build --configLoader native",
     "dev": "concurrently \"npm run dev:microservices\" \"npm run dev:client\"",
     "dev:client": "vite --configLoader native",
+    "dev:live": "vite --mode live --configLoader native",
     "dev:microservices": "concurrently \"ts-node services/api-gateway/src/index.ts\" \"ts-node services/user-service/src/index.ts\" \"ts-node services/content-service/src/index.ts\" \"ts-node services/collection-service/src/index.ts\" \"ts-node services/scraper-service/src/index.ts\"",
     "postinstall": "npx playwright install chromium",
     "render-build": "npm install --include=dev && npx playwright install chromium && npm run build"
