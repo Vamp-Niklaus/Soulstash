@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useLiveCollections, useSessionState } from '../../hooks/index.js';
 import { COLLECTION_NAME_MAX_LENGTH, FALLBACK_AVATAR } from '../../utils/constants.js';
-import { broadcastCollections, confirmTrashItem, createEmptyCollectionDraft, lastKnownCollectionVersion, normalizeCollection, normalizeCollections, optimisticRemoveCollectionFromCache, refreshCollectionsView, restoreTrashItem, trashItemFromCollectionCache, updateCollectionsCache } from '../../utils/helpers.js';
+import { broadcastCollections, confirmTrashItem, createEmptyCollectionDraft, lastKnownCollectionVersion, normalizeCollection, normalizeCollections, optimisticRemoveCollectionFromCache, refreshCollectionsView, restoreTrashItem, trashItemFromCollectionCache, updateCollectionsCache, getCachedUserCollections, optimisticUpdateCollectionItems } from '../../utils/helpers.js';
 import { hasStoredRating } from '../../utils/formatters.js';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -276,6 +276,17 @@ export function UserCollectionsPage() {
 
     const contentId = Number(payload.movieId || payload.seriesId);
     
+    const optimisticSnapshot = optimisticUpdateCollectionItems(selectedCollection._id, (movies) => {
+      const exists = movies.some((entry) => (Number(entry.movieId || entry.seriesId || entry.id || entry._id || 0)) === contentId);
+      if (exists) return movies;
+      return [
+        mediaType === 'Series'
+          ? { seriesId: contentId, title: payload.title, poster_path: payload.poster_path, release_date: payload.release_date, media_type: 'Series', addedAt: new Date().toISOString() }
+          : { movieId: contentId, title: payload.title, poster_path: payload.poster_path, release_date: payload.release_date, media_type: 'Movie', addedAt: new Date().toISOString() },
+        ...movies
+      ];
+    });
+
     try {
       setPendingItems(prev => new Set(prev).add(contentId));
       const response = window.CollectionStore?.addToCollection
@@ -286,9 +297,7 @@ export function UserCollectionsPage() {
           });
       if (!window.CollectionStore?.addToCollection) {
         if (Array.isArray(response?.collections)) {
-          broadcastCollections(normalizeCollections(response.collections), response?.collectionVersion);
-        } else {
-          await refreshCollectionsView();
+          updateCollectionsCache(normalizeCollections(response.collections), response?.collectionVersion);
         }
       }
       toast(response.message || 'Added to collection');
@@ -296,6 +305,11 @@ export function UserCollectionsPage() {
       if (error.status === 409) {
         toast('Already in this collection', 'info');
         return;
+      }
+      if (optimisticSnapshot) {
+        optimisticUpdateCollectionItems(selectedCollection._id, (movies) => {
+          return movies.filter((entry) => Number(entry.movieId || entry.seriesId || entry.id || entry._id || 0) !== contentId);
+        });
       }
       const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
       toast(`Failed to add: ${msg}`, 'error');
@@ -315,15 +329,23 @@ export function UserCollectionsPage() {
   async function confirmRemoveFromCollection() {
     if (!removeTarget) return;
     if (!selectedCollection?._id) return;
-    const pendingRemoval = removeTarget;
-    const target = (selectedCollection.movies || []).find(
-      (item) => Number(item.movieId || item.seriesId || item.id || item._id || 0) === Number(pendingRemoval.itemId)
-    );
-    if (!target) return;
-    setRemoveTarget(null);
+      const pendingRemoval = removeTarget;
+      setRemoveTarget(null);
 
-    const collectionId = selectedCollection._id;
-    const itemId = Number(target.movieId || target.seriesId || target.id || target._id || 0);
+      const collectionId = selectedCollection._id;
+      const itemId = Number(pendingRemoval.itemId);
+
+      const liveCollection = getCachedUserCollections()
+        .find(c => String(c._id || c.name) === String(collectionId) || String(c.name) === String(collectionId));
+      
+      const target = (liveCollection?.movies || []).find(
+        (item) => Number(item.movieId || item.seriesId || item.id || item._id || 0) === itemId
+      );
+
+      if (!target) {
+        confirmTrashItem(collectionId, itemId);
+        return;
+      }
 
     // Optimistically move item out of collection cache and into trash
     trashItemFromCollectionCache(collectionId, itemId);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { cachedApiFetch, apiFetch } from '../../api/client.js';
-import { broadcastCollections, normalizeCollections, normalizeCollection, filteredCollectionMovies, optimisticUpdateCollectionItems, refreshCollectionsView, lastKnownCollectionVersion, trashItemFromCollectionCache, confirmTrashItem, restoreTrashItem, updateCollectionsCache } from '../../utils/helpers.js';
+import { broadcastCollections, normalizeCollections, normalizeCollection, filteredCollectionMovies, optimisticUpdateCollectionItems, refreshCollectionsView, lastKnownCollectionVersion, trashItemFromCollectionCache, confirmTrashItem, restoreTrashItem, updateCollectionsCache, getCachedUserCollections } from '../../utils/helpers.js';
 import { useLiveCollections, useAuthSession, useSessionState } from '../../hooks/index.js';
 import { contentIdFromItem } from '../../utils/formatters.js';
 import { toast } from '../../utils/toast.js';
@@ -165,14 +165,21 @@ export function UserCollectionDetailPage() {
     if (!removeTarget) return;
     const collectionId = collection?._id || collection?.name || decodedCollectionName;
     if (!collectionId) return;
-    const pendingRemoval = removeTarget;
-    const target = (collection.movies || []).find(
-      (item) => Number(item.movieId || item.seriesId || item.id || item._id || 0) === Number(pendingRemoval.itemId)
-    );
-    if (!target) return;
-    setRemoveTarget(null);
+      const pendingRemoval = removeTarget;
+      setRemoveTarget(null);
 
-    const itemId = Number(target.movieId || target.seriesId || target.id || target._id || 0);
+      const itemId = Number(pendingRemoval.itemId);
+      const liveCollection = getCachedUserCollections()
+        .find(c => String(c._id || c.name) === String(collectionId) || String(c.name) === String(collectionId));
+      
+      const target = (liveCollection?.movies || []).find(
+        (item) => Number(item.movieId || item.seriesId || item.id || item._id || 0) === itemId
+      );
+
+      if (!target) {
+        confirmTrashItem(collectionId, itemId);
+        return;
+      }
 
     // Optimistically move item out of collection cache and into trash
     trashItemFromCollectionCache(collectionId, itemId);
