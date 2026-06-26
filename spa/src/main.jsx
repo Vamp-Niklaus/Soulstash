@@ -11,7 +11,7 @@ if (!_appRoot) {
 }
 _appRoot.render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <AppShell />
     </BrowserRouter>
   </React.StrictMode>

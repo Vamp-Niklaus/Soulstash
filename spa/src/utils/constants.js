@@ -1,5 +1,6 @@
 export const IMAGE_BASE = 'https://image.tmdb.org/t/p';
-export const FALLBACK_AVATAR = '/images/avatar.png';
+export const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+export const FALLBACK_AVATAR = `${import.meta.env.BASE_URL}images/avatar.png`;
 export const FALLBACK_POSTER = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='300' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%23141414'/%3E%3Crect x='0' y='0' width='200' height='8' fill='%23222'/%3E%3Crect x='0' y='292' width='200' height='8' fill='%23222'/%3E%3Ccircle cx='100' cy='140' r='28' fill='none' stroke='%23333' stroke-width='2'/%3E%3Cpolygon points='92,128 92,152 116,140' fill='%23333'/%3E%3Crect x='60' y='185' width='80' height='4' rx='2' fill='%23262626'/%3E%3Crect x='72' y='197' width='56' height='4' rx='2' fill='%23222'/%3E%3C/svg%3E`;
 export const HOME_GRID_CLASS = 'grid grid-flow-col auto-cols-[32%] sm:auto-cols-[22%] gap-3 overflow-x-auto snap-x snap-mandatory hide-scrollbar pb-2 md:grid-flow-row md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 md:auto-cols-auto md:pb-0 md:snap-none md:overflow-visible';
 export const CREDIT_PAGE_SIZE = 24;
