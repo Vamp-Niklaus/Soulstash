@@ -381,6 +381,19 @@ app.get('/public-collection/:username/:collectionName', (req, res) => collection
 
 app.get('/health', (req, res) => { res.status(200).json({ status: 'User Service is healthy' }) });
 
+app.get('/ping', (req, res) => {
+  res.send(`
+    <html>
+      <head><title>User Service Ping</title></head>
+      <body style="font-family: sans-serif; padding: 2rem;">
+        <h1>User Service is up!</h1>
+        <p>This service is part of the Soulstash Microservices Architecture.</p>
+        <p>Dependencies: MongoDB</p>
+      </body>
+    </html>
+  `);
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   logger.info(`User Service listening on port ${PORT}`);
 });

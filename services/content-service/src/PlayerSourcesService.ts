@@ -101,7 +101,8 @@ export class PlayerSourcesService {
       });
 
       // Send to scraper-service and await completion so the local lock is held
-      await fetch('http://localhost:3004/api/scrape', {
+      const SCRAPER_SERVICE_URL = process.env.SCRAPER_SERVICE_URL || 'http://localhost:3004';
+      await fetch(`${SCRAPER_SERVICE_URL}/api/scrape`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identity })

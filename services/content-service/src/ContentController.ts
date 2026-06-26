@@ -694,8 +694,9 @@ export class ContentController {
       }
 
       // Kick off IMDB scrape in parallel with the DB cache check (if we have an imdb person id)
+      const SCRAPER_SERVICE_URL = process.env.SCRAPER_SERVICE_URL || 'http://localhost:3004';
       const imdbScrapePromise: Promise<Map<string, any>> = imdbPersonId
-        ? fetch(`http://localhost:3004/api/imdb/person/${imdbPersonId}/filmography`)
+        ? fetch(`${SCRAPER_SERVICE_URL}/api/imdb/person/${imdbPersonId}/filmography`)
             .then(res => res.json())
             .then(filmography => {
                // Ported matchCreditsToFilmography logic locally since it's just array mapping

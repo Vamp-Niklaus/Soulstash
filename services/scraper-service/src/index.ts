@@ -12,6 +12,19 @@ const scraperController = new ScraperController();
 app.post('/api/scrape', scraperController.scrape.bind(scraperController));
 app.get('/api/imdb/person/:personId/filmography', scraperController.getImdbFilmography.bind(scraperController));
 
+app.get('/ping', (req, res) => {
+  res.send(`
+    <html>
+      <head><title>Scraper Service Ping</title></head>
+      <body style="font-family: sans-serif; padding: 2rem;">
+        <h1>Scraper Service is up!</h1>
+        <p>This service is part of the Soulstash Microservices Architecture.</p>
+        <p>Dependencies: MongoDB, Playwright</p>
+      </body>
+    </html>
+  `);
+});
+
 initDb().then(() => {
   console.log('Database initialized for scraper service.');
   app.listen(PORT, '0.0.0.0', () => {
