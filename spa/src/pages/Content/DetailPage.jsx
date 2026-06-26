@@ -122,6 +122,25 @@ export function DetailPage({ type }) {
           if (detailData) {
             document.title = `${detailData.title || detailData.name} | Soulstash`;
           }
+          // Background-fetch IMDB rating and merge into content once available
+          if (detailData?.id) {
+            const mediaType = type === 'series' ? 'Series' : 'Movie';
+            cachedApiFetch(`/api/ratings/${mediaType}/${detailData.id}`)
+              .then((rating) => {
+                if (ignore) return;
+                const imdbRating = Number(rating?.imdb_rating);
+                const voteAverage = Number(rating?.vote_average);
+                if ((Number.isFinite(imdbRating) && imdbRating > 0) || (Number.isFinite(voteAverage) && voteAverage > 0)) {
+                  setContent((prev) => prev ? {
+                    ...prev,
+                    imdb_rating: Number.isFinite(imdbRating) && imdbRating > 0 ? imdbRating : prev.imdb_rating,
+                    vote_average: Number.isFinite(voteAverage) && voteAverage > 0 ? voteAverage : prev.vote_average,
+                    imdb_id: rating?.imdbID || prev.imdb_id || ''
+                  } : prev);
+                }
+              })
+              .catch(() => {}); // silently ignore — TMDB rating is the fallback
+          }
         }
       } catch (error) {
         if (!ignore) {
@@ -396,11 +415,15 @@ export function DetailPage({ type }) {
       : Array.isArray(content.episode_run_time) && content.episode_run_time.length
         ? formatRuntime(content.episode_run_time[0])
         : formatRuntime(content.runtime);
+  const imdbRating = getValidImdbRating(content.imdb_rating);
+  const tmdbRating = getValidVoteAverage(content.vote_average);
+  const displayRating = imdbRating ?? tmdbRating;
+  const ratingSource = imdbRating != null ? 'IMDB' : tmdbRating != null ? 'TMDB' : null;
   const meta = [
     type === 'movie' ? 'Movie' : 'Series',
     yearFrom(content),
     runtimeLabel !== 'N/A' ? runtimeLabel : '',
-    getPreferredRating(content) ? `Rating ${getPreferredRating(content).toFixed(1)}` : 'No rating'
+    displayRating ? `${ratingSource} ${displayRating.toFixed(1)}` : 'No rating'
   ].filter(Boolean);
 
   async function handleToggleCustomCollection(targetCollection) {
