@@ -202,7 +202,7 @@ export function CollectionDetailPane({
             alt="collection backdrop"
             className="h-full w-full object-cover object-center opacity-30 scale-[1.03]"
             src={collection.banner || FALLBACK_AVATAR}
-            onError={(event) => { event.currentTarget.src = FALLBACK_AVATAR; }}
+            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_AVATAR; }}
           />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,7,7,0.18)_0%,rgba(7,7,7,0.36)_18%,rgba(7,7,7,0.62)_42%,rgba(7,7,7,0.84)_72%,rgba(7,7,7,0.97)_100%)]"></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_center,rgba(255,255,255,0.08),transparent_22%)]"></div>
@@ -304,7 +304,7 @@ export function CollectionDetailPane({
         <div className="w-full aspect-[21/9] min-h-[200px] md:min-h-[156px] rounded-[26px] mb-0 relative overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
           <img alt="collection banner" className="absolute inset-0 h-full w-full object-cover"
             src={collection.banner || FALLBACK_AVATAR}
-            onError={(event) => { event.currentTarget.src = FALLBACK_AVATAR; }} />
+            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_AVATAR; }} />
           <div className="absolute inset-0" aria-hidden="true" style={{ background: 'linear-gradient(180deg, rgba(8,8,8,0.02) 0%, rgba(8,8,8,0.12) 30%, rgba(8,8,8,0.42) 62%, rgba(8,8,8,0.78) 84%, rgba(8,8,8,0.96) 100%)' }}></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_left_center,rgba(150,123,255,0.08),transparent_30%)]"></div>
 

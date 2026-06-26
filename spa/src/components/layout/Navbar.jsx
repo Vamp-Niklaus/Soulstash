@@ -179,7 +179,7 @@ function NavbarSearchOverlay({ open, onClose, query, setQuery, results, loading,
                         {image ? (
                           <img src={item.media_type === 'User' ? image : imageUrl(image, 'w300_and_h450_face')} alt={title}
                             className="h-full w-full object-cover"
-                            onError={(event) => { event.currentTarget.src = FALLBACK_AVATAR; }} />
+                            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_AVATAR; }} />
                         ) : (
                           <img src={FALLBACK_AVATAR} alt={title} className="h-full w-full object-cover" />
                         )}
@@ -437,7 +437,7 @@ export function ReactNavbar() {
         <div className="navbar-container">
           <div className="navbar-logo">
             <button type="button" className="navbar-logo bg-transparent border-0 p-0" onClick={() => navigate('/')}>
-              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Soulstash Logo" className="logo-img" height="100%" onError={(event) => { event.currentTarget.src = FALLBACK_AVATAR; }} />
+              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Soulstash Logo" className="logo-img" height="100%" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_AVATAR; }} />
             </button>
           </div>
 
