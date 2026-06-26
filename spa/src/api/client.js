@@ -34,7 +34,7 @@ window.fetch = function (input, init) {
 };
 
 export const apiResponseCache = new Map();
-export const API_CACHE_TTL = 5 * 60 * 1000;
+export const API_CACHE_TTL = 30 * 60 * 1000;
 
 export const homeTrendingCache = {
   data: null,
@@ -47,6 +47,7 @@ export function clearClientDataCaches() {
   homeTrendingCache.data = null;
   homeTrendingCache.promise = null;
   homeTrendingCache.expiresAt = 0;
+  window.__soulstash_collections_fetched_this_session = false;
 }
 
 export function getToken() {
