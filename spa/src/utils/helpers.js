@@ -891,11 +891,13 @@ export function mergeImdbRatings(items, ratingItems) {
 
     const nextRating = getValidImdbRating(ratingMatch.imdb_rating);
     const nextVoteAverage = getValidVoteAverage(ratingMatch.vote_average);
+    const fallbackPoster = ratingMatch.poster_path || ratingMatch.poster_url || ratingMatch.imdb_poster_url || '';
     return {
       ...item,
       imdb_rating: nextRating ?? item?.imdb_rating,
       vote_average: nextVoteAverage ?? item?.vote_average,
-      imdb_id: ratingMatch.imdbID || item?.imdb_id || '',
+      imdb_id: ratingMatch.imdbID || ratingMatch.imdb_id || item?.imdb_id || '',
+      poster_path: item?.poster_path || fallbackPoster,
       rating_lookup_attempted: ratingMatch?.lookup_attempted === true || item?.rating_lookup_attempted === true
     };
   });

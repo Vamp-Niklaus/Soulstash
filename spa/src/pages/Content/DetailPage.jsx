@@ -503,7 +503,7 @@ export function DetailPage({ type }) {
       if (window.CollectionStore?.createCollection) {
         await window.CollectionStore.createCollection(createDraft.name.trim(), createDraft.isPublic, createDraft.description.trim());
       } else {
-        await apiFetch('/api/user/collections', {
+        const response = await apiFetch('/api/user/collections', {
           method: 'POST',
           body: JSON.stringify({
             name: createDraft.name.trim(),
@@ -511,7 +511,11 @@ export function DetailPage({ type }) {
             description: createDraft.description.trim()
           })
         });
-        await refreshCollectionsView();
+        if (Array.isArray(response?.collections)) {
+          broadcastCollections(normalizeCollections(response.collections), response?.collectionVersion);
+        } else {
+          await refreshCollectionsView();
+        }
       }
       toast(`Created ${createDraft.name.trim()}`);
       setCreateModalOpen(false);

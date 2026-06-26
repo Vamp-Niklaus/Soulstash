@@ -6,6 +6,10 @@ import { ObjectId } from 'mongodb';
 const DEFAULT_COLLECTION_NAMES = ['Watched', 'Watchlist'];
 const DEFAULT_COLLECTION_BANNER = 'https://cdn.imgchest.com/files/b23d0bfcaa8b.jpg';
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export class UserCollectionController {
   constructor(private readonly repository: MongoUserRepository) {}
 
@@ -87,27 +91,18 @@ export class UserCollectionController {
       }
       
       const payload = req.body || {};
-      if (!payload.name) {
+      const collectionName = String(payload.name || '').trim();
+      if (!collectionName) {
         res.status(400).json({ error: 'Collection name is required' });
         return;
       }
 
       const coll = await this.repository.connect();
-
-      // Duplicate-name check (case-insensitive)
-      const existing = await coll.findOne({ username: user.username });
-      const nameLower = String(payload.name).trim().toLowerCase();
-      const duplicate = (existing?.collections || []).find(
-        (c: any) => String(c.name).trim().toLowerCase() === nameLower
-      );
-      if (duplicate) {
-        res.status(409).json({ error: `A collection named "${payload.name}" already exists` });
-        return;
-      }
+      const duplicateNamePattern = new RegExp(`^${escapeRegex(collectionName)}$`, 'i');
       
       const newCollection = {
         _id: new ObjectId().toString(),
-        name: payload.name.trim(),
+        name: collectionName,
         description: payload.description || '',
         banner: payload.banner || DEFAULT_COLLECTION_BANNER,
         isDeletable: true,
@@ -120,10 +115,31 @@ export class UserCollectionController {
       };
       
       const latest = await coll.findOneAndUpdate(
-        { username: user.username },
+        {
+          username: user.username,
+          collections: { $not: { $elemMatch: { name: duplicateNamePattern } } }
+        },
         { $push: { collections: newCollection } as any, $inc: { collectionVersion: 1 } },
         { returnDocument: 'after' }
       );
+
+      if (!latest) {
+        const existing = await coll.findOne({ username: user.username }, { projection: { collections: 1 } });
+        if (!existing) {
+          res.status(404).json({ error: 'User not found' });
+          return;
+        }
+
+        const duplicate = (existing.collections || []).some(
+          (c: any) => duplicateNamePattern.test(String(c.name || '').trim())
+        );
+        res.status(duplicate ? 409 : 500).json({
+          error: duplicate
+            ? `A collection named "${collectionName}" already exists`
+            : 'Failed to create collection'
+        });
+        return;
+      }
 
       res.json({
         success: true,
@@ -277,20 +293,19 @@ export class UserCollectionController {
         const opposite = collectionId === 'Watchlist' ? 'Watched' : 'Watchlist';
         const oppCol = (doc.collections || []).find((c: any) => c.name === opposite);
         if (oppCol?.movies?.find((m: any) => Number(m.movieId || m.seriesId) === contentId)) {
-          const pullResult = await coll.updateOne(
-            { username: user.username, 'collections.name': opposite },
-            { $pull: { 'collections.$.movies': { $or: [{ movieId: contentId }, { seriesId: contentId }] } } } as any
+          const filteredOppMovies = (oppCol.movies || []).filter(
+            (m: any) => Number(m.id || m.movieId || m.seriesId || 0) !== contentId
           );
-          if (pullResult.modifiedCount === 0) {
-            const fresh = await coll.findOne({ username: user.username });
-            const freshOpp = (fresh?.collections || []).find((c: any) => c.name === opposite);
-            if (freshOpp) {
-              await coll.updateOne(
-                { username: user.username, 'collections.name': opposite },
-                { $set: { 'collections.$.movies': freshOpp.movies.filter((m: any) => Number(m.movieId || m.seriesId) !== contentId) } }
-              );
+          await coll.updateOne(
+            { username: user.username, 'collections.name': opposite },
+            {
+              $set: {
+                'collections.$.movies': filteredOppMovies,
+                'collections.$.movieCount': filteredOppMovies.length,
+                'collections.$.updatedAt': new Date()
+              }
             }
-          }
+          );
         }
       }
 
@@ -387,49 +402,49 @@ export class UserCollectionController {
       }
       
       const coll = await this.repository.connect();
-      const pullQuery = {
-        $or: [
-          { id: contentId },
-          { movieId: contentId },
-          { seriesId: contentId }
-        ]
-      };
-      
-      await coll.updateOne(
-        { username: user.username, 'collections._id': collectionId },
-        { 
-          $pull: { 'collections.$.movies': pullQuery },
-          $set: { 'collections.$.updatedAt': new Date() }
-        } as any
+
+      // Fetch the document first so we can filter the movies array in-memory.
+      // MongoDB's $pull with $or inside a positional operator ($) is not
+      // supported — items can be stored under movieId, seriesId, or id so we
+      // must handle all three field names ourselves.
+      const doc = await coll.findOne({ username: user.username });
+      if (!doc) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      // Find the target collection by _id first, then fall back to name
+      const colIdx = (doc.collections || []).findIndex(
+        (c: any) => String(c._id) === String(collectionId) || c.name === collectionId
       );
-      
-      await coll.updateOne(
-        { username: user.username, 'collections.name': collectionId, 'collections._id': { $exists: false } },
-        { 
-          $pull: { 'collections.$.movies': pullQuery },
-          $set: { 'collections.$.updatedAt': new Date() }
-        } as any
+      if (colIdx === -1) {
+        res.status(404).json({ error: 'Collection not found' });
+        return;
+      }
+
+      const col = doc.collections[colIdx];
+      const filteredMovies = (col.movies || []).filter(
+        (m: any) => Number(m.id || m.movieId || m.seriesId || 0) !== contentId
       );
 
-      // Recompute movieCount from the actual array length (rather than a
-      // blind $inc) since we don't know up front which of the two queries
-      // above actually matched, and return the refreshed collections so the
-      // frontend can update its local cache without a follow-up GET.
-      const afterPull = await coll.findOne({ username: user.username });
-      const targetColl = (afterPull?.collections || []).find((c: any) => String(c._id) === String(collectionId) || c.name === collectionId);
-      const actualLength = Array.isArray(targetColl?.movies) ? targetColl.movies.length : 0;
-  
+      // Build the positional match query using whatever identifier the collection has
       const matchQuery: any = { username: user.username };
-      if (targetColl && targetColl._id) {
-        matchQuery['collections._id'] = targetColl._id;
+      if (col._id) {
+        matchQuery['collections._id'] = col._id;
       } else {
-        matchQuery['collections.name'] = targetColl?.name || collectionId;
+        matchQuery['collections.name'] = col.name;
       }
+
+      const actualLength = filteredMovies.length;
 
       const latest = await coll.findOneAndUpdate(
         matchQuery,
         { 
-          $set: { 'collections.$.movieCount': actualLength },
+          $set: { 
+            'collections.$.movies': filteredMovies,
+            'collections.$.movieCount': actualLength,
+            'collections.$.updatedAt': new Date()
+          },
           $inc: { collectionVersion: 1 } 
         },
         { returnDocument: 'after' }
