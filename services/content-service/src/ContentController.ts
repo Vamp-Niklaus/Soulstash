@@ -92,19 +92,41 @@ export class ContentController {
     }
   }
 
-  private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
-    if (canViewAdult) return true;
-    if (item?.adult === true) return false;
-    if (Number(item?.vote_count || 0) <= 0) return false;
-    // if (Number(item?.imdbRating || 0) <= 0) {
-    //   console.log(item.title);  
-    //   return false;
-    // }
+  // private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
+  //   if (canViewAdult) return true;
+  //   if (item?.adult === true) return false;
+  //   if (Number(item?.vote_count || 0) <= 0) return false;
+  //   // if (Number(item?.imdbRating || 0) <= 0) {
+  //   //   console.log(item.title);  
+  //   //   return false;
+  //   // }
 
-    const releaseDate = String(item?.release_date || item?.first_air_date || '').trim();
-    const year = Number(item?.year || item?.release_year || 0);
-    return !!releaseDate || (Number.isFinite(year) && year > 0);
+  //   const releaseDate = String(item?.release_date || item?.first_air_date || '').trim();
+  //   const year = Number(item?.year || item?.release_year || 0);
+  //   return !!releaseDate || (Number.isFinite(year) && year > 0);
+  // }
+
+
+  // rakesh
+private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
+  // 1. Handle adult content visibility explicitly
+  if (item?.adult === true && !canViewAdult) return false;
+
+  // 2. Extract values safely
+  const votes = Number(item?.vote_count || 0);
+  const hasNoImdbId = !item?.imdb_id || String(item?.imdb_id).trim() === '';
+
+  // 3. Reject if vote count is 0 (or less) AND there is no IMDb ID
+  if (votes <= 0 && hasNoImdbId) {
+    return false;
   }
+
+  // 4. Validate dates/years
+  const releaseDate = String(item?.release_date || item?.first_air_date || '').trim();
+  const year = Number(item?.year || item?.release_year || 0);
+
+  return (releaseDate.length > 0) || (Number.isFinite(year) && year > 0);
+}
 
   private async fetchHomePayload() {
     // Only apply vote_count filter to these genres (IDs from TMDB)
