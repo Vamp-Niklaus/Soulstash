@@ -409,7 +409,7 @@ export function ReactNavbar() {
       icon: isLoggedIn ? (
         <div className="relative w-6 h-6 flex items-center justify-center flex-shrink-0">
           <div className="relative w-6 h-6 rounded-full overflow-hidden border border-[#474747] flex items-center justify-center">
-            <img alt="Profile" className="object-cover rounded-full absolute inset-0 h-full w-full" src="/images/avatar.png" />
+            <img alt="Profile" className="object-cover rounded-full absolute inset-0 h-full w-full" src={FALLBACK_AVATAR} />
           </div>
         </div>
       ) : (
@@ -437,7 +437,7 @@ export function ReactNavbar() {
         <div className="navbar-container">
           <div className="navbar-logo">
             <button type="button" className="navbar-logo bg-transparent border-0 p-0" onClick={() => navigate('/')}>
-              <img src="/images/logo.png" alt="Soulstash Logo" className="logo-img" height="100%" onError={(event) => { event.currentTarget.src = FALLBACK_AVATAR; }} />
+              <img src={`${import.meta.env.BASE_URL}images/logo.png`} alt="Soulstash Logo" className="logo-img" height="100%" onError={(event) => { event.currentTarget.src = FALLBACK_AVATAR; }} />
             </button>
           </div>
 
@@ -483,7 +483,7 @@ export function ReactNavbar() {
             </button>
             {isLoggedIn && username ? (
               <button type="button" className="profile-btn" onClick={() => navigate(`/user/${username}`)}>
-                <img src="/images/avatar.png" alt="Profile" className="profile-avatar" />
+                <img src={FALLBACK_AVATAR} alt="Profile" className="profile-avatar" />
               </button>
             ) : (
               <button type="button" className="signin-btn inline-flex items-center gap-1.5" onClick={authCta.onClick}>
