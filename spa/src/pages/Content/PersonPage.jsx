@@ -302,6 +302,7 @@ export function PersonPage() {
   useEffect(() => {
     let ignore = false;
     let retryTimeout = null;
+    const controller = new AbortController();
 
     async function load() {
       setLoading(true);
@@ -317,14 +318,25 @@ export function PersonPage() {
         let creditsResolved = false;
         const creditsPromise = streamApiFetch(`/api/person/${id}/credits`, {
           method: 'GET',
+          signal: controller.signal,
+          cache: 'no-store',
           onEvent(event) {
             if (ignore) return;
             if (event?.type === 'credits') {
-              // First event: raw cast — stop showing skeleton immediately.
-              const rawCast = (event.cast || []).filter(
-                (item) => item.media_type === 'movie' || item.media_type === 'tv'
-              );
-              setCredits(rawCast);
+              // First event: raw cast + crew — stop showing skeleton immediately.
+              const rawCredits = [...(event.cast || []), ...(event.crew || [])]
+                .filter((item) => item.media_type === 'movie' || item.media_type === 'tv');
+              const uniqueCredits = [];
+              const seenCredits = new Set();
+
+              for (const item of rawCredits) {
+                const key = `${item.media_type}:${item.id}`;
+                if (seenCredits.has(key)) continue;
+                seenCredits.add(key);
+                uniqueCredits.push(item);
+              }
+
+              setCredits(uniqueCredits);
               setUserCollections(normalizeCollections(getCachedUserCollections()));
               setLoading(false);
               creditsResolved = true;
@@ -365,6 +377,7 @@ export function PersonPage() {
     load();
     return () => {
       ignore = true;
+      controller.abort();
       if (retryTimeout) window.clearTimeout(retryTimeout);
     };
   }, [auth.user?.admin, auth.user?.showAdult, id, retryTick]);

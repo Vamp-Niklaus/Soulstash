@@ -121,11 +121,11 @@ export async function streamApiFetch(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const { signal, onEvent, method, body } = options;
+  const { signal, onEvent, method, body, cache } = options;
   if (body !== undefined && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
-  const response = await fetch(path, { signal, headers, method, body });
+  const response = await fetch(path, { signal, headers, method, body, cache: cache || 'no-store' });
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {

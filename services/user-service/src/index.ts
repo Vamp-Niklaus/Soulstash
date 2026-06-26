@@ -164,6 +164,89 @@ app.post('/collections/reorder', (req, res) => collectionController.reorder(req,
 app.post('/collections/:id/add', (req, res) => collectionController.addItem(req, res));
 app.post('/collections/:id/remove', (req, res) => collectionController.removeItem(req, res));
 
+app.get('/favorites', extractUser, async (req: any, res: any) => {
+  try {
+    const username = req.user?.username;
+    if (!username) return res.status(401).json({ error: 'Unauthorized' });
+
+    const coll: any = await userRepository.connect();
+    const user = await coll.findOne({ username }, { projection: { favoritePeople: 1 } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const favorites = Array.isArray(user.favoritePeople) ? user.favoritePeople : [];
+    res.json({ favorites });
+  } catch (err: any) {
+    logger.error('Favorites fetch error:', err);
+    res.status(500).json({ error: 'Failed to fetch favorites' });
+  }
+});
+
+app.post('/favorites/add', extractUser, async (req: any, res: any) => {
+  try {
+    const username = req.user?.username;
+    if (!username) return res.status(401).json({ error: 'Unauthorized' });
+
+    const person = req.body;
+    if (!person || person.id == null) {
+      return res.status(400).json({ error: 'Person id is required' });
+    }
+
+    const coll: any = await userRepository.connect();
+    const user = await coll.findOne({ username }, { projection: { favoritePeople: 1 } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const existing = Array.isArray(user.favoritePeople)
+      ? user.favoritePeople.some((fav: any) => String(fav.id) === String(person.id))
+      : false;
+    if (existing) {
+      return res.status(409).json({ error: 'Already in favorites' });
+    }
+
+    const favoritePerson = {
+      id: person.id,
+      name: person.name || '',
+      profile_path: person.profile_path || '',
+      known_for_department: person.known_for_department || ''
+    };
+
+    await coll.updateOne(
+      { username },
+      {
+        $push: { favoritePeople: favoritePerson },
+        $set: { updatedAt: new Date() }
+      } as any
+    );
+
+    res.json({ success: true, favorite: favoritePerson });
+  } catch (err: any) {
+    logger.error('Favorites add error:', err);
+    res.status(500).json({ error: 'Failed to add favorite' });
+  }
+});
+
+app.post('/favorites/remove', extractUser, async (req: any, res: any) => {
+  try {
+    const username = req.user?.username;
+    if (!username) return res.status(401).json({ error: 'Unauthorized' });
+
+    const personId = req.body?.id;
+    if (personId == null) {
+      return res.status(400).json({ error: 'Person id is required' });
+    }
+
+    const coll: any = await userRepository.connect();
+    await coll.updateOne(
+      { username },
+      { $pull: { favoritePeople: { id: personId } }, $set: { updatedAt: new Date() } } as any
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error('Favorites remove error:', err);
+    res.status(500).json({ error: 'Failed to remove favorite' });
+  }
+});
+
 app.post('/collections/:id/publish', async (req: any, res: any) => {
   try {
     const user = req.user;
