@@ -297,7 +297,8 @@ export function UserCollectionsPage() {
         toast('Already in this collection', 'info');
         return;
       }
-      toast(error.message, 'error');
+      const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
+      toast(`Failed to add: ${msg}`, 'error');
     } finally {
       setPendingItems(prev => {
         const next = new Set(prev);
@@ -348,14 +349,14 @@ export function UserCollectionsPage() {
           await refreshCollectionsView();
         }
       }
-      // Backend confirmed - permanently purge from trash
+      // Backend confirmed -  permanently purge from trash
       confirmTrashItem(collectionId, itemId);
       toast(`Removed ${pendingRemoval.title}`);
     } catch (error) {
-      // Backend failed - restore item from trash back into the collection
+      // Backend failed -  restore item from trash back into the collection
       restoreTrashItem(collectionId, itemId);
-      setRemoveTarget(pendingRemoval);
-      toast(error.message, 'error');
+      const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
+      toast(`Failed to remove: ${msg}`, 'error');
     } finally {
       setPendingItems(prev => {
         const next = new Set(prev);
