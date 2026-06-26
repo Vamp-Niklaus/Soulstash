@@ -1,14 +1,20 @@
 export const API_BASE_URL = (() => {
-  if (window.location.hostname === 'soulstash.onrender.com') {
-    return '';
+  // 1. If we provided a specific URL (like via Render Environment Variables), use it!
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
   }
+  
+  // 2. Your original local development check
   if (
     window.location.hostname === 'localhost' &&
     (window.location.port === '5173' || window.location.port === '3000' || window.location.port === '3001')
   ) {
     return '';
   }
-  return 'https://soulstash.onrender.com';
+  
+  // 3. The fallback for production / mobile apps
+  // (Updated to the new gateway URL so production works!)
+  return 'https://soulstash-gateway.onrender.com';
 })();
 
 const originalFetch = window.fetch;

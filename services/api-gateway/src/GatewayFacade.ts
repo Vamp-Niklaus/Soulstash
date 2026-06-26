@@ -1,4 +1,5 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
+import cors from 'cors';
 import { logger } from '../../shared/src/utils/Logger';
 import { RateLimitMiddleware, AuthMiddleware } from './middleware';
 
@@ -18,6 +19,7 @@ export class GatewayFacade {
 
   constructor() {
     this.app = express();
+    this.app.use(cors({ origin: '*' }));
     this.app.use(express.json());
     
     // Serve transitional static assets for the legacy frontend UI
