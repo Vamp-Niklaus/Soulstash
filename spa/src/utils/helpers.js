@@ -328,7 +328,15 @@ export async function loadUserCollections() {
     if (!navigator.onLine) {
       return cached.collections;
     }
+    
+    // Prevent network spam on tab switch (Only fetch once per Ctrl+R hard refresh)
+    if (window.__soulstash_collections_fetched_this_session) {
+      return cached.collections;
+    }
+
     try {
+      // Set the flag BEFORE the await to prevent React StrictMode double-fetching!
+      window.__soulstash_collections_fetched_this_session = true;
       const response = await fetchUserCollectionsWithVersion(cached);
       return response.collections;
     } catch {
@@ -337,6 +345,7 @@ export async function loadUserCollections() {
   }
 
   try {
+    window.__soulstash_collections_fetched_this_session = true;
     const response = await fetchUserCollectionsWithVersion(null);
     return response.collections;
   } catch {
