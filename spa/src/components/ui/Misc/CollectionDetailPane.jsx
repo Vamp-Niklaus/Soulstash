@@ -6,7 +6,7 @@ import { FALLBACK_AVATAR, PUBLISH_MIN_COLLECTION_TITLES } from '../../../utils/c
 import {
   collectionItemCount, filteredCollectionMovies, refreshCollectionsView,
   broadcastCollections, getCachedUserCollections, normalizeCollections,
-  enrichCollectionRatingsInBackground, lastKnownCollectionVersion
+  lastKnownCollectionVersion
 } from '../../../utils/helpers.js';
 import { contentIdFromItem, mediaTypeFromItem, hasStoredRating, hasActiveCollectionContentFilters, normalizeMediaType } from '../../../utils/formatters.js';
 import { useGridKeyNav } from '../../../hooks/index.js';
@@ -97,34 +97,6 @@ export function CollectionDetailPane({
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [mobileFiltersOpen]);
 
-  useEffect(() => {
-    if (!collection?._id) return undefined;
-    const missingRatings = (collection.movies || []).filter((item) => !hasStoredRating(item));
-    if (!missingRatings.length) return undefined;
-    const requestKey = `${collection._id}:${missingRatings
-      .map((item) => `${mediaTypeFromItem(item)}:${contentIdFromItem(item)}`)
-      .join('|')}`;
-    if (attemptedRatingBackfillRef.current === requestKey) return undefined;
-    attemptedRatingBackfillRef.current = requestKey;
-    let cancelled = false;
-    async function enrichMissingRatings() {
-      try {
-        const response = await enrichCollectionRatingsInBackground(collection);
-        if (!cancelled && Array.isArray(response?.collections)) {
-          broadcastCollections(response.collections, response?.collectionVersion);
-        }
-      } catch (error) {
-        console.warn('[Soulstash][React] Failed to enrich collection metadata', {
-          collectionId: collection._id,
-          collectionName: collection.name,
-          message: error?.message,
-          status: error?.status
-        });
-      }
-    }
-    enrichMissingRatings();
-    return () => { cancelled = true; };
-  }, [collection?._id, collection?.movies]);
 
   async function applyPublishChange(nextPublished) {
     try {

@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useLiveCollections, useSessionState } from '../../hooks/index.js';
 import { COLLECTION_NAME_MAX_LENGTH, FALLBACK_AVATAR } from '../../utils/constants.js';
-import { broadcastCollections, confirmTrashItem, createEmptyCollectionDraft, enrichCollectionRatingsInBackground, lastKnownCollectionVersion, normalizeCollection, normalizeCollections, optimisticRemoveCollectionFromCache, refreshCollectionsView, restoreTrashItem, trashItemFromCollectionCache } from '../../utils/helpers.js';
+import { broadcastCollections, confirmTrashItem, createEmptyCollectionDraft, lastKnownCollectionVersion, normalizeCollection, normalizeCollections, optimisticRemoveCollectionFromCache, refreshCollectionsView, restoreTrashItem, trashItemFromCollectionCache } from '../../utils/helpers.js';
 import { hasStoredRating } from '../../utils/formatters.js';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -24,6 +24,7 @@ import { CollectionSearchDrawer } from '../../components/ui/Misc/index.js';
 import { MarqueeText } from '../../components/ui/Misc/Typography.jsx';
 import { EditCollectionModal } from '../../components/ui/Modals/EditCollectionModal.jsx';
 import { CreateCollectionModal } from '../../components/ui/Modals/CreateCollectionModal.jsx';
+
 
 
 export function UserCollectionsPage() {
@@ -52,8 +53,7 @@ export function UserCollectionsPage() {
   const [dragOverCollectionId, setDragOverCollectionId] = useState('');
   const collectionMenuTriggerRefs = useRef(new Map());
   const [pendingItems, setPendingItems] = useState(new Set());
-  // Track enriched collection IDs to prevent re-triggering on state updates
-  const enrichedCollectionIdsRef = useRef(new Set());
+
 
   const sidebarListRef = useRef(null);
 
@@ -190,55 +190,6 @@ export function UserCollectionsPage() {
   }, [collections]);
 
 
-  useEffect(() => {
-    const collectionsNeedingRatings = collections.filter(
-      (collection) => (collection.movies || []).some((item) => !hasStoredRating(item))
-    );
-    if (!collectionsNeedingRatings.length) return undefined;
-
-    // Only enrich collections not yet attempted this session
-    const pending = collectionsNeedingRatings.filter((c) => {
-      const key = String(c._id || c.name);
-      return !enrichedCollectionIdsRef.current.has(key);
-    });
-    if (!pending.length) {
-      console.log('[Soulstash][React][CollectionsPage] enrichment effect - all needy collections already attempted, skipping');
-      return undefined;
-    }
-
-    console.log(`[Soulstash][React][CollectionsPage] enrichment effect - queuing ${pending.length} collection(s):`, pending.map(c => c.name));
-
-    // Mark as attempted immediately to prevent re-queuing on re-renders
-    pending.forEach((c) => enrichedCollectionIdsRef.current.add(String(c._id || c.name)));
-
-    let cancelled = false;
-
-    async function backfillLoadedCollections() {
-      for (const collection of pending) {
-        if (cancelled) return;
-        try {
-          const response = await enrichCollectionRatingsInBackground(collection, '[Soulstash][React][CollectionsPage]');
-        if (!cancelled && Array.isArray(response?.collections)) {
-          broadcastCollections(response.collections, response?.collectionVersion);
-        }
-        } catch (enrichError) {
-          console.warn('[Soulstash][React][CollectionsPage] Failed to enrich collection metadata', {
-            collectionId: collection?._id,
-            collectionName: collection?.name,
-            message: enrichError?.message,
-            status: enrichError?.status
-          });
-        }
-      }
-    }
-
-    backfillLoadedCollections();
-
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collections.length]);
 
 
 

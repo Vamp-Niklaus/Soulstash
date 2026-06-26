@@ -268,13 +268,62 @@ app.post('/collections/:id/enrich-metadata', async (req: any, res: any) => {
   try {
     const user = req.user;
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    const collectionId = req.params.id;
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+
     const coll = await userRepository.connect();
-    const latest = await coll.findOne({ username: user.username }, { projection: { password: 0 } });
-    if (!latest) return res.status(404).json({ error: 'User not found' });
+    const doc = await coll.findOne({ username: user.username }, { projection: { password: 0 } });
+    if (!doc) return res.status(404).json({ error: 'User not found' });
+
+    // Key resolved items by mediaType:contentId so each stored movie/series
+    // entry in the target collection can be matched and updated in place.
+    const resolvedByKey = new Map(
+      items.map((item: any) => [`${String(item.mediaType)}:${Number(item.contentId)}`, item])
+    );
+
+    let modified = false;
+    const updatedCollections = (doc.collections || []).map((c: any) => {
+      if (String(c._id) !== String(collectionId) && c.name !== collectionId) return c;
+
+      const movies = (c.movies || []).map((m: any) => {
+        const mediaType = m.media_type === 'Series' || m.seriesId ? 'Series' : 'Movie';
+        const contentId = Number(m.movieId || m.seriesId || m.id || 0);
+        const resolved: any = resolvedByKey.get(`${mediaType}:${contentId}`);
+        if (!resolved) return m;
+
+        modified = true;
+        return {
+          ...m,
+          imdb_rating: resolved.imdb_rating ?? null,
+          vote_average: resolved.vote_average ?? m.vote_average ?? null,
+          imdb_id: resolved.imdb_id || m.imdb_id || '',
+          // Persist the attempt flag even on a failed lookup so this item
+          // isn't re-queued for enrichment on every future page load.
+          rating_lookup_attempted: resolved.rating_lookup_attempted === true
+        };
+      });
+
+      return { ...c, movies, updatedAt: new Date() };
+    });
+
+    if (!modified) {
+      return res.json({
+        message: 'Nothing to update',
+        collections: doc.collections || [],
+        collectionVersion: Number(doc.collectionVersion || 0)
+      });
+    }
+
+    const latest = await coll.findOneAndUpdate(
+      { username: user.username },
+      { $set: { collections: updatedCollections }, $inc: { collectionVersion: 1 } },
+      { returnDocument: 'after' }
+    );
+
     res.json({
       message: 'Collection metadata updated',
-      collections: latest.collections || [],
-      collectionVersion: Number(latest.collectionVersion || 0)
+      collections: latest?.collections || updatedCollections,
+      collectionVersion: Number(latest?.collectionVersion || 0)
     });
   } catch (err: any) {
     logger.error(`[UserService] enrich metadata error: ${err.message}`);

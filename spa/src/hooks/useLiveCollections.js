@@ -12,17 +12,25 @@ export function useLiveCollections() {
       setLoading(false);
     }
 
-    applyCollections(getCachedUserCollections());
+    // Always sync from cache immediately — zero flicker on navigation
+    const cached = getCachedUserCollections();
+    if (cached?.length) applyCollections(cached);
 
     if (getToken()) {
-      if (!hasCollectionCache()) {
-        setLoading(true);
-      }
       loadRatingsTable().catch(() => {});
-      loadUserCollections()
-        .then(applyCollections)
-        .catch(() => setLoading(false));
+
+      if (!hasCollectionCache()) {
+        // Truly no cache at all (first load / logged-out) — must fetch
+        setLoading(true);
+        loadUserCollections()
+          .then(applyCollections)
+          .catch(() => setLoading(false));
+      }
+      // If cache exists, loadUserCollections already de-duped and session-flagged —
+      // no extra call needed. The event listener below handles any mutations.
     }
+
+    const updateEventName = window.CollectionStore?.COLLECTIONS_UPDATED_EVENT || 'soulstash:collections-updated';
 
     function handleCollectionsUpdated(event) {
       applyCollections(event.detail?.collections || getCachedUserCollections());
@@ -33,10 +41,8 @@ export function useLiveCollections() {
       applyCollections(getCachedUserCollections());
     }
 
-    const updateEventName = window.CollectionStore?.COLLECTIONS_UPDATED_EVENT || 'soulstash:collections-updated';
     window.addEventListener(updateEventName, handleCollectionsUpdated);
     window.addEventListener('storage', handleStorage);
-
     return () => {
       window.removeEventListener(updateEventName, handleCollectionsUpdated);
       window.removeEventListener('storage', handleStorage);

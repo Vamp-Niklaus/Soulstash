@@ -114,10 +114,10 @@ export function UserCollectionDetailPage() {
       const exists = movies.some((entry) => contentIdFromItem(entry) === contentId);
       if (exists) return movies;
       return [
-        ...movies,
         mediaType === 'Series'
           ? { seriesId: contentId, title: payload.title, poster_path: payload.poster_path, release_date: payload.release_date, media_type: 'Series', addedAt: new Date().toISOString() }
-          : { movieId: contentId, title: payload.title, poster_path: payload.poster_path, release_date: payload.release_date, media_type: 'Movie', addedAt: new Date().toISOString() }
+          : { movieId: contentId, title: payload.title, poster_path: payload.poster_path, release_date: payload.release_date, media_type: 'Movie', addedAt: new Date().toISOString() },
+        ...movies
       ];
     });
 
