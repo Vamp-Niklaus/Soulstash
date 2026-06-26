@@ -136,12 +136,14 @@ export function UserCollectionDetailPage() {
       }
       toast(response.message || 'Added to collection');
     } catch (error) {
-      if (optimisticSnapshot) {
-        broadcastCollections(optimisticSnapshot, lastKnownCollectionVersion);
-      }
       if (error.status === 409) {
         toast('Already in this collection', 'info');
         return;
+      }
+      if (optimisticSnapshot) {
+        optimisticUpdateCollectionItems(collection._id, (movies) => {
+          return movies.filter((entry) => contentIdFromItem(entry) !== contentId);
+        });
       }
       const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
       toast(`Failed to add: ${msg}`, 'error');
