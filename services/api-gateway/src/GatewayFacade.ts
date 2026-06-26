@@ -9,6 +9,10 @@ import path from 'path';
  * Provides a simplified interface to bootstrap the complex API Gateway routing 
  * and middleware subsystems.
  */
+const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://127.0.0.1:3001';
+const CONTENT_SERVICE_URL = process.env.CONTENT_SERVICE_URL || 'http://127.0.0.1:3002';
+const COLLECTION_SERVICE_URL = process.env.COLLECTION_SERVICE_URL || 'http://127.0.0.1:3003';
+
 export class GatewayFacade {
   private app: Express;
 
@@ -48,11 +52,24 @@ export class GatewayFacade {
       res.status(200).json({ status: 'Gateway is healthy' });
     });
 
+    this.app.get('/ping', (req: Request, res: Response) => {
+      res.send(`
+        <html>
+          <head><title>API Gateway Ping</title></head>
+          <body style="font-family: sans-serif; padding: 2rem;">
+            <h1>API Gateway is up!</h1>
+            <p>This service is part of the Soulstash Microservices Architecture.</p>
+            <p>Dependencies: User Service, Content Service, Collection Service</p>
+          </body>
+        </html>
+      `);
+    });
+
     // Reverse Proxy Routing (Auth/User Service - Port 3001)
     this.app.use('/api/auth', async (req: Request, res: Response) => {
       try {
         const fetch = global.fetch || require('node-fetch');
-        const url = `http://127.0.0.1:3001${req.url}`; // e.g. /login
+        const url = `${USER_SERVICE_URL}${req.url}`; // e.g. /login
         const headers = { ...req.headers };
         delete headers['content-length'];
         delete headers['content-type'];
@@ -78,7 +95,7 @@ export class GatewayFacade {
     this.app.use('/api/user', async (req: Request, res: Response, next: NextFunction) => {
       try {
         const fetch = global.fetch || require('node-fetch');
-        const url = `http://127.0.0.1:3001${req.url}`;
+        const url = `${USER_SERVICE_URL}${req.url}`;
         const headers = { ...req.headers };
         delete headers['content-length'];
         delete headers['content-type'];
@@ -110,7 +127,7 @@ export class GatewayFacade {
     this.app.use('/api/collection', async (req: Request, res: Response) => {
       try {
         const fetch = global.fetch || require('node-fetch');
-        const url = `http://127.0.0.1:3001/public-collection${req.url}`;
+        const url = `${USER_SERVICE_URL}/public-collection${req.url}`;
         const headers = { ...req.headers };
         delete headers['content-length'];
         delete headers['content-type'];
@@ -139,7 +156,7 @@ export class GatewayFacade {
       try {
         const fetch = global.fetch || require('node-fetch');
         const queryStr = new URLSearchParams(req.query as any).toString();
-        const proxyUrl = `http://127.0.0.1:3002/player/sources${queryStr ? '?' + queryStr : ''}`;
+        const proxyUrl = `${CONTENT_SERVICE_URL}/player/sources${queryStr ? '?' + queryStr : ''}`;
         const initOpts: any = { method: req.method, headers: { ...req.headers } };
         delete initOpts.headers['content-length'];
         delete initOpts.headers['content-type'];
@@ -156,7 +173,7 @@ export class GatewayFacade {
     this.app.use('/api/home', async (req: Request, res: Response) => {
       try {
         const fetch = global.fetch || require('node-fetch');
-        const proxyRes = await fetch('http://127.0.0.1:3002/home');
+        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/home`);
         const data = await proxyRes.json();
         res.json(data);
       } catch (err) {
@@ -168,7 +185,7 @@ export class GatewayFacade {
     this.app.use('/api/trending', async (req: Request, res: Response) => {
       try {
         const fetch = global.fetch || require('node-fetch');
-        const proxyRes = await fetch(`http://127.0.0.1:3002/trending?page=${req.query.page || 1}&limit=${req.query.limit || 18}`);
+        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/trending?page=${req.query.page || 1}&limit=${req.query.limit || 18}`);
         const data = await proxyRes.json();
         res.json(data);
       } catch (err) {
@@ -180,7 +197,7 @@ export class GatewayFacade {
     const proxyTMDB = async (req: Request, res: Response, tmdbEndpoint: string) => {
       try {
         const fetch = global.fetch || require('node-fetch');
-        const proxyRes = await fetch('http://127.0.0.1:3002/tmdb-proxy', {
+        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/tmdb-proxy`, {
           headers: { 'x-tmdb-endpoint': tmdbEndpoint }
         });
         const data = await proxyRes.json();
@@ -195,7 +212,7 @@ export class GatewayFacade {
       try {
         const fetch = global.fetch || require('node-fetch');
         const searchParams = new URLSearchParams(req.query as any).toString();
-        const proxyRes = await fetch(`http://127.0.0.1:3002/movies?${searchParams}`);
+        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/movies?${searchParams}`);
         const data = await proxyRes.json();
         res.json(data);
       } catch (err) {
@@ -217,7 +234,7 @@ export class GatewayFacade {
         const fetch = global.fetch || require('node-fetch');
         const searchParams = new URLSearchParams(req.query as any).toString();
         const suffix = req.path === '/' ? '' : req.path;
-        const proxyUrl = `http://127.0.0.1:3002/search${suffix}${searchParams ? '?' + searchParams : ''}`;
+        const proxyUrl = `${CONTENT_SERVICE_URL}/search${suffix}${searchParams ? '?' + searchParams : ''}`;
         const proxyRes = await fetch(proxyUrl);
         
         // Check if response is ndjson
@@ -240,7 +257,7 @@ export class GatewayFacade {
         const fetch = global.fetch || require('node-fetch');
         const queryStr = new URLSearchParams(req.query as any).toString();
         const suffix = req.path === '/' ? '' : req.path;
-        const proxyUrl = `http://127.0.0.1:3002/ratings${suffix}${queryStr ? '?' + queryStr : ''}`;
+        const proxyUrl = `${CONTENT_SERVICE_URL}/ratings${suffix}${queryStr ? '?' + queryStr : ''}`;
         
         const initOpts: any = {
           method: req.method,
@@ -268,7 +285,7 @@ export class GatewayFacade {
     this.app.use('/api/collections/published', async (req: Request, res: Response) => {
       try {
         const fetch = global.fetch || require('node-fetch');
-        const proxyRes = await fetch('http://127.0.0.1:3003/published');
+        const proxyRes = await fetch(`${COLLECTION_SERVICE_URL}/published`);
         const data = await proxyRes.json();
         res.json(data);
       } catch (err) {

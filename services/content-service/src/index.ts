@@ -19,6 +19,19 @@ const ratingsRepo = new MongoRatingsRepository();
 const contentController = new ContentController(cachingProvider, ratingsRepo);
 
 app.get('/home', contentController.getHome.bind(contentController));
+
+app.get('/ping', (req, res) => {
+  res.send(`
+    <html>
+      <head><title>Content Service Ping</title></head>
+      <body style="font-family: sans-serif; padding: 2rem;">
+        <h1>Content Service is up!</h1>
+        <p>This service is part of the Soulstash Microservices Architecture.</p>
+        <p>Dependencies: MongoDB, TMDB API, Scraper Service</p>
+      </body>
+    </html>
+  `);
+});
 app.get('/trending', contentController.getTrending.bind(contentController));
 app.get('/movies', contentController.getMoviesByGenre.bind(contentController));
 app.get('/search', contentController.search.bind(contentController));
