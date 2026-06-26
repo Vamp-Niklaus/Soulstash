@@ -12,22 +12,22 @@ Soulstash uses a robust microservices architecture to ensure maximum uptime, sep
 
 ```mermaid
 graph TD
-    Client[📱 Frontend SPA / Mobile App] -->|HTTPS Requests| API_GW[🌐 API Gateway]
+    Client["📱 Frontend SPA / Mobile App"] -->|"HTTPS Requests"| API_GW["🌐 API Gateway"]
     
     subgraph Backend Microservices
-        API_GW -->|Routes /api/auth & /api/user| UserSVC[👤 User Service]
-        API_GW -->|Routes /api/home, /api/movies| ContentSVC[🎬 Content Service]
-        API_GW -->|Routes /api/collections/published| CollectionSVC[📚 Collection Service]
-        ContentSVC -->|Triggers Background Jobs| ScraperSVC[🕵️ Scraper Service]
+        API_GW -->|"Routes /api/auth and /api/user"| UserSVC["👤 User Service"]
+        API_GW -->|"Routes /api/home, /api/movies"| ContentSVC["🎬 Content Service"]
+        API_GW -->|"Routes /api/collections/published"| CollectionSVC["📚 Collection Service"]
+        ContentSVC -->|"Triggers Background Jobs"| ScraperSVC["🕵️ Scraper Service"]
     end
 
     subgraph External
-        ContentSVC -.->|Metadata| TMDB[TMDB API]
-        ScraperSVC -.->|Headless Browser| Web[Playwright / External Sites]
+        ContentSVC -.->|"Metadata"| TMDB["TMDB API"]
+        ScraperSVC -.->|"Headless Browser"| Web["Playwright / External Sites"]
     end
 
     subgraph Database Layer
-        UserSVC ==> DB[(🍃 MongoDB)]
+        UserSVC ==> DB[("🍃 MongoDB")]
         CollectionSVC ==> DB
         ContentSVC ==> DB
         ScraperSVC ==> DB
