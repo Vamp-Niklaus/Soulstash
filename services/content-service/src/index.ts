@@ -1,4 +1,5 @@
 import express from 'express';
+import { generatePingHtml } from '../../shared/src/utils/pingTemplate';
 import { ContentController } from './ContentController';
 import { TMDBAdapter } from './adapters/TMDBAdapter';
 import { CachingDecorator } from './decorators/CachingDecorator';
@@ -21,16 +22,16 @@ const contentController = new ContentController(cachingProvider, ratingsRepo);
 app.get('/home', contentController.getHome.bind(contentController));
 
 app.get('/ping', (req, res) => {
-  res.send(`
-    <html>
-      <head><title>Content Service Ping</title></head>
-      <body style="font-family: sans-serif; padding: 2rem;">
-        <h1>Content Service is up!</h1>
-        <p>This service is part of the Soulstash Microservices Architecture.</p>
-        <p>Dependencies: MongoDB, TMDB API, Scraper Service</p>
-      </body>
-    </html>
-  `);
+  res.send(generatePingHtml({
+    serviceName: 'Content Service',
+    role: 'Fetches and caches movie/TV data from TMDB and handles media streaming sources.',
+    parents: ['API Gateway'],
+    children: ['TMDB API', 'Scraper Service', 'MongoDB'],
+    endpoints: [
+      '/home', '/trending', '/movies', '/search', 
+      '/tmdb-proxy', '/ratings', '/player/sources'
+    ]
+  }));
 });
 app.get('/trending', contentController.getTrending.bind(contentController));
 app.get('/movies', contentController.getMoviesByGenre.bind(contentController));

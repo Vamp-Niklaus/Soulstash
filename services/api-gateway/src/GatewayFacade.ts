@@ -1,5 +1,6 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import { generatePingHtml } from '../../shared/src/utils/pingTemplate';
 import { logger } from '../../shared/src/utils/Logger';
 import { RateLimitMiddleware, AuthMiddleware } from './middleware';
 
@@ -55,16 +56,16 @@ export class GatewayFacade {
     });
 
     this.app.get('/ping', (req: Request, res: Response) => {
-      res.send(`
-        <html>
-          <head><title>API Gateway Ping</title></head>
-          <body style="font-family: sans-serif; padding: 2rem;">
-            <h1>API Gateway is up!</h1>
-            <p>This service is part of the Soulstash Microservices Architecture.</p>
-            <p>Dependencies: User Service, Content Service, Collection Service</p>
-          </body>
-        </html>
-      `);
+      res.send(generatePingHtml({
+        serviceName: 'API Gateway',
+        role: 'The central traffic director and reverse proxy for all frontend requests.',
+        parents: ['Frontend SPA'],
+        children: ['User Service', 'Content Service', 'Collection Service'],
+        endpoints: [
+          '/api/auth', '/api/user', '/api/collection', '/api/home', 
+          '/api/trending', '/api/movies', '/api/series', '/api/search', '/api/ratings'
+        ]
+      }));
     });
 
     // Reverse Proxy Routing (Auth/User Service - Port 3001)
