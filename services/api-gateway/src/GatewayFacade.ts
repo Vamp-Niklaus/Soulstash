@@ -230,7 +230,25 @@ export class GatewayFacade {
     this.app.get('/api/series/:id/credits', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/credits`));
     this.app.get('/api/series/:id/season/:season', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/season/${req.params.season}`));
     this.app.get('/api/person/:id', (req, res) => proxyTMDB(req, res, `/3/person/${req.params.id}?append_to_response=combined_credits`));
-    this.app.get('/api/person/:id/credits', (req, res) => proxyTMDB(req, res, `/3/person/${req.params.id}/combined_credits`));
+    this.app.get('/api/person/:id/credits', async (req: Request, res: Response) => {
+      try {
+        const fetch = global.fetch || require('node-fetch');
+        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/person/${req.params.id}/credits`, {
+          headers: { Authorization: req.headers.authorization || '' }
+        });
+        if (!proxyRes.ok) {
+          const err = await proxyRes.json().catch(() => ({}));
+          res.status(proxyRes.status).json(err);
+          return;
+        }
+        res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+        res.setHeader('X-Accel-Buffering', 'no');
+        proxyRes.body.pipe(res);
+      } catch (err: any) {
+        logger.error(`[Gateway] person credits proxy error: ${err.message}`);
+        if (!res.headersSent) res.status(502).json({ error: 'Failed to proxy person credits' });
+      }
+    });
 
     this.app.use('/api/search', async (req: Request, res: Response) => {
       try {
