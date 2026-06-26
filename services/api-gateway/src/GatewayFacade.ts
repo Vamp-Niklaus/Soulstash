@@ -230,38 +230,81 @@ export class GatewayFacade {
     this.app.get('/api/series/:id/credits', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/credits`));
     this.app.get('/api/series/:id/season/:season', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/season/${req.params.season}`));
     this.app.get('/api/person/:id', (req, res) => proxyTMDB(req, res, `/3/person/${req.params.id}?language=en-US`));
+    //  PASTE THIS UPDATED BLOCK INSTEAD:
     this.app.get('/api/person/:id/credits', (req: Request, res: Response) => {
-      const http = require('http');
-      const url = new URL(`${CONTENT_SERVICE_URL}/person/${req.params.id}/credits`);
-      const options = {
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        method: 'GET',
-        headers: {
-          ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {})
-        }
-      };
-      const proxyReq = http.request(options, (proxyRes: any) => {
-        if (proxyRes.statusCode !== 200) {
-          let body = '';
-          proxyRes.on('data', (chunk: any) => { body += chunk; });
-          proxyRes.on('end', () => {
-            try { res.status(proxyRes.statusCode).json(JSON.parse(body)); }
-            catch { res.status(proxyRes.statusCode).send(body); }
-          });
-          return;
-        }
-        res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
-        res.setHeader('X-Accel-Buffering', 'no');
-        proxyRes.pipe(res);
-      });
-      proxyReq.on('error', (err: any) => {
-        logger.error(`[Gateway] person credits proxy error: ${err.message}`);
-        if (!res.headersSent) res.status(502).json({ error: 'Failed to proxy person credits' });
-      });
-      proxyReq.end();
+    const url = new URL(`${CONTENT_SERVICE_URL}/person/${req.params.id}/credits`);
+    
+    // Dynamically choose between http and https modules
+    const isHttps = url.protocol === 'https:';
+    const transport = isHttps ? require('https') : require('http');
+    
+    const options = {
+      hostname: url.hostname,
+      port: url.port || (isHttps ? 443 : 80), // Swaps to 443 on Render production
+      path: url.pathname + url.search,
+      method: 'GET',
+      headers: {
+        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {})
+      }
+    };
+
+    const proxyReq = transport.request(options, (proxyRes: any) => {
+      if (proxyRes.statusCode !== 200) {
+        let body = '';
+        proxyRes.on('data', (chunk: any) => { body += chunk; });
+        proxyRes.on('end', () => {
+          try { res.status(proxyRes.statusCode).json(JSON.parse(body)); }
+          catch { res.status(proxyRes.statusCode).send(body); }
+        });
+        return;
+      }
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('X-Accel-Buffering', 'no');
+      proxyRes.pipe(res);
     });
+
+    proxyReq.on('error', (err: any) => {
+      logger.error(`[Gateway] person credits proxy error: ${err.message}`);
+      if (!res.headersSent) res.status(502).json({ error: 'Failed to proxy person credits' });
+    });
+
+    proxyReq.end();
+  });
+
+
+
+    // this.app.get('/api/person/:id/credits', (req: Request, res: Response) => {
+    //   const http = require('http');
+    //   const url = new URL(`${CONTENT_SERVICE_URL}/person/${req.params.id}/credits`);
+    //   const options = {
+    //     hostname: url.hostname,
+    //     port: url.port || 80,
+    //     path: url.pathname,
+    //     method: 'GET',
+    //     headers: {
+    //       ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {})
+    //     }
+    //   };
+    //   const proxyReq = http.request(options, (proxyRes: any) => {
+    //     if (proxyRes.statusCode !== 200) {
+    //       let body = '';
+    //       proxyRes.on('data', (chunk: any) => { body += chunk; });
+    //       proxyRes.on('end', () => {
+    //         try { res.status(proxyRes.statusCode).json(JSON.parse(body)); }
+    //         catch { res.status(proxyRes.statusCode).send(body); }
+    //       });
+    //       return;
+    //     }
+    //     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    //     res.setHeader('X-Accel-Buffering', 'no');
+    //     proxyRes.pipe(res);
+    //   });
+    //   proxyReq.on('error', (err: any) => {
+    //     logger.error(`[Gateway] person credits proxy error: ${err.message}`);
+    //     if (!res.headersSent) res.status(502).json({ error: 'Failed to proxy person credits' });
+    //   });
+    //   proxyReq.end();
+    // });
 
     this.app.use('/api/search', async (req: Request, res: Response) => {
       try {
