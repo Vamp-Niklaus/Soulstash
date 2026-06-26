@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { cachedApiFetch, apiFetch } from '../../api/client.js';
-import { broadcastCollections, normalizeCollections, normalizeCollection, filteredCollectionMovies, optimisticUpdateCollectionItems, refreshCollectionsView, lastKnownCollectionVersion, trashItemFromCollectionCache, confirmTrashItem, restoreTrashItem } from '../../utils/helpers.js';
+import { broadcastCollections, normalizeCollections, normalizeCollection, filteredCollectionMovies, optimisticUpdateCollectionItems, refreshCollectionsView, lastKnownCollectionVersion, trashItemFromCollectionCache, confirmTrashItem, restoreTrashItem, updateCollectionsCache } from '../../utils/helpers.js';
 import { useLiveCollections, useAuthSession, useSessionState } from '../../hooks/index.js';
 import { contentIdFromItem } from '../../utils/formatters.js';
 import { toast } from '../../utils/toast.js';
@@ -131,9 +131,7 @@ export function UserCollectionDetailPage() {
           });
       if (!window.CollectionStore?.addToCollection) {
         if (Array.isArray(response?.collections)) {
-          broadcastCollections(normalizeCollections(response.collections), response?.collectionVersion);
-        } else {
-          await refreshCollectionsView();
+          updateCollectionsCache(normalizeCollections(response.collections), response?.collectionVersion);
         }
       }
       toast(response.message || 'Added to collection');
@@ -191,9 +189,7 @@ export function UserCollectionDetailPage() {
           }
         );
         if (Array.isArray(removeResp?.collections)) {
-          broadcastCollections(normalizeCollections(removeResp.collections), removeResp?.collectionVersion);
-        } else {
-          await refreshCollectionsView();
+          updateCollectionsCache(normalizeCollections(removeResp.collections), removeResp?.collectionVersion);
         }
       }
       // Backend confirmed -> permanently purge from trash

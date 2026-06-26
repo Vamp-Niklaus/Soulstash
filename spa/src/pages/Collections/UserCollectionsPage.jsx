@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useLiveCollections, useSessionState } from '../../hooks/index.js';
 import { COLLECTION_NAME_MAX_LENGTH, FALLBACK_AVATAR } from '../../utils/constants.js';
-import { broadcastCollections, confirmTrashItem, createEmptyCollectionDraft, lastKnownCollectionVersion, normalizeCollection, normalizeCollections, optimisticRemoveCollectionFromCache, refreshCollectionsView, restoreTrashItem, trashItemFromCollectionCache } from '../../utils/helpers.js';
+import { broadcastCollections, confirmTrashItem, createEmptyCollectionDraft, lastKnownCollectionVersion, normalizeCollection, normalizeCollections, optimisticRemoveCollectionFromCache, refreshCollectionsView, restoreTrashItem, trashItemFromCollectionCache, updateCollectionsCache } from '../../utils/helpers.js';
 import { hasStoredRating } from '../../utils/formatters.js';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -343,13 +343,11 @@ export function UserCollectionsPage() {
             })
           }
         );
-        if (Array.isArray(removeResp?.collections)) {
-          broadcastCollections(normalizeCollections(removeResp.collections), removeResp?.collectionVersion);
-        } else {
-          await refreshCollectionsView();
+          if (Array.isArray(removeResp?.collections)) {
+            updateCollectionsCache(normalizeCollections(removeResp.collections), removeResp?.collectionVersion);
+          }
         }
-      }
-      // Backend confirmed -  permanently purge from trash
+        // Backend confirmed -  permanently purge from trash
       confirmTrashItem(collectionId, itemId);
       toast(`Removed ${pendingRemoval.title}`);
     } catch (error) {
