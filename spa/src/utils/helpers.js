@@ -96,14 +96,17 @@ export function optimisticRemoveCollectionFromCache(collectionId) {
 
 export function optimisticUpdateCollectionItems(collectionId, updateFn) {
   const current = normalizeCollections(getCachedUserCollections());
+  if (!current || current.length === 0) return null;
   const id = String(collectionId);
+  let modified = false;
   const next = current.map((collection) => {
     if (String(collection._id || collection.name) !== id && String(collection.name) !== id) return collection;
     const movies = Array.isArray(collection.movies) ? collection.movies : [];
     const updated = updateFn(movies);
+    modified = true;
     return { ...collection, movies: updated, movieCount: updated.length };
   });
-  broadcastCollections(next, lastKnownCollectionVersion);
+  if (modified) broadcastCollections(next, lastKnownCollectionVersion);
   return current;
 }
 
@@ -126,6 +129,7 @@ export function writeTrashCache(entries) {
 
 export function trashItemFromCollectionCache(collectionId, itemId) {
   const current = normalizeCollections(getCachedUserCollections());
+  if (!current || current.length === 0) return null;
   const id = String(collectionId);
   let trashedItem = null;
   let collectionName = '';
@@ -153,13 +157,13 @@ export function trashItemFromCollectionCache(collectionId, itemId) {
     trash.push({
       collectionId: id,
       collectionName,
+      itemId: String(itemId),
       item: trashedItem,
-      removedAt: Date.now()
+      trashedAt: Date.now()
     });
     writeTrashCache(trash);
+    broadcastCollections(next, lastKnownCollectionVersion);
   }
-
-  broadcastCollections(next, lastKnownCollectionVersion);
   return current; // snapshot for rollback
 }
 
@@ -408,16 +412,32 @@ export function getCachedUserCollections() {
 
 export function normalizeCollection(collection) {
   const rawMovies = Array.isArray(collection?.movies) ? collection.movies : [];
-  
+  let movies = rawMovies;
+
   const seenIds = new Set();
-  const movies = [];
-  for (const m of rawMovies) {
+  let hasDuplicates = false;
+  for (let i = 0; i < rawMovies.length; i++) {
+    const m = rawMovies[i];
     const id = Number(m.movieId || m.seriesId || m.id || m._id || 0);
-    if (id !== 0 && !seenIds.has(id)) {
-      seenIds.add(id);
-      movies.push(m);
-    } else if (id === 0) {
-      movies.push(m);
+    if (id !== 0 && seenIds.has(id)) {
+      hasDuplicates = true;
+      break;
+    }
+    if (id !== 0) seenIds.add(id);
+  }
+
+  if (hasDuplicates) {
+    seenIds.clear();
+    movies = [];
+    for (let i = 0; i < rawMovies.length; i++) {
+      const m = rawMovies[i];
+      const id = Number(m.movieId || m.seriesId || m.id || m._id || 0);
+      if (id !== 0 && !seenIds.has(id)) {
+        seenIds.add(id);
+        movies.push(m);
+      } else if (id === 0) {
+        movies.push(m);
+      }
     }
   }
 
