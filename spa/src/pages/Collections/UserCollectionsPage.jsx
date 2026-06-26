@@ -396,10 +396,23 @@ export function UserCollectionsPage() {
         toast(`Collection name must be ${COLLECTION_NAME_MAX_LENGTH} characters or less`, 'error');
         return;
       }
-      setCreateLoading(true);
       const collectionName = createDraft.name.trim();
+      // Frontend duplicate guard - check live cache before hitting the API
+      const nameLower = collectionName.toLowerCase();
+      const isDuplicate = collections.some(
+        (c) => String(c.name).trim().toLowerCase() === nameLower
+      );
+      if (isDuplicate) {
+        toast(`A collection named "${collectionName}" already exists`, 'error');
+        return;
+      }
+      setCreateLoading(true);
       if (window.CollectionStore?.createCollection) {
         await window.CollectionStore.createCollection(collectionName, createDraft.isPublic, createDraft.description.trim());
+        setSelectedCollectionName(collectionName);
+        setCreateDraft(createEmptyCollectionDraft());
+        setCreateModalOpen(false);
+        toast(`Created ${collectionName}`);
       } else {
         const response = await apiFetch('/api/user/collections', {
           method: 'POST',
@@ -414,13 +427,16 @@ export function UserCollectionsPage() {
         } else {
           await refreshCollectionsView();
         }
+        setSelectedCollectionName(collectionName);
+        setCreateDraft(createEmptyCollectionDraft());
+        setCreateModalOpen(false);
+        toast(`Created ${collectionName}`);
       }
-      setSelectedCollectionName(collectionName);
-      setCreateDraft(createEmptyCollectionDraft());
-      setCreateModalOpen(false);
-      toast(`Created ${collectionName}`);
     } catch (error) {
-      toast(error.message, 'error');
+      const msg = error.status === 409
+        ? (error.payload?.error || `A collection with that name already exists`)
+        : (error.message || 'Failed to create collection');
+      toast(msg, 'error');
     } finally {
       setCreateLoading(false);
     }
