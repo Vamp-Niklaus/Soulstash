@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { generatePingHtml } from '../../shared/src/utils/pingTemplate';
 import { ScraperController } from './ScraperController';
 
 const { initDb } = require('./utils/dbProvider');
@@ -13,16 +14,13 @@ app.post('/api/scrape', scraperController.scrape.bind(scraperController));
 app.get('/api/imdb/person/:personId/filmography', scraperController.getImdbFilmography.bind(scraperController));
 
 app.get('/ping', (req, res) => {
-  res.send(`
-    <html>
-      <head><title>Scraper Service Ping</title></head>
-      <body style="font-family: sans-serif; padding: 2rem;">
-        <h1>Scraper Service is up!</h1>
-        <p>This service is part of the Soulstash Microservices Architecture.</p>
-        <p>Dependencies: MongoDB, Playwright</p>
-      </body>
-    </html>
-  `);
+  res.send(generatePingHtml({
+    serviceName: 'Scraper Service',
+    role: 'Uses headless browsers to scrape background metadata (e.g., IMDb IDs and video links).',
+    parents: ['Content Service'],
+    children: ['Playwright', 'MongoDB'],
+    endpoints: ['/api/scrape', '/api/imdb/person/:personId/filmography']
+  }));
 });
 
 initDb().then(() => {
