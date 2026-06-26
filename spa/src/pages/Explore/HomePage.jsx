@@ -2,17 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cachedApiFetch, getToken } from '../../api/client.js';
 import { normalizeStoredCollectionItem } from '../../utils/formatters.js';
-import { broadcastCollections, loadUserCollections, normalizeCollections, homeTrendingCache, enrichCollectionRatingsInBackground } from '../../utils/helpers.js';
+import { broadcastCollections, getCachedUserCollections, loadUserCollections, normalizeCollections, homeTrendingCache } from '../../utils/helpers.js';
 import { useHomeTwoRowLimit, useGridKeyNav } from '../../hooks/index.js';
 import { HOME_GRID_CLASS, HOME_TRENDING_TTL } from '../../utils/constants.js';
 import { HomePageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { HomeShelfHeader } from './HomeShelfHeader.jsx';
 import { LazyCategoryShelf } from './LazyCategoryShelf.jsx';
+
+
 export function HomePage() {
   const navigate = useNavigate();
   const [trending, setTrending] = useState([]);
-  const [collections, setCollections] = useState([]);
+  const [collections, setCollections] = useState(() => normalizeCollections(getCachedUserCollections()));
   const [publishedCollections, setPublishedCollections] = useState([]);
   const [genres, setGenres] = useState([]);
   const [categoryData, setCategoryData] = useState({});
@@ -20,9 +22,7 @@ export function HomePage() {
   const [error, setError] = useState('');
   const [retryTick, setRetryTick] = useState(0);
   const homeShelfLimit = useHomeTwoRowLimit();
-  // Track which collection IDs have already been submitted for enrichment
-  // so we never re-run just because setCollections() updated state.
-  const enrichedCollectionIdsRef = useRef(new Set());
+
 
   const pageRef = useRef(null);
   const firstCardRef = useRef(null);
@@ -67,9 +67,15 @@ export function HomePage() {
     async function load() {
       try {
         setError('');
-        const [homeData, userCollections, publishedData] = await Promise.all([
+        // Collections: use cache immediately — only hit network if cache is empty
+        const cachedCollections = getCachedUserCollections();
+        if (!cachedCollections.length && getToken()) {
+          loadUserCollections().then((fetched) => {
+            if (!ignore) setCollections(normalizeCollections(fetched));
+          }).catch(() => {});
+        }
+        const [homeData, publishedData] = await Promise.all([
           cachedApiFetch('/api/home').catch(() => ({ trending: [], genres: [], categories: {} })),
-          getToken() ? loadUserCollections().catch(() => []) : Promise.resolve([]),
           cachedApiFetch('/api/collections/published').catch(() => ({ collections: [] }))
         ]);
 
@@ -78,7 +84,7 @@ export function HomePage() {
           setTrending(homeTrending);
           // Warm the loadTrendingHome cache so TrendingPage reuses it
           if (homeTrending.length) { homeTrendingCache.data = homeTrending; homeTrendingCache.expiresAt = Date.now() + HOME_TRENDING_TTL; }
-          setCollections(userCollections);
+          if (cachedCollections.length) setCollections(normalizeCollections(cachedCollections));
           setPublishedCollections(Array.isArray(publishedData?.collections) ? publishedData.collections : []);
           setGenres(Array.isArray(homeData?.genres) ? homeData.genres : []);
           setCategoryData(homeData?.categories && typeof homeData.categories === 'object' ? homeData.categories : {});
@@ -108,56 +114,6 @@ export function HomePage() {
     };
   }, [retryTick]);
 
-  // Enrich ratings for any collection not yet attempted this session.
-  // We deliberately do NOT include `collections` in the dep array - we only
-  // want to kick off enrichment once per load, not every time setCollections
-  // updates state (which would create an infinite loop).
-  useEffect(() => {
-    if (!collections.length) return undefined;
-
-    // Find collections that haven't been enriched yet this session
-    const pending = collections.filter((c) => {
-      const key = String(c._id || c.name);
-      return !enrichedCollectionIdsRef.current.has(key);
-    });
-    if (!pending.length) {
-      console.log('[Soulstash][React][HomePage] enrichment effect - all collections already attempted, skipping');
-      return undefined;
-    }
-
-    console.log(`[Soulstash][React][HomePage] enrichment effect - queuing ${pending.length} collection(s):`, pending.map(c => c.name));
-
-    // Mark them as attempted immediately so re-renders don't re-queue them
-    pending.forEach((c) => enrichedCollectionIdsRef.current.add(String(c._id || c.name)));
-
-    let cancelled = false;
-
-    (async () => {
-      for (const collection of pending) {
-        if (cancelled) return;
-        try {
-          const response = await enrichCollectionRatingsInBackground(collection, '[Soulstash][React][HomePage]');
-          if (!cancelled && Array.isArray(response?.collections)) {
-            setCollections(normalizeCollections(response.collections));
-            broadcastCollections(response.collections, response?.collectionVersion);
-          }
-        } catch (enrichError) {
-          if (!cancelled) {
-            console.warn('[Soulstash][React][HomePage] Failed to enrich collection metadata', {
-              collectionId: collection?._id,
-              collectionName: collection?.name,
-              message: enrichError.message
-            });
-          }
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collections.length]);
 
   if (loading && !error) {
     return <HomePageSkeleton />;

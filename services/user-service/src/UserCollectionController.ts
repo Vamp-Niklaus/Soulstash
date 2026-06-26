@@ -179,61 +179,163 @@ export class UserCollectionController {
     }
   }
 
+
+  // ── Anime detection (mirrors original routes/collections.js) ──────────────
+  private isAnimeContent(item: any): boolean {
+    const hasAnimation = Array.isArray(item.genres) &&
+      item.genres.some((g: any) => (typeof g === 'string' ? g : g?.name) === 'Animation');
+    if (!hasAnimation) return false;
+    const asianLangs = ['ja', 'zh', 'ko'];
+    const asianCountries = ['JP', 'CN', 'KR'];
+    const originCountry = item.origin_country || item.production_countries || [];
+    const isAsianCountry = Array.isArray(originCountry)
+      ? originCountry.some((c: any) => asianCountries.includes(typeof c === 'string' ? c : c?.iso_3166_1))
+      : asianCountries.includes(String(originCountry));
+    return asianLangs.includes(item.original_language) && isAsianCountry;
+  }
+
+  private validVoteAverage(v: any): number | null {
+    const n = parseFloat(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  private validImdbRating(v: any): number | null {
+    const n = parseFloat(v);
+    return Number.isFinite(n) && n > 0 && n <= 10 ? n : null;
+  }
+
   public async addItem(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).user;
       const collectionId = req.params.id;
-      
-      if (!user) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return;
+      if (!user) { res.status(401).json({ error: 'Unauthorized' }); return; }
+
+      const { movieId, seriesId, title, poster_path, release_date, media_type } = req.body || {};
+      if (!movieId && !seriesId) {
+        res.status(400).json({ error: 'Movie ID or Series ID is required' }); return;
       }
-      
-      const item = req.body || {};
-      const contentId = Number(item.id || item.movieId || item.seriesId || 0);
-      if (!item || !contentId) {
-        res.status(400).json({ error: 'Valid item data required' });
-        return;
-      }
-      const mediaType = String(item.media_type || (item.seriesId ? 'Series' : 'Movie'));
-      
-      // Map to old schema format if needed
-      const normalizedItem = {
-        ...item,
-        id: contentId,
-        movieId: mediaType === 'Movie' ? contentId : undefined,
-        seriesId: mediaType === 'Series' ? contentId : undefined,
-        media_type: mediaType === 'Series' ? 'Series' : 'Movie',
-      };
+
+      const contentId = Number(movieId || seriesId);
+      const contentType: string = String(media_type || (seriesId ? 'Series' : 'Movie'));
+      const TMDB_BASE = (process.env.TMDB_BASE_URL || 'https://api.tmdb.org').replace('api.themoviedb.org', 'api.tmdb.org');
+      const TMDB_TOKEN = String(process.env.TMDB_BEARER_TOKEN || '').trim();
 
       const coll = await this.repository.connect();
-      
-      // Update by _id
-      await coll.updateOne(
-        { username: user.username, 'collections._id': collectionId },
-        { 
-          $push: { 'collections.$.movies': normalizedItem },
-          $inc: { 'collections.$.movieCount': 1 },
-          $set: { 'collections.$.updatedAt': new Date() }
+      const doc = await coll.findOne({ username: user.username });
+      if (!doc) { res.status(404).json({ error: 'User not found' }); return; }
+
+      const colIdx = (doc.collections || []).findIndex(
+        (c: any) => (c._id || c.name) === collectionId || c.name === collectionId
+      );
+      if (colIdx === -1) { res.status(404).json({ error: 'Collection not found' }); return; }
+      const col = doc.collections[colIdx];
+
+      const alreadyIn = (col.movies || []).find(
+        (m: any) => Number(m.movieId || m.seriesId) === contentId
+      );
+      if (alreadyIn) { res.status(409).json({ error: 'Content already in collection' }); return; }
+
+      // Watched <-> Watchlist mutual exclusion (same as original)
+      if (collectionId === 'Watchlist' || collectionId === 'Watched') {
+        const opposite = collectionId === 'Watchlist' ? 'Watched' : 'Watchlist';
+        const oppCol = (doc.collections || []).find((c: any) => c.name === opposite);
+        if (oppCol?.movies?.find((m: any) => Number(m.movieId || m.seriesId) === contentId)) {
+          const pullResult = await coll.updateOne(
+            { username: user.username, 'collections.name': opposite },
+            { $pull: { 'collections.$.movies': { $or: [{ movieId: contentId }, { seriesId: contentId }] } } } as any
+          );
+          if (pullResult.modifiedCount === 0) {
+            const fresh = await coll.findOne({ username: user.username });
+            const freshOpp = (fresh?.collections || []).find((c: any) => c.name === opposite);
+            if (freshOpp) {
+              await coll.updateOne(
+                { username: user.username, 'collections.name': opposite },
+                { $set: { 'collections.$.movies': freshOpp.movies.filter((m: any) => Number(m.movieId || m.seriesId) !== contentId) } }
+              );
+            }
+          }
+        }
+      }
+
+      // TMDB detail fetch — resolves isAnime, vote_average, imdb_id, poster, title
+      let isAnime = false;
+      let vote_average: number | null = null;
+      let imdb_id = '';
+      let imdb_rating: number | null = null;
+      let resolvedTitle = title || `${contentType} ${contentId}`;
+      let resolvedPosterPath = poster_path || '';
+      let resolvedReleaseDate = release_date || new Date().toISOString().split('T')[0];
+
+      try {
+        const tmdbUrl = contentType === 'Series'
+          ? `${TMDB_BASE}/3/tv/${contentId}?language=en-US`
+          : `${TMDB_BASE}/3/movie/${contentId}?language=en-US`;
+        logger.info(`[addItem] TMDB fetch ${tmdbUrl}`);
+        const resp = await fetch(tmdbUrl, {
+          headers: { accept: 'application/json', Authorization: `Bearer ${TMDB_TOKEN}` }
+        });
+        if (resp.ok) {
+          const details: any = await resp.json();
+          isAnime = this.isAnimeContent(details);
+          vote_average = this.validVoteAverage(details.vote_average);
+          imdb_id = String(details.imdb_id || details.external_ids?.imdb_id || '').trim();
+          resolvedTitle = details.title || details.name || resolvedTitle;
+          resolvedPosterPath = details.poster_path || resolvedPosterPath;
+          resolvedReleaseDate = details.release_date || details.first_air_date || resolvedReleaseDate;
+          logger.info(`[addItem] resolved title="${resolvedTitle}" isAnime=${isAnime} vote_average=${vote_average} imdb_id="${imdb_id}"`);
+
+          // For series without imdb_id in main detail, fetch external_ids
+          if (!imdb_id && contentType === 'Series') {
+            try {
+              const extResp = await fetch(`${TMDB_BASE}/3/tv/${contentId}/external_ids`, {
+                headers: { accept: 'application/json', Authorization: `Bearer ${TMDB_TOKEN}` }
+              });
+              if (extResp.ok) {
+                const ext: any = await extResp.json();
+                imdb_id = String(ext.imdb_id || '').trim();
+              }
+            } catch { /* skip */ }
+          }
+        } else {
+          logger.warn(`[addItem] TMDB returned ${resp.status} for contentId=${contentId}`);
+        }
+      } catch (e: any) {
+        logger.error(`[addItem] TMDB fetch error: ${e.message}`);
+      }
+
+      const contentData = contentType === 'Series'
+        ? { seriesId: contentId, movieId: null, title: resolvedTitle, poster_path: resolvedPosterPath, release_date: resolvedReleaseDate, first_air_date: resolvedReleaseDate, media_type: 'Series', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() }
+        : { movieId: contentId, seriesId: null, title: resolvedTitle, poster_path: resolvedPosterPath, release_date: resolvedReleaseDate, first_air_date: '', media_type: 'Movie', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() };
+
+      // $position: 0 — newest item appears first (sort by recent = insertion order descending)
+      const updateResult = await coll.updateOne(
+        { username: user.username, 'collections.name': col.name },
+        {
+          $push: { 'collections.$.movies': { $each: [contentData], $position: 0 } } as any,
+          $set: { updatedAt: new Date(), 'collections.$.updatedAt': new Date() },
+          $inc: { collectionVersion: 1 }
         }
       );
-      
-      // Update by name (fallback for defaults)
-      await coll.updateOne(
-        { username: user.username, 'collections.name': collectionId, 'collections._id': { $exists: false } },
-        { 
-          $push: { 'collections.$.movies': normalizedItem },
-          $inc: { 'collections.$.movieCount': 1 },
-          $set: { 'collections.$.updatedAt': new Date() }
-        }
-      );
-      
-      res.json({ success: true });
+      if (updateResult.modifiedCount === 0) {
+        res.status(500).json({ error: 'Failed to update collection' }); return;
+      }
+
+      const latest = await coll.findOne({ username: user.username });
+      logger.info(`[addItem] DONE title="${resolvedTitle}" isAnime=${isAnime} collection="${collectionId}"`);
+      res.json({
+        success: true,
+        message: `Added "${resolvedTitle}" to Collection!`,
+        isAnime,
+        collections: latest?.collections || [],
+        collectionVersion: Number(latest?.collectionVersion || 0)
+      });
     } catch (error: any) {
       logger.error(`[UserCollectionController] addItem error: ${error.message}`);
       res.status(500).json({ error: 'Failed to add item' });
     }
   }
+
+
 
   public async removeItem(req: Request, res: Response): Promise<void> {
     try {
@@ -271,13 +373,35 @@ export class UserCollectionController {
           $set: { 'collections.$.updatedAt': new Date() }
         } as any
       );
-      
-      res.json({ success: true });
+
+      // Recompute movieCount from the actual array length (rather than a
+      // blind $inc) since we don't know up front which of the two queries
+      // above actually matched, and return the refreshed collections so the
+      // frontend can update its local cache without a follow-up GET.
+      const afterPull = await coll.findOne({ username: user.username });
+      const recountedCollections = (afterPull?.collections || []).map((c: any) =>
+        String(c._id) === String(collectionId) || c.name === collectionId
+          ? { ...c, movieCount: Array.isArray(c.movies) ? c.movies.length : 0 }
+          : c
+      );
+
+      const latest = await coll.findOneAndUpdate(
+        { username: user.username },
+        { $set: { collections: recountedCollections }, $inc: { collectionVersion: 1 } },
+        { returnDocument: 'after' }
+      );
+
+      res.json({
+        success: true,
+        collections: latest?.collections || recountedCollections,
+        collectionVersion: Number(latest?.collectionVersion || 0)
+      });
     } catch (error: any) {
       logger.error(`[UserCollectionController] removeItem error: ${error.message}`);
       res.status(500).json({ error: 'Failed to remove item' });
     }
   }
+
   
   public async reorder(req: Request, res: Response): Promise<void> {
     try {

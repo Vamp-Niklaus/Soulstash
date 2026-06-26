@@ -407,7 +407,20 @@ export function getCachedUserCollections() {
 }
 
 export function normalizeCollection(collection) {
-  const movies = Array.isArray(collection?.movies) ? collection.movies : [];
+  const rawMovies = Array.isArray(collection?.movies) ? collection.movies : [];
+  
+  const seenIds = new Set();
+  const movies = [];
+  for (const m of rawMovies) {
+    const id = Number(m.movieId || m.seriesId || m.id || m._id || 0);
+    if (id !== 0 && !seenIds.has(id)) {
+      seenIds.add(id);
+      movies.push(m);
+    } else if (id === 0) {
+      movies.push(m);
+    }
+  }
+
   const isPublic = collection?.isPublic === true || collection?.isPublished === true;
   return {
     ...collection,
