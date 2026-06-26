@@ -39,9 +39,13 @@ export function navigateWithoutReload(to, options = {}) {
   }
 }
 
+export function getCollectionsCacheKey() {
+  return `ss_collections_${getToken() || 'anon'}`;
+}
+
 export function readCollectionsCache() {
   try {
-    const raw = localStorage.getItem(COLLECTIONS_CACHE_KEY);
+    const raw = localStorage.getItem(getCollectionsCacheKey());
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed?.collections)) return null;
@@ -59,7 +63,7 @@ export function writeCollectionsCache(collections, version) {
   try {
     const resolvedVersion = Number.isFinite(Number(version)) ? Number(version) : 0;
     localStorage.setItem(
-      COLLECTIONS_CACHE_KEY,
+      getCollectionsCacheKey(),
       JSON.stringify({
         collections,
         version: resolvedVersion,
@@ -76,6 +80,12 @@ export function updateCollectionsCache(collections, version) {
   const resolvedVersion = Number.isFinite(Number(version))
     ? Number(version)
     : (Number.isFinite(Number(existing?.version)) ? Number(existing.version) : 0);
+    
+  if (existing && existing.version > resolvedVersion) {
+    console.warn(`[Soulstash] Ignoring stale collection update (v${resolvedVersion} < v${existing.version})`);
+    return;
+  }
+  
   writeCollectionsCache(collections, resolvedVersion);
 }
 
@@ -110,9 +120,13 @@ export function optimisticUpdateCollectionItems(collectionId, updateFn) {
   return current;
 }
 
+export function getCollectionsTrashCacheKey() {
+  return `ss_collections_trash_${getToken() || 'anon'}`;
+}
+
 export function readTrashCache() {
   try {
-    const raw = localStorage.getItem(COLLECTIONS_TRASH_CACHE_KEY);
+    const raw = localStorage.getItem(getCollectionsTrashCacheKey());
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -123,7 +137,7 @@ export function readTrashCache() {
 
 export function writeTrashCache(entries) {
   try {
-    localStorage.setItem(COLLECTIONS_TRASH_CACHE_KEY, JSON.stringify(entries));
+    localStorage.setItem(getCollectionsTrashCacheKey(), JSON.stringify(entries));
   } catch {}
 }
 
