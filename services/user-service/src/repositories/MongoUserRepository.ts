@@ -10,7 +10,7 @@ import { config } from '../../../shared/src/utils/ConfigManager';
  */
 export class MongoUserRepository implements IUserRepository {
   private client: MongoClient;
-  private collection: MongoCollection | null = null;
+  private collection: MongoCollection<any> | null = null;
 
   constructor() {
     const uri = config.get('mongoUri');
@@ -20,7 +20,7 @@ export class MongoUserRepository implements IUserRepository {
     this.client = new MongoClient(uri);
   }
 
-  public async connect(): Promise<MongoCollection> {
+  public async connect(): Promise<MongoCollection<any>> {
     if (!this.collection) {
       await this.client.connect();
       const dbName = config.get('mongoDbName') || 'test';
