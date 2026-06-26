@@ -4,7 +4,7 @@ import { TMDBAdapter } from './adapters/TMDBAdapter';
 import { CachingDecorator } from './decorators/CachingDecorator';
 import { logger } from '../../shared/src/utils/Logger';
 
-const PORT = 3002;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 const app = express();
 app.use(express.json());
 

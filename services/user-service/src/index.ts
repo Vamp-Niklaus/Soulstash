@@ -4,7 +4,7 @@ import { UserService } from './UserService';
 import { MongoUserRepository } from './repositories/MongoUserRepository';
 import { logger } from '../../shared/src/utils/Logger';
 
-const PORT = 3001;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const app = express();
 app.use(express.json());
 const multer = require('multer');
