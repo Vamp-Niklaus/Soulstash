@@ -382,8 +382,15 @@ export class UserCollectionController {
       const targetColl = (afterPull?.collections || []).find((c: any) => String(c._id) === String(collectionId) || c.name === collectionId);
       const actualLength = Array.isArray(targetColl?.movies) ? targetColl.movies.length : 0;
   
+      const matchQuery: any = { username: user.username };
+      if (targetColl && targetColl._id) {
+        matchQuery['collections._id'] = targetColl._id;
+      } else {
+        matchQuery['collections.name'] = targetColl?.name || collectionId;
+      }
+
       const latest = await coll.findOneAndUpdate(
-        { username: user.username, $or: [{ 'collections._id': collectionId }, { 'collections.name': collectionId }] },
+        matchQuery,
         { 
           $set: { 'collections.$.movieCount': actualLength },
           $inc: { collectionVersion: 1 } 
