@@ -3,7 +3,7 @@ import { CollectionController } from './CollectionController';
 import { MongoCollectionRepository } from './repositories/MongoCollectionRepository';
 import { logger } from '../../shared/src/utils/Logger';
 
-const PORT = 3003;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3003;
 const app = express();
 app.use(express.json());
 

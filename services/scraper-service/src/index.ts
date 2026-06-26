@@ -4,7 +4,7 @@ import { ScraperController } from './ScraperController';
 
 const { initDb } = require('./utils/dbProvider');
 
-const PORT = 3004;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3004;
 const app = express();
 app.use(express.json());
 
