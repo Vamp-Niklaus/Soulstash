@@ -75,6 +75,21 @@ export function UserProfilePage() {
     }
   });
 
+  // When viewing your own profile, sync avatar into localStorage so the navbar updates
+  const profileUser = profilePayload?.user;
+  const isOwner = profilePayload?.isOwner && auth.username === username;
+  useEffect(() => {
+    if (!isOwner || !profileUser) return;
+    try {
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      const profileAvatar = profileUser.avatar || null;
+      if (stored.avatar !== profileAvatar) {
+        localStorage.setItem('user', JSON.stringify({ ...stored, avatar: profileAvatar }));
+        emitAuthChange();
+      }
+    } catch {}
+  }, [isOwner, profileUser?.avatar]);
+
   if (loading) {
     return <UserProfileSkeleton />;
   }
@@ -96,20 +111,6 @@ export function UserProfilePage() {
   const watchlist = collections.find((collection) => collection.name === 'Watchlist');
   const customCollections = collections.filter((collection) => !['Watched', 'Watchlist'].includes(collection.name));
   const showFavorites = profilePayload?.isOwner && favoritePeople.length;
-  const isOwner = profilePayload?.isOwner && auth.username === username;
-
-  // When viewing your own profile, sync avatar into localStorage so the navbar updates
-  useEffect(() => {
-    if (!isOwner || !user) return;
-    try {
-      const stored = JSON.parse(localStorage.getItem('user') || '{}');
-      const profileAvatar = user.avatar || null;
-      if (stored.avatar !== profileAvatar) {
-        localStorage.setItem('user', JSON.stringify({ ...stored, avatar: profileAvatar }));
-        emitAuthChange();
-      }
-    } catch {}
-  }, [isOwner, user?.avatar]);
 
   return (
     <div className="space-y-7">
