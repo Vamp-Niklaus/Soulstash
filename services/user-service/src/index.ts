@@ -10,7 +10,7 @@ import { logger } from '../../shared/src/utils/Logger';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 

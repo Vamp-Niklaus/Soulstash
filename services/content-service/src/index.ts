@@ -7,7 +7,7 @@ import { logger } from '../../shared/src/utils/Logger';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 import { MongoRatingsRepository } from './repositories/MongoRatingsRepository';
 import { PlayerSourcesController } from './PlayerSourcesController';

@@ -6,7 +6,7 @@ import { logger } from '../../shared/src/utils/Logger';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3003;
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Bootstrapping dependencies
 const collectionRepository = new MongoCollectionRepository();

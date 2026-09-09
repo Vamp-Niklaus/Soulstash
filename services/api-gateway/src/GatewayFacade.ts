@@ -22,7 +22,7 @@ export class GatewayFacade {
   constructor() {
     this.app = express();
     this.app.use(cors({ origin: '*' }));
-    this.app.use(express.json());
+    this.app.use(express.json({ limit: '10mb' }));
     
     // Serve transitional static assets for the legacy frontend UI
     const rootDir = path.resolve(__dirname, '../../..');
