@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../../utils/toast.js';
 import { FALLBACK_AVATAR, PUBLISH_MIN_COLLECTION_TITLES } from '../../../utils/constants.js';
-import { broadcastCollections, collectionItemCount, normalizeCollections } from '../../../utils/collectionsCache.js';
+import { broadcastCollections, collectionItemCount, normalizeCollections, getCachedUserCollections } from '../../../utils/collectionsCache.js';
 import { filteredCollectionMovies } from '../../../utils/formatters.js';
 import { hasActiveCollectionContentFilters } from '../../../utils/formatters.js';
 import { apiFetch } from '../../../api/client.js';
@@ -430,6 +430,18 @@ export function CollectionDetailPane({
         onSave={async (url, updatedMovies) => {
           setPosterEditOpen(false);
 
+          // Optimistic UI for useLiveCollections (which powers UserCollectionDetailPage)
+          const currentCollections = getCachedUserCollections();
+          if (currentCollections) {
+            const updatedCollections = currentCollections.map(c => 
+              (c.name === collection.name || c._id === collection._id)
+                ? { ...c, banner: url, movies: updatedMovies || c.movies }
+                : c
+            );
+            broadcastCollections(updatedCollections);
+          }
+
+          // Optimistic UI for React Query (other components)
           const previousCollections = queryClient.getQueryData(['collections']);
           if (previousCollections) {
             queryClient.setQueryData(['collections'], old => {
@@ -458,6 +470,9 @@ export function CollectionDetailPane({
             queryClient.invalidateQueries({ queryKey: ['collections'] });
             toast('Banner updated!');
           } catch (err) {
+            if (currentCollections) {
+              broadcastCollections(currentCollections);
+            }
             if (previousCollections) {
               queryClient.setQueryData(['collections'], previousCollections);
             }
