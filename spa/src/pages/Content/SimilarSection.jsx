@@ -18,7 +18,7 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
   // Initialize with the first page from the props
   useEffect(() => {
     if (similar && similar.length > 0) {
-      setItems(similar);
+      setItems(similar.filter(item => item.poster_path));
       setPage(1);
       // TMDB returns up to 20 results per page, if it's less, there's no more
       setHasMore(similar.length === 20);
@@ -37,9 +37,9 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
       const data = await apiFetch(endpoint);
       if (data && data.results) {
         setItems(prev => {
-          // Filter out duplicates just in case
+          // Filter out duplicates just in case and items without posters
           const newItems = data.results.filter(
-            newItem => !prev.some(existingItem => existingItem.id === newItem.id)
+            newItem => newItem.poster_path && !prev.some(existingItem => existingItem.id === newItem.id)
           );
           return [...prev, ...newItems];
         });
