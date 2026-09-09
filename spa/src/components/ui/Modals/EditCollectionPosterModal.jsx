@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FALLBACK_AVATAR } from '../../../utils/constants.js';
 import { imageUrl } from '../../../utils/formatters.js';
+import { apiFetch } from '../../../api/client.js';
 
 /**
  * EditCollectionPosterModal
@@ -13,6 +14,7 @@ import { imageUrl } from '../../../utils/formatters.js';
  */
 export function EditCollectionPosterModal({ open, onClose, collection, onSave }) {
   const [posters, setPosters] = useState([]);
+  const [updatedMovies, setUpdatedMovies] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -22,32 +24,50 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
     let isMounted = true;
     setLoading(true);
 
-    const extractUrls = () => {
-      if (!collection.movies || collection.movies.length === 0) return [];
-      const urls = collection.movies
-        .map((m) => {
-          // Use backdrop_path (landscape) instead of poster_path (portrait)
-          if (m.backdrop_path) return imageUrl(m.backdrop_path, 'w780');
-          return null;
-        })
-        .filter(Boolean);
-      return [...new Set(urls)]; // remove duplicates
-    };
-
-    const preloadImage = (src) => {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => resolve(src);
-        img.onerror = () => resolve(null);
-        img.src = src;
-      });
-    };
-
     const loadPosters = async () => {
-      const rawUrls = extractUrls();
-      const validUrls = (await Promise.all(rawUrls.map(preloadImage))).filter(Boolean);
+      if (!collection.movies || collection.movies.length === 0) {
+        if (isMounted) {
+          setPosters([FALLBACK_AVATAR]);
+          setLoading(false);
+        }
+        return;
+      }
+
+      // Fetch missing backdrops
+      const moviePromises = collection.movies.map(async (m) => {
+        if (m.backdrop_path) return m;
+
+        try {
+          const typeStr = m.media_type === 'Series' || m.seriesId ? 'series' : 'movies';
+          const id = m.id || m.movieId || m.seriesId;
+          const detail = await apiFetch(`/api/${typeStr}/${id}`);
+          return { ...m, backdrop_path: detail.backdrop_path || null };
+        } catch (e) {
+          return m;
+        }
+      });
+
+      const moviesWithBackdrops = await Promise.all(moviePromises);
+      
+      const rawUrls = moviesWithBackdrops
+        .map(m => m.backdrop_path ? imageUrl(m.backdrop_path, 'w780') : null)
+        .filter(Boolean);
+      
+      const uniqueUrls = [...new Set(rawUrls)];
+
+      const preloadImage = (src) => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve(src);
+          img.onerror = () => resolve(null);
+          img.src = src;
+        });
+      };
+
+      const validUrls = (await Promise.all(uniqueUrls.map(preloadImage))).filter(Boolean);
 
       if (isMounted) {
+        setUpdatedMovies(moviesWithBackdrops);
         const finalArray = [FALLBACK_AVATAR, ...validUrls];
         setPosters(finalArray);
 
@@ -78,7 +98,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
   };
 
   const handleSave = () => {
-    onSave(posters[currentIndex]);
+    onSave(posters[currentIndex], updatedMovies);
   };
 
   return (

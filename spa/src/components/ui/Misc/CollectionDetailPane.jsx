@@ -427,12 +427,16 @@ export function CollectionDetailPane({
         open={posterEditOpen}
         onClose={() => setPosterEditOpen(false)}
         collection={collection}
-        onSave={async (url) => {
+        onSave={async (url, updatedMovies) => {
           try {
             const collectionId = collection._id || collection.name;
+            const payload = { banner: url };
+            if (updatedMovies) {
+              payload.movies = updatedMovies;
+            }
             const response = await apiFetch(`/api/user/collections/${encodeURIComponent(collectionId)}`, {
               method: 'PUT',
-              body: JSON.stringify({ banner: url })
+              body: JSON.stringify(payload)
             });
             if (Array.isArray(response?.collections)) {
               broadcastCollections(response.collections, response.collectionVersion);

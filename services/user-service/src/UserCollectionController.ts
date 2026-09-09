@@ -171,6 +171,7 @@ export class UserCollectionController {
       if (payload.banner !== undefined) updateDoc['collections.$.banner'] = payload.banner;
       if (payload.isPublic !== undefined) updateDoc['collections.$.isPublic'] = payload.isPublic;
       if (payload.isPublished !== undefined) updateDoc['collections.$.isPublished'] = payload.isPublished;
+      if (payload.movies !== undefined) updateDoc['collections.$.movies'] = payload.movies;
       updateDoc['collections.$.updatedAt'] = new Date();
 
       const updateResult = await coll.updateOne(
