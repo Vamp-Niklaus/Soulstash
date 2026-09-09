@@ -659,7 +659,6 @@ export function VideoPlayerModal({ request, onClose }) {
                   allowFullScreen={true}
                   webkitallowfullscreen="true"
                   mozallowfullscreen="true"
-                  sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
                   allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *; display-capture *"
                   referrerPolicy={activeUrl.includes('youtube.com') || activeUrl.includes('youtube-nocookie.com') ? 'strict-origin-when-cross-origin' : 'no-referrer'}
                   title="Soulstash Player"
