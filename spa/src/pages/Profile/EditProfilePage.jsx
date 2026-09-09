@@ -114,7 +114,7 @@ export function EditProfilePage() {
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
       localStorage.setItem('user', JSON.stringify({ ...currentUser, ...data }));
 
-      toast.success('Profile updated successfully');
+      toast('Profile updated successfully');
       emitAuthChange();
       queryClient.invalidateQueries({ queryKey: ['profile'] });
       
