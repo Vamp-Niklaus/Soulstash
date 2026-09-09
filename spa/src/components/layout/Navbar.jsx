@@ -105,13 +105,13 @@ export function ReactNavbar() {
         icon: isLoggedIn ? (
           <div className="relative w-6 h-6 flex items-center justify-center flex-shrink-0">
             <div className="relative w-6 h-6 rounded-full overflow-hidden border border-[#474747] flex items-center justify-center">
-              <img alt="Profile" className="object-cover rounded-full absolute inset-0 h-full w-full" src={FALLBACK_AVATAR} />
+              <img alt="Profile" className="object-cover object-top rounded-full absolute inset-0 h-full w-full" src={auth?.user?.avatar || FALLBACK_AVATAR} />
             </div>
           </div>
         ) : <ProfileIcon />
       }
     ];
-  }, [currentPath, navItems, isLoggedIn, username, navigate]);
+  }, [currentPath, navItems, isLoggedIn, username, navigate, auth?.user?.avatar]);
 
   const authCta = useMemo(() => (
     currentPath === '/login'
