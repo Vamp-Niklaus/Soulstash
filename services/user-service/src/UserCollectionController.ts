@@ -216,24 +216,16 @@ export class UserCollectionController {
       const coll = await this.repository.connect();
       
       // We do a single findOneAndUpdate so we can return the updated array.
-      // But if id could be _id or name, we can pull both in one operation using $or? No, $pull can take multiple criteria with $or in modern MongoDB, but it's simpler to just do two operations or use findOneAndUpdate carefully.
-      
-      let latest = await coll.findOneAndUpdate(
+      // We pull if _id matches OR name matches.
+      const latest = await coll.findOneAndUpdate(
         { username: user.username },
         { 
-          $pull: { collections: { _id: id, isDeletable: true } } as any,
-          $inc: { collectionVersion: 1 } 
-        },
-        { returnDocument: 'after' }
-      );
-      
-      // If we didn't remove by _id, maybe they passed the name instead.
-      // We just do it anyway to ensure it's removed, but we only increment version once if possible.
-      // Wait, let's just do a second one.
-      latest = await coll.findOneAndUpdate(
-        { username: user.username },
-        { 
-          $pull: { collections: { name: id, isDeletable: true } } as any,
+          $pull: { 
+            collections: { 
+              $or: [ { _id: id }, { name: id } ],
+              isDeletable: { $ne: false }
+            } 
+          } as any,
           $inc: { collectionVersion: 1 } 
         },
         { returnDocument: 'after' }
