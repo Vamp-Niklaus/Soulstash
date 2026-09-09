@@ -22,6 +22,7 @@ export function UserProfilePage() {
   const auth = useAuthSession();
   const queryClient = useQueryClient();
   const [favoriteRemoveTarget, setFavoriteRemoveTarget] = useState(null);
+  const [avatarViewerOpen, setAvatarViewerOpen] = useState(false);
 
   useEffect(() => {
     document.title = username ? `${username} - Soulstash` : 'Profile - Soulstash';
@@ -103,16 +104,20 @@ export function UserProfilePage() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 items-start gap-4">
             <div className="flex flex-col items-start gap-2">
-              <div className="h-[96px] w-[96px] overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10">
+              <button 
+                type="button"
+                onClick={() => setAvatarViewerOpen(true)}
+                className="h-[96px] w-[96px] shrink-0 overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA]"
+              >
                 <img
                   src={user.avatar || FALLBACK_AVATAR}
                   alt={user.username}
-                  className="h-full w-full object-cover object-top"
+                  className="h-full w-full object-cover object-[center_top]"
                   onError={(event) => {
                     event.currentTarget.src = FALLBACK_AVATAR;
                   }}
                 />
-              </div>
+              </button>
               <div className="flex items-center gap-3 text-xs text-[#9f9f9f]">
                 <button
                   type="button"
@@ -316,6 +321,32 @@ export function UserProfilePage() {
         }}
         onClose={() => setFavoriteRemoveTarget(null)}
       />
+
+      {avatarViewerOpen && (
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setAvatarViewerOpen(false)}
+        >
+          <button 
+            type="button"
+            className="absolute top-6 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+            onClick={() => setAvatarViewerOpen(false)}
+            autoFocus
+          >
+            <i className="fas fa-times text-xl"></i>
+          </button>
+          
+          <img 
+            src={user.avatar || FALLBACK_AVATAR}
+            alt={user.username}
+            className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+            onError={(event) => {
+              event.currentTarget.src = FALLBACK_AVATAR;
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
