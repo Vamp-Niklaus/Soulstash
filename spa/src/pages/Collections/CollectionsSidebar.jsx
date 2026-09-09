@@ -4,17 +4,19 @@
  * The sidebar in the User Collections Page. Contains the search input,
  * visibility filters, and the draggable list of collections.
  */
-import React, { useRef, useEffect, startTransition } from 'react';
+import React, { useRef, useEffect, startTransition, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { CollectionVisibilityBadge } from '../../components/ui/Misc/CollectionVisibilityBadge.jsx';
 import { MarqueeText } from '../../components/ui/Misc/Typography.jsx';
+import { EditCollectionPosterModal } from '../../components/ui/Modals/EditCollectionPosterModal.jsx';
 
 export function CollectionsSidebar({
   page
 }) {
   const { collectionName } = useParams();
   const sidebarListRef = useRef(null);
+  const [editingPosterCollection, setEditingPosterCollection] = useState(null);
 
   // Keyboard navigation for sidebar list
   useEffect(() => {
@@ -191,15 +193,28 @@ export function CollectionsSidebar({
                     ) : (
                       <span className="h-9 w-5 flex-shrink-0" aria-hidden="true" />
                     )}
-                    <div className="w-[48px] h-[48px] rounded-[16px] overflow-hidden flex-shrink-0">
+                    <div className="group relative w-[48px] h-[48px] rounded-[16px] overflow-hidden flex-shrink-0">
                       <img
                         src={collection.banner || FALLBACK_AVATAR}
                         alt={collection.name}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover transition-transform duration-300"
                         onError={(event) => {
                           event.currentTarget.src = FALLBACK_AVATAR;
                         }}
                       />
+                      {(collection.movies || []).length > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingPosterCollection(collection);
+                          }}
+                          className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-black/80"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                     <div className="flex-1 text-left min-w-0">
                       <div className="flex flex-col gap-1">
@@ -253,6 +268,21 @@ export function CollectionsSidebar({
           ) : null}
         </div>
       </div>
+      
+      <EditCollectionPosterModal
+        open={!!editingPosterCollection}
+        onClose={() => setEditingPosterCollection(null)}
+        collection={editingPosterCollection}
+        onSave={async (url) => {
+          if (editingPosterCollection) {
+            await page.mutations.update.mutateAsync({
+              collectionId: editingPosterCollection._id || editingPosterCollection.name,
+              payload: { banner: url }
+            });
+            setEditingPosterCollection(null);
+          }
+        }}
+      />
     </aside>
   );
 }

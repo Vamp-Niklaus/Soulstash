@@ -1,0 +1,147 @@
+import React, { useState, useEffect } from 'react';
+import { FALLBACK_AVATAR } from '../../../utils/constants.js';
+import { imageUrl } from '../../../utils/formatters.js';
+
+export function EditCollectionPosterModal({ open, onClose, collection, onSave }) {
+  const [posters, setPosters] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!open || !collection) return;
+
+    let isMounted = true;
+    setLoading(true);
+
+    const extractUrls = () => {
+      if (!collection.movies || collection.movies.length === 0) return [];
+      const urls = collection.movies
+        .map((m) => m.poster_path ? imageUrl(m.poster_path, 'w500') : null)
+        .filter(Boolean);
+      return [...new Set(urls)]; // remove duplicates
+    };
+
+    const preloadImage = (src) => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(src);
+        img.onerror = () => resolve(null);
+        img.src = src;
+      });
+    };
+
+    const loadPosters = async () => {
+      const rawUrls = extractUrls();
+      const validUrls = (await Promise.all(rawUrls.map(preloadImage))).filter(Boolean);
+      
+      if (isMounted) {
+        const finalArray = [FALLBACK_AVATAR, ...validUrls];
+        setPosters(finalArray);
+        
+        // Find current banner index
+        const currentBanner = collection.banner || FALLBACK_AVATAR;
+        const index = finalArray.indexOf(currentBanner);
+        setCurrentIndex(index >= 0 ? index : 0);
+        
+        setLoading(false);
+      }
+    };
+
+    loadPosters();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, collection]);
+
+  if (!open) return null;
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev === 0 ? posters.length - 1 : prev - 1));
+  };
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev === posters.length - 1 ? 0 : prev + 1));
+  };
+
+  const handleSave = () => {
+    onSave(posters[currentIndex]);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal Content */}
+      <div className="relative z-10 w-full max-w-[340px] flex flex-col items-center gap-6">
+        {/* Top Controls */}
+        <div className="flex w-full items-center justify-between">
+          <button 
+            onClick={onClose}
+            className="text-white/70 hover:text-white transition-colors p-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          <button 
+            onClick={handleSave}
+            disabled={loading}
+            className="text-[#64FFDA] hover:text-[#52e0c0] font-medium transition-colors px-4 py-2"
+          >
+            Save
+          </button>
+        </div>
+
+        {/* Poster Viewer */}
+        <div className="relative w-full aspect-[2/3] rounded-[16px] overflow-hidden bg-[#111] shadow-2xl flex items-center justify-center">
+          {loading ? (
+            <div className="w-8 h-8 border-2 border-[#64FFDA] border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <>
+              <img 
+                src={posters[currentIndex]} 
+                alt="Selected Poster" 
+                className="w-full h-full object-cover transition-opacity duration-300"
+              />
+              
+              {posters.length > 1 && (
+                <>
+                  <button 
+                    onClick={handlePrev}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-white drop-shadow-md hover:scale-110 transition-transform"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  
+                  <button 
+                    onClick={handleNext}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white drop-shadow-md hover:scale-110 transition-transform"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+        
+        {/* Indicator */}
+        {!loading && posters.length > 1 && (
+          <div className="text-white/50 text-sm font-medium">
+            {currentIndex + 1} / {posters.length}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
