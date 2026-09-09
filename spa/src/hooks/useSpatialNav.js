@@ -57,6 +57,8 @@ function handleKeyDown(e) {
   if (!ALL_KEYS.has(key)) return;
 
   const active = document.activeElement;
+  if (active && active.closest('[data-tv-ignore]')) return;
+  
   const tag    = active?.tagName;
   const modal  = getOpenModal();
   const playerModal = getPlayerModal();

@@ -62,7 +62,9 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
     } else if (selectedIndex === -2 && closeBtnRef.current) {
       closeBtnRef.current.focus();
     } else if (selectedIndex >= 0 && resultRefs.current[selectedIndex]) {
-      resultRefs.current[selectedIndex].focus();
+      const el = resultRefs.current[selectedIndex];
+      el.focus();
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
   }, [selectedIndex, open]);
 

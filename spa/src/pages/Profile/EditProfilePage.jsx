@@ -34,6 +34,7 @@ export function EditProfilePage() {
   const [avatarPreview, setAvatarPreview] = useState(FALLBACK_AVATAR);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [avatarSearchOpen, setAvatarSearchOpen] = useState(false);
+  const formRef = useRef(null);
 
   useEffect(() => {
     document.title = 'Edit Profile - Soulstash';
@@ -104,34 +105,70 @@ export function EditProfilePage() {
         },
         body: formData
       });
-      const payload = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error(payload.error || 'Failed to update profile');
+        throw new Error(data.error || 'Failed to update profile');
       }
 
-      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...currentUser, ...payload }));
-      queryClient.clear();
+      toast.success('Profile updated successfully');
       emitAuthChange();
-      toast('Profile updated');
-      navigate(`/user/${payload.username || auth.username}`);
-    } catch (saveError) {
-      setError(saveError.message || 'Failed to update profile');
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      
+      // Delay navigation slightly so user sees the success toast
+      setTimeout(() => {
+        navigate(`/user/${draft.username}`);
+      }, 500);
+    } catch (err) {
+      setError(err.message || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
   }
+
+  const handleFormKeyDown = (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (!formRef.current) return;
+      const focusables = Array.from(
+        formRef.current.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled])')
+      );
+      if (!focusables.length) return;
+      
+      const currentIndex = focusables.indexOf(document.activeElement);
+      if (currentIndex === -1) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      let nextIndex;
+      if (e.key === 'ArrowDown') {
+        nextIndex = (currentIndex + 1) % focusables.length;
+      } else {
+        nextIndex = (currentIndex - 1 + focusables.length) % focusables.length;
+      }
+      
+      const nextEl = focusables[nextIndex];
+      nextEl.focus();
+      nextEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  };
 
   if (loading) {
     return <EditProfileSkeleton />;
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <section className="rounded-[28px] bg-[rgba(255,255,255,0.03)] p-5 md:p-7">
-        <h1 className="text-2xl font-semibold text-white">Edit Profile</h1>
+    <div className="min-h-screen bg-[#0A0A0A] pb-20 pt-24 md:pt-32">
+      <section className="mx-auto max-w-3xl px-6">
+        <h1 className="mb-8 text-3xl font-bold text-white">Edit Profile</h1>
         <p className="mt-2 text-sm text-[#9f9f9f]">Update your public details and social links without leaving the app.</p>
-        <form className="mt-8 space-y-7" onSubmit={handleSave}>
+        <form 
+          ref={formRef}
+          onSubmit={handleSave} 
+          className="mt-8 space-y-7" 
+          data-tv-ignore="true"
+          onKeyDown={handleFormKeyDown}
+        >
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <button
               type="button"
