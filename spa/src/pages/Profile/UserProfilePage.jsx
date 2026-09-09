@@ -328,15 +328,6 @@ export function UserProfilePage() {
           style={{ background: 'radial-gradient(circle at center, rgba(30, 30, 30, 0.8) 0%, rgba(0, 0, 0, 0.2) 60%, transparent 100%)' }}
           onClick={() => setAvatarViewerOpen(false)}
         >
-          <button 
-            type="button"
-            className="absolute top-6 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
-            onClick={() => setAvatarViewerOpen(false)}
-            autoFocus
-          >
-            <i className="fas fa-times text-xl"></i>
-          </button>
-          
           <img 
             src={user.avatar || FALLBACK_AVATAR}
             alt={user.username}
