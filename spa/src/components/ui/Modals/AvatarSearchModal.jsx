@@ -23,11 +23,12 @@ function extractNextCursor(data) {
 }
 
 function getImageUrl(item) {
-  return item?.profileImageUrl || item?.image || item?.avatar_url || item?.avatar || item?.profile_image_url || null;
+  if (!item) return null;
+  return item?.attributes?.image?.original || item?.attributes?.image?.large || item?.attributes?.image?.medium || null;
 }
 
 function getName(item) {
-  return item?.name || item?.mbti_profile || item?.title || 'Unknown';
+  return item?.attributes?.name || item?.attributes?.canonicalName || 'Unknown';
 }
 
 import { apiFetch } from '../../../api/client.js';
@@ -65,10 +66,14 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
     
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/user/avatar-search?query=${encodeURIComponent(searchQuery)}&nextCursor=${nextCursor}`);
+      // Using Kitsu API which natively supports CORS and won't be blocked by Cloudflare!
+      const url = `https://kitsu.io/api/edge/characters?filter[name]=${encodeURIComponent(searchQuery)}`;
+      const res = await fetch(url);
+      const data = await res.json();
       
-      let items = extractItems(data);
-      const nextC = extractNextCursor(data);
+      let items = data?.data || [];
+      const nextC = null; // Kitsu does pagination differently, but let's just use top results for simplicity
+
       
       // Filter out duplicate image URLs
       const uniqueImages = new Set();
