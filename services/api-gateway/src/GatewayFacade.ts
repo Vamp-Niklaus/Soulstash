@@ -251,8 +251,10 @@ export class GatewayFacade {
     });
 
     this.app.get('/api/movies/:id', (req, res) => proxyTMDB(req, res, `/3/movie/${req.params.id}?append_to_response=videos,similar,images`));
+    this.app.get('/api/movies/:id/similar', (req, res) => proxyTMDB(req, res, `/3/movie/${req.params.id}/similar?page=${req.query.page || 1}`));
     this.app.get('/api/movie/:id/credits', (req, res) => proxyTMDB(req, res, `/3/movie/${req.params.id}/credits`));
     this.app.get('/api/series/:id', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}?append_to_response=videos,similar,images`));
+    this.app.get('/api/series/:id/similar', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/similar?page=${req.query.page || 1}`));
     this.app.get('/api/series/:id/credits', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/credits`));
     this.app.get('/api/series/:id/season/:season', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/season/${req.params.season}`));
     this.app.get('/api/person/:id', (req, res) => proxyTMDB(req, res, `/3/person/${req.params.id}?language=en-US`));

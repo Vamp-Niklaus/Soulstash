@@ -1,30 +1,78 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { getCollectionStatus } from '../../utils/formatters.js';
 import { useAuthSession } from '../../hooks/index.js';
+import { apiFetch } from '../../api/client.js';
 
 export function SimilarSection({ similar = [], collections = [], type = 'movie' }) {
-  const [showAll, setShowAll] = useState(false);
+  const { id } = useParams();
   const { user } = useAuthSession();
+  
+  const [items, setItems] = useState([]);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
-  if (!similar || similar.length === 0) return null;
+  // Initialize with the first page from the props
+  useEffect(() => {
+    if (similar && similar.length > 0) {
+      setItems(similar);
+      setPage(1);
+      // TMDB returns up to 20 results per page, if it's less, there's no more
+      setHasMore(similar.length === 20);
+    }
+  }, [similar, id]);
 
-  const displayItems = showAll ? similar : similar.slice(0, 10);
+  const loadMore = async () => {
+    if (loading || !hasMore) return;
+    setLoading(true);
+    try {
+      const nextPage = page + 1;
+      const endpoint = type === 'movie' 
+        ? `/api/movies/${id}/similar?page=${nextPage}` 
+        : `/api/series/${id}/similar?page=${nextPage}`;
+      
+      const data = await apiFetch(endpoint);
+      if (data && data.results) {
+        setItems(prev => {
+          // Filter out duplicates just in case
+          const newItems = data.results.filter(
+            newItem => !prev.some(existingItem => existingItem.id === newItem.id)
+          );
+          return [...prev, ...newItems];
+        });
+        setPage(nextPage);
+        setHasMore(data.page < data.total_pages && data.results.length > 0);
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error('Failed to fetch similar content:', err);
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!items || items.length === 0) return null;
+
   const title = type === 'movie' ? 'Similar Movies' : 'Similar Series';
 
   return (
     <section className="content-section mt-12">
       <SectionHeader title={title} />
       
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 mt-4">
-        {displayItems.map((item) => {
+      {/* Increased grid columns to make cards 2/3 of their original size */}
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 mt-4">
+        {items.map((item) => {
           // Add media_type so ContentCard can route correctly
           const contentItem = { ...item, media_type: type };
           const status = user ? getCollectionStatus(collections, contentItem.id) : null;
           return (
             <ContentCard 
-              key={contentItem.id} 
+              key={`${contentItem.id}-${contentItem.media_type}`} 
               item={contentItem} 
               status={status}
             />
@@ -32,13 +80,14 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
         })}
       </div>
 
-      {!showAll && similar.length > 10 && (
+      {hasMore && (
         <div className="mt-8 flex justify-center">
           <button
-            onClick={() => setShowAll(true)}
-            className="rounded-full bg-white/10 px-8 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/20 active:scale-95"
+            onClick={loadMore}
+            disabled={loading}
+            className="rounded-full bg-white/10 px-8 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/20 active:scale-95 disabled:opacity-50"
           >
-            Show More
+            {loading ? 'Loading...' : 'Show More'}
           </button>
         </div>
       )}
