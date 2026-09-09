@@ -326,6 +326,7 @@ export class UserCollectionController {
       let imdb_rating: number | null = null;
       let resolvedTitle = title || `${contentType} ${contentId}`;
       let resolvedPosterPath = poster_path || '';
+      let resolvedBackdropPath = '';
       let resolvedReleaseDate = release_date || new Date().toISOString().split('T')[0];
 
       try {
@@ -343,6 +344,7 @@ export class UserCollectionController {
           imdb_id = String(details.imdb_id || details.external_ids?.imdb_id || '').trim();
           resolvedTitle = details.title || details.name || resolvedTitle;
           resolvedPosterPath = details.poster_path || resolvedPosterPath;
+          resolvedBackdropPath = details.backdrop_path || '';
           resolvedReleaseDate = details.release_date || details.first_air_date || resolvedReleaseDate;
           logger.info(`[addItem] resolved title="${resolvedTitle}" isAnime=${isAnime} vote_average=${vote_average} imdb_id="${imdb_id}"`);
 
@@ -366,8 +368,8 @@ export class UserCollectionController {
       }
 
       const contentData = contentType === 'Series'
-        ? { seriesId: contentId, movieId: null, title: resolvedTitle, poster_path: resolvedPosterPath, release_date: resolvedReleaseDate, first_air_date: resolvedReleaseDate, media_type: 'Series', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() }
-        : { movieId: contentId, seriesId: null, title: resolvedTitle, poster_path: resolvedPosterPath, release_date: resolvedReleaseDate, first_air_date: '', media_type: 'Movie', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() };
+        ? { seriesId: contentId, movieId: null, title: resolvedTitle, poster_path: resolvedPosterPath, backdrop_path: resolvedBackdropPath, release_date: resolvedReleaseDate, first_air_date: resolvedReleaseDate, media_type: 'Series', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() }
+        : { movieId: contentId, seriesId: null, title: resolvedTitle, poster_path: resolvedPosterPath, backdrop_path: resolvedBackdropPath, release_date: resolvedReleaseDate, first_air_date: '', media_type: 'Movie', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() };
 
       // $position: 0 — newest item appears first (sort by recent = insertion order descending)
       const updateResult = await coll.updateOne(

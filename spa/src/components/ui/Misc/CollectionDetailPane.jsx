@@ -12,6 +12,7 @@ import { CollectionVisibilityBadge } from './CollectionVisibilityBadge.jsx';
 import { CollectionFilterControls } from './CollectionFilterControls.jsx';
 import { ContentCard } from '../Cards/ContentCard.jsx';
 import { ConfirmModal } from '../Modals/ConfirmModal.jsx';
+import { EditCollectionPosterModal } from '../Modals/EditCollectionPosterModal.jsx';
 
 export function CollectionDetailPane({
   username,
@@ -42,6 +43,8 @@ export function CollectionDetailPane({
   const isPublished = collection?.isPublished === true;
   const canShowPublishControls = showPublishControls && !isDefaultCollection && canPublish;
   const isLongCollectionName = (collection?.name || '').length > 20;
+  const [posterEditOpen, setPosterEditOpen] = useState(false);
+  const hasMovies = (collection?.movies || []).length > 0;
 
   const detailGridRef = useRef(null);
   function buildMobileFilterMenuPosition(trigger) {
@@ -269,6 +272,17 @@ export function CollectionDetailPane({
             <i className="fas fa-arrow-left text-white"></i>
           </button>
 
+          {isOwner && hasMovies && (
+            <button type="button"
+              className="hidden md:flex absolute top-4 right-4 bg-black/60 p-2 rounded-full text-white/80 hover:text-white hover:bg-black/80 transition-all z-10 focus:outline-none focus:ring-2 focus:ring-white"
+              onClick={() => setPosterEditOpen(true)}
+              title="Change banner">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+          )}
+
           <div className="absolute bottom-4 left-4 z-10 md:hidden pr-[140px]">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-semibold text-white break-words leading-tight">{collection.name}</h1>
@@ -279,6 +293,16 @@ export function CollectionDetailPane({
           <div className="absolute top-4 right-4 z-20 md:hidden">
             {isOwner ? (
               <div className="flex items-center gap-2">
+                {hasMovies && (
+                  <button type="button"
+                    className="flex items-center justify-center w-9 h-9 rounded-full bg-[#2a2a2a] hover:bg-[#343434] text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+                    onClick={() => setPosterEditOpen(true)}
+                    title="Change banner">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                )}
                 {canShowPublishControls ? (
                   <button type="button"
                     className="flex items-center gap-1.5 text-xs h-9 px-3 rounded-2xl transition-colors bg-[#2a2a2a] text-white hover:bg-[#343434] focus:outline-none focus:ring-2 focus:ring-white"
@@ -397,6 +421,29 @@ export function CollectionDetailPane({
           publishMutation.mutate(true);
         }}
         onClose={() => setPublishConfirmOpen(false)}
+      />
+
+      <EditCollectionPosterModal
+        open={posterEditOpen}
+        onClose={() => setPosterEditOpen(false)}
+        collection={collection}
+        onSave={async (url) => {
+          try {
+            const collectionId = collection._id || collection.name;
+            const response = await apiFetch(`/api/user/collections/${encodeURIComponent(collectionId)}`, {
+              method: 'PUT',
+              body: JSON.stringify({ banner: url })
+            });
+            if (Array.isArray(response?.collections)) {
+              broadcastCollections(response.collections, response.collectionVersion);
+            }
+            queryClient.invalidateQueries({ queryKey: ['collections'] });
+            toast('Banner updated!');
+          } catch (err) {
+            toast('Failed to update banner', 'error');
+          }
+          setPosterEditOpen(false);
+        }}
       />
     </div>
   );

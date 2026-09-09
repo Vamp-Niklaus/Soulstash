@@ -2,6 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { FALLBACK_AVATAR } from '../../../utils/constants.js';
 import { imageUrl } from '../../../utils/formatters.js';
 
+/**
+ * EditCollectionPosterModal
+ *
+ * Fullscreen overlay that lets the user pick a landscape backdrop image
+ * from the movies/series in their collection as the collection banner.
+ *
+ * Index 0 = FALLBACK_AVATAR (the default).
+ * Index 1+ = validated backdrop_path images from collection movies.
+ */
 export function EditCollectionPosterModal({ open, onClose, collection, onSave }) {
   const [posters, setPosters] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -16,7 +25,11 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
     const extractUrls = () => {
       if (!collection.movies || collection.movies.length === 0) return [];
       const urls = collection.movies
-        .map((m) => m.poster_path ? imageUrl(m.poster_path, 'w500') : null)
+        .map((m) => {
+          // Use backdrop_path (landscape) instead of poster_path (portrait)
+          if (m.backdrop_path) return imageUrl(m.backdrop_path, 'w780');
+          return null;
+        })
         .filter(Boolean);
       return [...new Set(urls)]; // remove duplicates
     };
@@ -33,16 +46,16 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
     const loadPosters = async () => {
       const rawUrls = extractUrls();
       const validUrls = (await Promise.all(rawUrls.map(preloadImage))).filter(Boolean);
-      
+
       if (isMounted) {
         const finalArray = [FALLBACK_AVATAR, ...validUrls];
         setPosters(finalArray);
-        
+
         // Find current banner index
         const currentBanner = collection.banner || FALLBACK_AVATAR;
         const index = finalArray.indexOf(currentBanner);
         setCurrentIndex(index >= 0 ? index : 0);
-        
+
         setLoading(false);
       }
     };
@@ -71,16 +84,16 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+      <div
+        className="absolute inset-0 bg-black/85 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Modal Content */}
-      <div className="relative z-10 w-full max-w-[340px] flex flex-col items-center gap-6">
+      <div className="relative z-10 w-full max-w-[640px] flex flex-col items-center gap-5">
         {/* Top Controls */}
-        <div className="flex w-full items-center justify-between">
-          <button 
+        <div className="flex w-full items-center justify-between px-1">
+          <button
             onClick={onClose}
             className="text-white/70 hover:text-white transition-colors p-2"
           >
@@ -88,44 +101,46 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-          
-          <button 
+
+          <button
             onClick={handleSave}
             disabled={loading}
-            className="text-[#64FFDA] hover:text-[#52e0c0] font-medium transition-colors px-4 py-2"
+            className="text-[#64FFDA] hover:text-[#52e0c0] font-semibold transition-colors px-5 py-2 text-sm"
           >
             Save
           </button>
         </div>
 
-        {/* Poster Viewer */}
-        <div className="relative w-full aspect-[2/3] rounded-[16px] overflow-hidden bg-[#111] shadow-2xl flex items-center justify-center">
+        {/* Landscape Image Viewer */}
+        <div className="relative w-full aspect-[16/9] rounded-[20px] overflow-hidden bg-[#111] shadow-2xl flex items-center justify-center">
           {loading ? (
             <div className="w-8 h-8 border-2 border-[#64FFDA] border-t-transparent rounded-full animate-spin" />
           ) : (
             <>
-              <img 
-                src={posters[currentIndex]} 
-                alt="Selected Poster" 
+              <img
+                src={posters[currentIndex]}
+                alt="Selected Banner"
                 className="w-full h-full object-cover transition-opacity duration-300"
               />
-              
+
               {posters.length > 1 && (
                 <>
-                  <button 
+                  {/* Left arrow */}
+                  <button
                     onClick={handlePrev}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-white drop-shadow-md hover:scale-110 transition-transform"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                     </svg>
                   </button>
-                  
-                  <button 
+
+                  {/* Right arrow */}
+                  <button
                     onClick={handleNext}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-white drop-shadow-md hover:scale-110 transition-transform"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
                   </button>
@@ -134,7 +149,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
             </>
           )}
         </div>
-        
+
         {/* Indicator */}
         {!loading && posters.length > 1 && (
           <div className="text-white/50 text-sm font-medium">
