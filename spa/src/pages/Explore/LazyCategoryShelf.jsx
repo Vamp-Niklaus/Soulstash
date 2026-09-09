@@ -29,7 +29,7 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
     <section className="content-section">
       <HomeShelfHeader 
         title={title} 
-        onViewAll={() => navigate(`/genre/${genreId}`)} 
+        onViewAll={() => navigate(`/genre/${genreId}/${encodeURIComponent(String(title))}`)}
       />
       <div className={HOME_GRID_CLASS}>
         {movies.slice(0, displayLimit).map((item) => (

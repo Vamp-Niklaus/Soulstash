@@ -77,18 +77,21 @@ app.get('/profile/:username', extractUser, async (req: any, res: any) => {
     const isFollowing = !!loggedInUser && loggedInFollowing.includes(profileUser.username);
     const isFollowedBy = !!loggedInUser && loggedInFollowers.includes(profileUser.username);
     
+    const favoritesArePublic = profileUser.favoritePeoplePublic === true;
     const userData: any = isOwner ? profileUser : {
       _id: profileUser._id, username: profileUser.username,
       firstName: profileUser.firstName, lastName: profileUser.lastName,
       bio: profileUser.bio, avatar: profileUser.avatar, createdAt: profileUser.createdAt,
       followersCount: followers.length,
       followingCount: following.length,
-      collections: (profileUser.collections || []).filter((c: any) => c.isPublic === true || c.isPublished === true)
+      collections: (profileUser.collections || []).filter((c: any) => c.isPublic === true || c.isPublished === true),
+      ...(favoritesArePublic ? { favoritePeople: Array.isArray(profileUser.favoritePeople) ? profileUser.favoritePeople : [] } : {})
     };
     
     if (isOwner) {
       userData.followersCount = followers.length;
       userData.followingCount = following.length;
+      userData.favoritePeoplePublic = favoritesArePublic;
     }
     
     res.json({ user: userData, isOwner, accessLevel: isOwner ? 'owner' : 'public', isFollowing, isFollowedBy });
@@ -260,6 +263,24 @@ app.post('/favorites/remove', extractUser, async (req: any, res: any) => {
   } catch (err: any) {
     logger.error('Favorites remove error:', err);
     res.status(500).json({ error: 'Failed to remove favorite' });
+  }
+});
+
+app.post('/favorites/privacy', extractUser, async (req: any, res: any) => {
+  try {
+    const username = req.user?.username;
+    if (!username) return res.status(401).json({ error: 'Unauthorized' });
+    const isPublic = req.body?.isPublic === true;
+    const coll: any = await userRepository.connect();
+    const result = await coll.updateOne(
+      { username },
+      { $set: { favoritePeoplePublic: isPublic, updatedAt: new Date() } }
+    );
+    if (!result.matchedCount) return res.status(404).json({ error: 'User not found' });
+    res.json({ success: true, favoritePeoplePublic: isPublic });
+  } catch (err: any) {
+    logger.error('Favorites privacy update error:', err);
+    res.status(500).json({ error: 'Failed to update favorites privacy' });
   }
 });
 

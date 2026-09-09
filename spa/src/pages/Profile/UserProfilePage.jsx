@@ -75,6 +75,21 @@ export function UserProfilePage() {
     }
   });
 
+  const favoritePrivacyMutation = useMutation({
+    mutationFn: (isPublic) => apiFetch('/api/user/favorites/privacy', {
+      method: 'POST',
+      body: JSON.stringify({ isPublic })
+    }),
+    onSuccess: (response) => {
+      queryClient.setQueryData(['profile', username], (current) => current ? {
+        ...current,
+        user: { ...current.user, favoritePeoplePublic: response.favoritePeoplePublic === true }
+      } : current);
+      toast(response.favoritePeoplePublic ? 'Favorite People are now public' : 'Favorite People are now private', 'success');
+    },
+    onError: (err) => toast(err.message, 'error')
+  });
+
   // When viewing your own profile, sync avatar into localStorage so the navbar updates
   const profileUser = profilePayload?.user;
   const isOwner = profilePayload?.isOwner && auth.username === username;
@@ -103,14 +118,14 @@ export function UserProfilePage() {
   const followingCount = user.followingCount || 0;
   const isFollowing = Boolean(profilePayload.isFollowing);
   const isFollowedBy = Boolean(profilePayload.isFollowedBy);
-  const favoritePeople = (user.favoritePeople && profilePayload.isOwner) ? user.favoritePeople : [];
+  const favoritePeople = Array.isArray(user.favoritePeople) ? user.favoritePeople : [];
 
   const collections = normalizeCollections(Array.isArray(user.collections) ? user.collections : []);
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.fullName || user.username;
   const watched = collections.find((collection) => collection.name === 'Watched');
   const watchlist = collections.find((collection) => collection.name === 'Watchlist');
   const customCollections = collections.filter((collection) => !['Watched', 'Watchlist'].includes(collection.name));
-  const showFavorites = profilePayload?.isOwner && favoritePeople.length;
+  const showFavorites = profilePayload?.isOwner || favoritePeople.length;
 
   return (
     <div className="space-y-7">
@@ -286,9 +301,23 @@ export function UserProfilePage() {
         <section className="rounded-[28px] bg-[rgba(255,255,255,0.02)] p-5 md:p-6">
           <div className="mb-5 flex items-center justify-between gap-4">
             <SectionHeader title="Favorite People" />
+            {isOwner ? (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={user.favoritePeoplePublic === true}
+                disabled={favoritePrivacyMutation.isPending}
+                onClick={() => favoritePrivacyMutation.mutate(user.favoritePeoplePublic !== true)}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition-colors disabled:opacity-60 ${user.favoritePeoplePublic === true ? 'border-[#64FFDA]/40 bg-[#64FFDA]/10 text-[#b9fff1]' : 'border-white/10 bg-white/[0.06] text-[#b7b7b7]'}`}
+              >
+                <span className={`h-2.5 w-2.5 rounded-full ${user.favoritePeoplePublic === true ? 'bg-[#64FFDA]' : 'bg-[#777]'}`}></span>
+                {user.favoritePeoplePublic === true ? 'Public' : 'Private'}
+              </button>
+            ) : null}
           </div>
-          <div className="grid gap-2 grid-cols-4 sm:grid-cols-6 lg:grid-cols-8">
-            {favoritePeople.map((person) => (
+          {favoritePeople.length ? (
+            <div className="grid gap-2 grid-cols-4 sm:grid-cols-6 lg:grid-cols-8">
+              {favoritePeople.map((person) => (
               <div key={person.id} className="group relative w-full rounded-[18px] border border-white/10 bg-white/[0.03] p-2.5">
                 <button
                   type="button"
@@ -318,8 +347,11 @@ export function UserProfilePage() {
                   <i className="fas fa-times text-[9px]"></i>
                 </button>
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[#9f9f9f]">No favorite people added yet.</p>
+          )}
         </section>
       ) : null}
 

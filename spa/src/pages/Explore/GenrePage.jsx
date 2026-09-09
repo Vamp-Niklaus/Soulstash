@@ -1,20 +1,31 @@
 import { apiFetch } from '../../api/client.js';
 import React, { useRef, useCallback, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
+
+const TMDB_GENRE_NAMES = {
+  28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
+  99: 'Documentary', 18: 'Drama', 10751: 'Family', 14: 'Fantasy', 36: 'History',
+  27: 'Horror', 10402: 'Music', 9648: 'Mystery', 10749: 'Romance', 878: 'Science Fiction',
+  10770: 'TV Movie', 53: 'Thriller', 10752: 'War', 37: 'Western'
+};
 
 export function GenrePage() {
   const { id, name } = useParams();
 
   const genreId = id;
   const genreName = decodeURIComponent(name || '');
+  const canonicalGenreName = genreName || TMDB_GENRE_NAMES[genreId];
+  const displayGenreName = genreName || decodeURIComponent(genreId || '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   useEffect(() => {
-    document.title = `${genreName} | Soulstash`;
-  }, [genreName]);
+    document.title = `${displayGenreName} | Soulstash`;
+  }, [displayGenreName]);
 
   const {
     data,
@@ -60,6 +71,13 @@ export function GenrePage() {
     observerRef.current.observe(node);
   }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage]);
 
+  if (!canonicalGenreName && genreId) {
+    return <Navigate to="/" replace />;
+  }
+  if (genreId && !genreName && canonicalGenreName) {
+    return <Navigate to={`/genre/${genreId}/${encodeURIComponent(canonicalGenreName)}`} replace />;
+  }
+
   if (isLoading && !isError) {
     return (
       <section className="content-section">
@@ -73,7 +91,7 @@ export function GenrePage() {
 
   return (
     <section className="content-section">
-      <SectionHeader title={genreName} large />
+      <SectionHeader title={displayGenreName} large />
       {isError ? (
         <div className="app-error">
           <p>{error?.message || `Unable to load ${genreName} titles.`}</p>

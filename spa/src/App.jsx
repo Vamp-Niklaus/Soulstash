@@ -84,6 +84,8 @@ export function AppShell() {
       {/* Explore */}
       <Route path="/" element={<HomePage />} />
       <Route path="/trending" element={<TrendingPage />} />
+      <Route path="/genre/" element={<Navigate to="/" replace />} />
+      <Route path="/genre" element={<Navigate to="/" replace />} />
       <Route path="/genre/:id/:name?" element={<GenrePage />} />
 
       {/* Content */}
