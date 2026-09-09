@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation, useParams, useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
-import { normalizeCollection } from '../../utils/collectionsCache.js';
+import { normalizeCollection, broadcastCollections } from '../../utils/collectionsCache.js';
 import { filteredCollectionMovies } from '../../utils/formatters.js';
 import { useLiveCollections, useAuthSession, useSessionState } from '../../hooks/index.js';
 import { contentIdFromItem } from '../../utils/formatters.js';
@@ -91,6 +91,9 @@ export function UserCollectionDetailPage() {
       });
     },
     onSuccess: (response) => {
+      if (Array.isArray(response?.collections)) {
+        broadcastCollections(response.collections, response.collectionVersion);
+      }
       queryClient.invalidateQueries({ queryKey: ['collections'] });
       queryClient.invalidateQueries({ queryKey: ['collection', username, decodedCollectionName] });
       toast(response?.message || 'Added to collection');
@@ -157,7 +160,10 @@ export function UserCollectionDetailPage() {
         }
       );
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (response, variables) => {
+      if (Array.isArray(response?.collections)) {
+        broadcastCollections(response.collections, response.collectionVersion);
+      }
       queryClient.invalidateQueries({ queryKey: ['collections'] });
       queryClient.invalidateQueries({ queryKey: ['collection', username, decodedCollectionName] });
       toast(`Removed ${variables.title}`);
