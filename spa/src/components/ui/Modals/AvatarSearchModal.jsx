@@ -35,22 +35,36 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
   const [cursor, setCursor] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef(null);
+  const closeBtnRef = useRef(null);
+  const resultRefs = useRef([]);
   const observerRef = useRef(null);
   const searchTimeoutRef = useRef(null);
 
   // Focus input on open
   useEffect(() => {
     if (open) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => setSelectedIndex(-1), 100);
       setQuery('');
       setResults([]);
       setCursor(0);
       setHasMore(true);
-      setSelectedIndex(0);
+      setSelectedIndex(-1);
     }
   }, [open]);
+
+  // Handle focusing based on selectedIndex
+  useEffect(() => {
+    if (!open) return;
+    if (selectedIndex === -1 && inputRef.current) {
+      inputRef.current.focus();
+    } else if (selectedIndex === -2 && closeBtnRef.current) {
+      closeBtnRef.current.focus();
+    } else if (selectedIndex >= 0 && resultRefs.current[selectedIndex]) {
+      resultRefs.current[selectedIndex].focus();
+    }
+  }, [selectedIndex, open]);
 
   const fetchResults = async (searchQuery, nextCursor = 0, append = false) => {
     if (!searchQuery.trim()) {
@@ -71,24 +85,23 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
       // Filter out duplicate image URLs
       const uniqueImages = new Set();
       if (append) {
-        results.forEach(r => {
-          const img = getImageUrl(r);
+        results.forEach(item => {
+          const img = getImageUrl(item);
           if (img) uniqueImages.add(img);
         });
       }
-
+      
       items = items.filter(item => {
         const img = getImageUrl(item);
-        if (!img) return false;
-        if (uniqueImages.has(img)) return false;
+        if (!img || uniqueImages.has(img)) return false;
         uniqueImages.add(img);
         return true;
       });
 
       setResults(prev => append ? [...prev, ...items] : items);
-      setCursor(nextC !== null ? nextC : nextCursor + 20);
+      setCursor(nextC);
       setHasMore(items.length > 0 && nextC !== null && nextC !== 0);
-      if (!append) setSelectedIndex(0);
+      if (!append) setSelectedIndex(-1);
     } catch (err) {
       console.error('Error fetching avatars', err);
     } finally {
@@ -124,26 +137,72 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
     return () => observer.disconnect();
   }, [hasMore, loading, results, query, cursor]);
 
-  const handleKeyDown = (e) => {
-    if (results.length === 0) return;
+  useEffect(() => {
+    if (!open) return;
 
-    if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % results.length);
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + results.length) % results.length);
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex(prev => Math.min(prev + 4, results.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex(prev => Math.max(prev - 4, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      handleSelect(results[selectedIndex]);
-    }
-  };
+    const handleKeyDown = (e) => {
+      // If typing alphanumeric and we aren't in the input, jump to input
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && selectedIndex !== -1) {
+        setSelectedIndex(-1);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (selectedIndex === -1) {
+        // Input focused
+        if (e.key === 'ArrowDown' && results.length > 0) {
+          e.preventDefault();
+          setSelectedIndex(0);
+        } else if (e.key === 'ArrowRight') {
+          if (inputRef.current && inputRef.current.selectionStart === inputRef.current.value.length) {
+            e.preventDefault();
+            setSelectedIndex(-2); // Focus Close Button
+          }
+        }
+      } else if (selectedIndex === -2) {
+        // Close Button focused
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setSelectedIndex(-1);
+        } else if (e.key === 'ArrowDown' && results.length > 0) {
+          e.preventDefault();
+          setSelectedIndex(Math.min(3, results.length - 1)); // Top right item
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          onClose();
+        }
+      } else if (selectedIndex >= 0) {
+        // Grid focused
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          setSelectedIndex(prev => Math.min(prev + 1, results.length - 1));
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          setSelectedIndex(prev => Math.max(prev - 1, 0));
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedIndex(prev => Math.min(prev + 4, results.length - 1));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (selectedIndex < 4) {
+            setSelectedIndex(-1); // Back to input
+          } else {
+            setSelectedIndex(prev => Math.max(prev - 4, 0));
+          }
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          handleSelect(results[selectedIndex]);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, selectedIndex, results.length, onClose]);
 
   const handleSelect = (item) => {
     const img = getImageUrl(item);
@@ -174,9 +233,13 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
             placeholder="Search characters (e.g. Zoro, Luffy)..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
+            onFocus={() => setSelectedIndex(-1)}
           />
-          <button onClick={onClose} className="p-2 text-white/50 hover:text-white transition-colors">
+          <button 
+            ref={closeBtnRef}
+            onClick={onClose} 
+            className={`p-2 text-white/50 transition-colors outline-none rounded-lg ${selectedIndex === -2 ? 'ring-2 ring-white text-white' : 'hover:text-white'}`}
+          >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -198,24 +261,26 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
               const isSelected = index === selectedIndex;
               
               return (
-                <div 
+                <button 
                   key={imgUrl + index} 
+                  ref={el => resultRefs.current[index] = el}
                   onClick={() => handleSelect(item)}
                   onMouseEnter={() => setSelectedIndex(index)}
-                  className={`relative cursor-pointer group aspect-[3/4] rounded-xl overflow-hidden bg-white/5 transition-all ${
+                  onFocus={() => setSelectedIndex(index)}
+                  className={`relative text-left w-full cursor-pointer group aspect-[3/4] rounded-xl overflow-hidden bg-white/5 transition-all outline-none ${
                     isSelected ? 'ring-4 ring-[#64FFDA] scale-[1.02] shadow-lg shadow-[#64FFDA]/20' : 'hover:ring-2 hover:ring-white/30'
                   }`}
                 >
                   <img 
                     src={imgUrl} 
                     alt={name}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover object-[center_top]"
                     loading="lazy"
                   />
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-3 pt-8">
                     <p className="text-white text-sm font-medium truncate">{name}</p>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

@@ -207,8 +207,8 @@ function handleKeyDown(e) {
       e.preventDefault();
       tryClose();
     }
-    if (key === 'ArrowDown') {
-      const moved = moveFocus('ArrowDown');
+    if (key === 'ArrowDown' || key === 'ArrowUp') {
+      const moved = moveFocus(key);
       if (moved) { e.preventDefault(); e.stopPropagation(); }
     }
     return;

@@ -157,7 +157,7 @@ export function ReactNavbar() {
             </button>
             {isLoggedIn && username ? (
               <button type="button" className="profile-btn" onClick={() => navigate(`/user/${username}`)}>
-                <img src={FALLBACK_AVATAR} alt="Profile" className="profile-avatar" />
+                <img src={auth?.user?.avatar || FALLBACK_AVATAR} alt="Profile" className="profile-avatar object-cover object-top" />
               </button>
             ) : (
               <button type="button" className="signin-btn inline-flex items-center gap-1.5" onClick={authCta.onClick}>

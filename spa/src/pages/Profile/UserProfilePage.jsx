@@ -107,7 +107,7 @@ export function UserProfilePage() {
                 <img
                   src={user.avatar || FALLBACK_AVATAR}
                   alt={user.username}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-cover object-top"
                   onError={(event) => {
                     event.currentTarget.src = FALLBACK_AVATAR;
                   }}
