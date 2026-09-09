@@ -23,6 +23,7 @@
  *   seasonDetails      — season detail object with episodes[] (series only)
  */
 
+import { useState } from 'react';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { imageUrl } from '../../utils/formatters.js';
 import { ActionButton } from '../../components/ui/ActionButton.jsx';
@@ -44,6 +45,8 @@ export function DetailHero({
   onOpenSaveModal,
   onPlay,
 }) {
+  const [viewerOpen, setViewerOpen] = useState(false);
+
   return (
     <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
       {/* ── Backdrop image + play button ── */}
@@ -86,6 +89,7 @@ export function DetailHero({
           onToggleWatched={onToggleWatched}
           onToggleWatchlist={onToggleWatchlist}
           onOpenSaveModal={onOpenSaveModal}
+          onPosterClick={() => setViewerOpen(true)}
         />
 
         {/* Desktop layout (xl+) */}
@@ -103,8 +107,27 @@ export function DetailHero({
           onToggleWatched={onToggleWatched}
           onToggleWatchlist={onToggleWatchlist}
           onOpenSaveModal={onOpenSaveModal}
+          onPosterClick={() => setViewerOpen(true)}
         />
       </div>
+
+      {viewerOpen && (
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center animate-in fade-in duration-200"
+          style={{ background: 'radial-gradient(circle at center, rgba(30, 30, 30, 0.8) 0%, rgba(0, 0, 0, 0.2) 60%, transparent 100%)' }}
+          onClick={() => setViewerOpen(false)}
+        >
+          <img 
+            src={imageUrl(content.poster_path, 'original')}
+            alt={title}
+            className="relative z-10 max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_80px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+            onError={(event) => {
+              event.currentTarget.src = FALLBACK_AVATAR;
+            }}
+          />
+        </div>
+      )}
     </section>
   );
 }
@@ -116,21 +139,25 @@ export function DetailHero({
 function MobileLayout({
   content, title, type, meta, status, pendingAction,
   directorStat, countryLabel, languageName, ageRatingLabel,
-  onToggleWatched, onToggleWatchlist, onOpenSaveModal,
+  onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick,
 }) {
   return (
     <div className="-mt-10 sm:-mt-14 lg:-mt-20 xl:hidden">
       <div className="mt-4 flex items-start gap-4">
         {/* Poster */}
         <div className="w-[110px] sm:w-[140px] flex-shrink-0 space-y-2">
-          <div className="aspect-[2/3] overflow-hidden rounded-xl shadow-2xl">
+          <button 
+            type="button"
+            onClick={onPosterClick}
+            className="aspect-[2/3] w-full overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block"
+          >
             <img
               src={imageUrl(content.poster_path, 'w500')}
               alt={title}
               className="w-full h-full object-cover"
               onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
             />
-          </div>
+          </button>
           <DetailStat label="Language" value={languageName} />
         </div>
 
@@ -192,20 +219,24 @@ function MobileLayout({
 function DesktopLayout({
   content, title, type, meta, status, pendingAction,
   directorStat, countryLabel, languageName, ageRatingLabel,
-  onToggleWatched, onToggleWatchlist, onOpenSaveModal,
+  onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick,
 }) {
   return (
     <div className="hidden xl:block">
       <div className="-mt-[13rem] flex w-full flex-row items-end gap-8">
         {/* Poster */}
-        <div className="w-[200px] aspect-[2/3] overflow-hidden rounded-2xl shadow-2xl flex-shrink-0">
+        <button 
+          type="button"
+          onClick={onPosterClick}
+          className="w-[200px] aspect-[2/3] overflow-hidden rounded-2xl shadow-2xl flex-shrink-0 ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block"
+        >
           <img
             src={imageUrl(content.poster_path, 'w500')}
             alt={title}
             className="w-full h-full object-cover"
             onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
           />
-        </div>
+        </button>
 
         {/* Title + stats */}
         <div className="min-w-0 flex-1">
