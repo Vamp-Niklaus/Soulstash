@@ -94,7 +94,7 @@ export class AuthController {
         return;
       }
 
-      res.json({ user: { id: user.id, username: user.username, admin: false } });
+      res.json({ user: { id: user.id, username: user.username, admin: false, avatar: (user as any).avatar || null } });
     } catch (err) {
       res.status(403).json({ error: 'Invalid token' });
     }
