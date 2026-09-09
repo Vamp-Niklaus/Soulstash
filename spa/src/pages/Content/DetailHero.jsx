@@ -113,9 +113,10 @@ export function DetailHero({
         <button
           type="button"
           data-play-btn="true"
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/65 active:scale-95 active:bg-black/70 lg:h-16 lg:w-16 touch-manipulation"
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/65 active:scale-95 active:bg-black/70 lg:h-16 lg:w-16 touch-manipulation ${isPlayerOpen ? 'pointer-events-none opacity-50' : ''}`}
           aria-label={`Play ${title}`}
-          onClick={onPlay}
+          onClick={isPlayerOpen ? undefined : onPlay}
+          disabled={isPlayerOpen}
         >
           <i className="fas fa-play translate-x-[1px] text-sm lg:text-base" />
         </button>
@@ -141,7 +142,8 @@ export function DetailHero({
           onToggleWatched={onToggleWatched}
           onToggleWatchlist={onToggleWatchlist}
           onOpenSaveModal={onOpenSaveModal}
-          onPosterClick={() => setViewerOpen(true)}
+          onPosterClick={isPlayerOpen ? undefined : () => setViewerOpen(true)}
+          isPlayerOpen={isPlayerOpen}
         />
 
         {/* Desktop layout (xl+) */}
@@ -159,7 +161,8 @@ export function DetailHero({
           onToggleWatched={onToggleWatched}
           onToggleWatchlist={onToggleWatchlist}
           onOpenSaveModal={onOpenSaveModal}
-          onPosterClick={() => setViewerOpen(true)}
+          onPosterClick={isPlayerOpen ? undefined : () => setViewerOpen(true)}
+          isPlayerOpen={isPlayerOpen}
         />
       </div>
 
@@ -235,7 +238,7 @@ export function DetailHero({
 function MobileLayout({
   content, title, type, meta, status, pendingAction,
   directorStat, countryLabel, languageName, ageRatingLabel,
-  onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick,
+  onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick, isPlayerOpen,
 }) {
   return (
     <div className="-mt-10 sm:-mt-14 lg:-mt-20 xl:hidden">
@@ -245,7 +248,8 @@ function MobileLayout({
           <button 
             type="button"
             onClick={onPosterClick}
-            className="aspect-[2/3] w-full overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block"
+            disabled={isPlayerOpen}
+            className={`aspect-[2/3] w-full overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block ${isPlayerOpen ? 'pointer-events-none opacity-60' : ''}`}
           >
             <img
               src={imageUrl(content.poster_path, 'w500')}
@@ -315,7 +319,7 @@ function MobileLayout({
 function DesktopLayout({
   content, title, type, meta, status, pendingAction,
   directorStat, countryLabel, languageName, ageRatingLabel,
-  onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick,
+  onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick, isPlayerOpen,
 }) {
   return (
     <div className="hidden xl:block">
@@ -324,7 +328,8 @@ function DesktopLayout({
         <button 
           type="button"
           onClick={onPosterClick}
-          className="w-[200px] aspect-[2/3] overflow-hidden rounded-2xl shadow-2xl flex-shrink-0 ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block"
+          disabled={isPlayerOpen}
+          className={`w-[200px] aspect-[2/3] overflow-hidden rounded-2xl shadow-2xl flex-shrink-0 ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block ${isPlayerOpen ? 'pointer-events-none opacity-60' : ''}`}
         >
           <img
             src={imageUrl(content.poster_path, 'w500')}

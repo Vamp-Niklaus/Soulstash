@@ -52,7 +52,7 @@ export class AuthController {
       res.status(200).json({ 
         message: 'Login successful',
         token,
-        user: { id: fullUser.id, username: fullUser.username, admin: false }
+        user: { id: fullUser.id, username: fullUser.username, admin: false, avatar: fullUser.avatar || null }
       });
     } catch (error: any) {
       logger.error('Login failed', error);
