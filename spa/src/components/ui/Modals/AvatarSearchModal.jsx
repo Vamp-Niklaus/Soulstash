@@ -5,9 +5,9 @@ import ReactDOM from 'react-dom';
  * Robust extractor to find the list of items from unknown API responses
  */
 function extractItems(data) {
+  if (!data) return [];
   if (Array.isArray(data)) return data;
-  if (data?.profiles && Array.isArray(data.profiles)) return data.profiles;
-  if (data?.items && Array.isArray(data.items)) return data.items;
+  
   if (data?.data) {
     if (Array.isArray(data.data)) return data.data;
     if (data.data.profiles) return data.data.profiles;
@@ -24,11 +24,17 @@ function extractNextCursor(data) {
 
 function getImageUrl(item) {
   if (!item) return null;
-  return item?.attributes?.image?.original || item?.attributes?.image?.large || item?.attributes?.image?.medium || null;
+  
+  if (item.image) {
+    if (typeof item.image === 'string') return item.image;
+    if (item.image.picURL) return item.image.picURL;
+  }
+  if (item.profileImageUrl) return item.profileImageUrl;
+  return null;
 }
 
 function getName(item) {
-  return item?.attributes?.name || item?.attributes?.canonicalName || 'Unknown';
+  return item?.name || item?.mbti_profile || item?.title || 'Unknown';
 }
 
 import { apiFetch } from '../../../api/client.js';
@@ -66,13 +72,10 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
     
     setLoading(true);
     try {
-      // Using Kitsu API which natively supports CORS and won't be blocked by Cloudflare!
-      const url = `https://kitsu.io/api/edge/characters?filter[name]=${encodeURIComponent(searchQuery)}`;
-      const res = await fetch(url);
-      const data = await res.json();
+      const data = await apiFetch(`/api/user/avatar-search?query=${encodeURIComponent(searchQuery)}&nextCursor=${nextCursor}`);
       
-      let items = data?.data || [];
-      const nextC = null; // Kitsu does pagination differently, but let's just use top results for simplicity
+      let items = extractItems(data);
+      const nextC = extractNextCursor(data);
 
       
       // Filter out duplicate image URLs

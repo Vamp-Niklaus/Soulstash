@@ -174,11 +174,13 @@ app.get('/avatar-search', async (req: any, res: any) => {
     const { query, nextCursor } = req.query;
     const url = `https://api.personality-database.com/api/v2/search/top?query=${encodeURIComponent(query as string || '')}&limit=20&nextCursor=${nextCursor || 0}`;
     
-    // We must send a User-Agent, otherwise Cloudflare blocks us
+    // We must mimic a real browser perfectly, otherwise Cloudflare blocks us
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        'Accept': 'application/json'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.personality-database.com/'
       }
     });
 
