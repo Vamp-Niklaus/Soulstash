@@ -57,14 +57,37 @@ export class AdminController {
       if (!auth) return;
       const { coll } = auth;
 
-      const users = await coll.find({}, { projection: { password: 0 } }).toArray();
-      const formattedUsers = users.map(u => ({
-        id: u._id.toString(),
-        username: u.username,
-        email: u.email,
-        admin: !!u.admin,
-        createdAt: u.createdAt
-      }));
+      const users = await coll.find({}, { projection: { password: 0, passwordHash: 0 } }).toArray();
+      const formattedUsers = users.map((u: any) => {
+        const collections = Array.isArray(u.collections) ? u.collections : [];
+        const watched = collections.find((c: any) => c.name === 'Watched');
+        const watchlist = collections.find((c: any) => c.name === 'Watchlist');
+        const watchedCount = Array.isArray(watched?.movies) ? watched.movies.length : 0;
+        const watchlistCount = Array.isArray(watchlist?.movies) ? watchlist.movies.length : 0;
+        const totalSavedItems = collections.reduce((sum: number, c: any) => sum + (Array.isArray(c.movies) ? c.movies.length : 0), 0);
+
+        return {
+          _id: u._id.toString(),
+          id: u._id.toString(),
+          username: u.username,
+          email: u.email || '',
+          firstName: u.firstName || '',
+          lastName: u.lastName || '',
+          fullName: u.fullName || '',
+          bio: u.bio || '',
+          avatar: u.avatar || null,
+          admin: !!u.admin,
+          createdAt: u.createdAt,
+          collections: collections.map((c: any) => ({
+            name: c.name,
+            movies: c.movies || []
+          })),
+          collectionCount: collections.length,
+          watchedCount,
+          watchlistCount,
+          totalSavedItems
+        };
+      });
 
       res.json({
         totalUsers: formattedUsers.length,
