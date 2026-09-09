@@ -64,8 +64,7 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
     <section className="content-section mt-12">
       <SectionHeader title={title} />
       
-      {/* Increased grid columns to make cards 2/3 of their original size */}
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 mt-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mt-4">
         {items.map((item) => {
           // Add media_type so ContentCard can route correctly
           const contentItem = { ...item, media_type: type };
