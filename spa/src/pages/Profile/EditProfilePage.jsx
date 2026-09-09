@@ -111,6 +111,9 @@ export function EditProfilePage() {
         throw new Error(data.error || 'Failed to update profile');
       }
 
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      localStorage.setItem('user', JSON.stringify({ ...currentUser, ...data }));
+
       toast.success('Profile updated successfully');
       emitAuthChange();
       queryClient.invalidateQueries({ queryKey: ['profile'] });
