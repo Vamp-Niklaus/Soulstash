@@ -30,6 +30,8 @@ function getName(item) {
   return item?.name || item?.mbti_profile || item?.title || 'Unknown';
 }
 
+import { apiFetch } from '../../../api/client.js';
+
 export function AvatarSearchModal({ open, onClose, onSelect }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -63,9 +65,7 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
     
     setLoading(true);
     try {
-      const url = `https://api.personality-database.com/api/v2/search/top?query=${encodeURIComponent(searchQuery)}&limit=20&nextCursor=${nextCursor}`;
-      const res = await fetch(url);
-      const data = await res.json();
+      const data = await apiFetch(`/api/user/avatar-search?query=${encodeURIComponent(searchQuery)}&nextCursor=${nextCursor}`);
       
       let items = extractItems(data);
       const nextC = extractNextCursor(data);
