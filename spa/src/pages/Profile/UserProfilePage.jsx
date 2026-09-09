@@ -268,7 +268,7 @@ export function UserProfilePage() {
           <div className="mb-5 flex items-center justify-between gap-4">
             <SectionHeader title="Favorite People" />
           </div>
-          <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid gap-2 grid-cols-4 sm:grid-cols-6 lg:grid-cols-8">
             {favoritePeople.map((person) => (
               <div key={person.id} className="group relative w-full rounded-[18px] border border-white/10 bg-white/[0.03] p-2.5">
                 <button
