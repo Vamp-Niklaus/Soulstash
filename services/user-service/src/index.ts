@@ -169,33 +169,7 @@ app.post('/update-profile', extractUser, upload.single('avatar'), async (req: an
   }
 });
 
-app.get('/avatar-search', async (req: any, res: any) => {
-  try {
-    const { query, nextCursor } = req.query;
-    const url = `https://api.personality-database.com/api/v2/search/top?query=${encodeURIComponent(query as string || '')}&limit=20&nextCursor=${nextCursor || 0}`;
-    
-    // We must mimic a real browser perfectly, otherwise Cloudflare blocks us
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.personality-database.com/'
-      }
-    });
 
-    if (!response.ok) {
-      console.error(`[Soulstash] Upstream API failed with status ${response.status}`);
-      return res.status(502).json({ error: 'Upstream API error' });
-    }
-
-    const data = await response.json();
-    res.json(data);
-  } catch (error) {
-    console.error('[Soulstash] Avatar search proxy error:', error);
-    res.status(500).json({ error: 'Failed to search avatars' });
-  }
-});
 
 app.use('/collections', extractUser);
 app.get('/collections', (req, res) => collectionController.getCollections(req, res));

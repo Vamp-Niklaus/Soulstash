@@ -7,34 +7,23 @@ import ReactDOM from 'react-dom';
 function extractItems(data) {
   if (!data) return [];
   if (Array.isArray(data)) return data;
-  
-  if (data?.data) {
-    if (Array.isArray(data.data)) return data.data;
-    if (data.data.profiles) return data.data.profiles;
-    if (data.data.items) return data.data.items;
-  }
+  if (data?.results && Array.isArray(data.results)) return data.results;
   return [];
 }
 
 function extractNextCursor(data) {
-  if (data?.nextCursor !== undefined) return data.nextCursor;
-  if (data?.data?.nextCursor !== undefined) return data.data.nextCursor;
-  return null;
+  return null; // Our TMDB search doesn't support pagination here currently
 }
 
 function getImageUrl(item) {
   if (!item) return null;
-  
-  if (item.image) {
-    if (typeof item.image === 'string') return item.image;
-    if (item.image.picURL) return item.image.picURL;
-  }
-  if (item.profileImageUrl) return item.profileImageUrl;
+  if (item.profile_path) return `https://image.tmdb.org/t/p/w500${item.profile_path}`;
+  if (item.poster_path) return `https://image.tmdb.org/t/p/w500${item.poster_path}`;
   return null;
 }
 
 function getName(item) {
-  return item?.name || item?.mbti_profile || item?.title || 'Unknown';
+  return item?.name || item?.title || 'Unknown';
 }
 
 import { apiFetch } from '../../../api/client.js';
@@ -72,10 +61,11 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
     
     setLoading(true);
     try {
-      const data = await apiFetch(`/api/user/avatar-search?query=${encodeURIComponent(searchQuery)}&nextCursor=${nextCursor}`);
+      // Use internal TMDB cast search instead of Personality Database
+      const data = await apiFetch(`/api/search?q=${encodeURIComponent(searchQuery)}&type=cast`);
       
       let items = extractItems(data);
-      const nextC = extractNextCursor(data);
+      const nextC = null; // No pagination for this basic cast search
 
       
       // Filter out duplicate image URLs
