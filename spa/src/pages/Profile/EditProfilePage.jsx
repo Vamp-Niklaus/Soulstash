@@ -7,10 +7,11 @@ import { toast } from '../../utils/toast.js';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { UserProfileSkeleton, EditProfileSkeleton } from '../../components/ui/Skeletons/index.js';
 import { CollectionPosterCard } from '../../components/ui/Cards/CollectionPosterCard.jsx';
-import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
+
 
 import { ActionButton } from '../../components/ui/ActionButton.jsx';
 import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
+import { AvatarSearchModal } from '../../components/ui/Modals/AvatarSearchModal.jsx';
 
 
 export function EditProfilePage() {
@@ -31,7 +32,8 @@ export function EditProfilePage() {
     youtubeHandle: ''
   });
   const [avatarPreview, setAvatarPreview] = useState(FALLBACK_AVATAR);
-  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarSearchOpen, setAvatarSearchOpen] = useState(false);
 
   useEffect(() => {
     document.title = 'Edit Profile - Soulstash';
@@ -91,8 +93,8 @@ export function EditProfilePage() {
       Object.entries(draft).forEach(([key, value]) => {
         if (key !== 'username') formData.append(key, value || '');
       });
-      if (avatarFile) {
-        formData.append('avatar', avatarFile);
+      if (avatarUrl) {
+        formData.append('avatarUrl', avatarUrl);
       }
 
       const response = await fetch(`${API_BASE_URL}/api/user/update-profile`, {
@@ -131,7 +133,11 @@ export function EditProfilePage() {
         <p className="mt-2 text-sm text-[#9f9f9f]">Update your public details and social links without leaving the app.</p>
         <form className="mt-8 space-y-7" onSubmit={handleSave}>
           <div className="flex flex-col sm:flex-row items-center gap-6">
-            <label className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10">
+            <button
+              type="button"
+              onClick={() => setAvatarSearchOpen(true)}
+              className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-[#64FFDA]"
+            >
               <img
                 src={avatarPreview}
                 alt="Profile avatar"
@@ -140,21 +146,15 @@ export function EditProfilePage() {
                   event.currentTarget.src = FALLBACK_AVATAR;
                 }}
               />
-              <input
-                type="file"
-                accept=".jpg,.jpeg,.png,.webp,.avif,.heic,.heif"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  setAvatarFile(file);
-                  setAvatarPreview(URL.createObjectURL(file));
-                }}
-              />
-            </label>
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-white">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </button>
             <div>
               <h3 className="text-white font-medium">Profile photo</h3>
-              <p className="mt-1 text-sm text-[#8f8f8f]">Upload a new photo for your profile.</p>
+              <p className="mt-1 text-sm text-[#8f8f8f]">Search for a character to set as your avatar.</p>
             </div>
           </div>
 
@@ -214,6 +214,16 @@ export function EditProfilePage() {
           </div>
         </form>
       </section>
+      
+      <AvatarSearchModal 
+        open={avatarSearchOpen} 
+        onClose={() => setAvatarSearchOpen(false)} 
+        onSelect={(url) => {
+          setAvatarUrl(url);
+          setAvatarPreview(url);
+          setAvatarSearchOpen(false);
+        }}
+      />
     </div>
   );
 }

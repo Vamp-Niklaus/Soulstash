@@ -146,6 +146,8 @@ app.post('/update-profile', extractUser, upload.single('avatar'), async (req: an
       // Keep it simple for now: store avatar as a data URL so the UI can render it immediately.
       const mimeType = req.file.mimetype || 'image/png';
       updates.avatar = `data:${mimeType};base64,${req.file.buffer.toString('base64')}`;
+    } else if (req.body.avatarUrl) {
+      updates.avatar = req.body.avatarUrl;
     }
 
     const result = await coll.findOneAndUpdate(
