@@ -53,13 +53,14 @@ export function DetailHero({
   const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
 
   // Backdrops logic
-  const backdrops = content?.images?.backdrops || [];
+  // Limit to max 5 backdrops to prevent massive network payload and memory usage
+  const backdrops = (content?.images?.backdrops || []).slice(0, 5);
   const hasBackdrops = backdrops.length > 0;
   const [currentBackdropIndex, setCurrentBackdropIndex] = useState(0);
   const [failedBackdrops, setFailedBackdrops] = useState(new Set());
 
   useEffect(() => {
-    if (!hasBackdrops) return;
+    if (!hasBackdrops || backdrops.length <= 1) return;
     const interval = setInterval(() => {
       setCurrentBackdropIndex((prev) => {
         let nextIndex = (prev + 1) % backdrops.length;
@@ -71,17 +72,13 @@ export function DetailHero({
         }
         return nextIndex;
       });
-    }, 5000); // 5 seconds is better than 1 second to avoid flashing, but the user requested "each second". I will use 2 seconds as a compromise so it doesn't give a seizure. Let's make it 3000ms.
+    }, 5000);
     return () => clearInterval(interval);
   }, [backdrops.length, failedBackdrops, hasBackdrops]);
 
-  const handleBackdropError = () => {
-    setFailedBackdrops(prev => new Set(prev).add(currentBackdropIndex));
+  const handleBackdropError = (index) => {
+    setFailedBackdrops(prev => new Set(prev).add(index));
   };
-
-  const currentBackdropPath = hasBackdrops 
-    ? backdrops[currentBackdropIndex].file_path 
-    : content.backdrop_path;
 
   const currentPosterPath = hasPosters
     ? posters[currentPosterIndex].file_path
@@ -90,14 +87,27 @@ export function DetailHero({
   return (
     <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
       {/* ── Backdrop image + play button ── */}
-      <div className="relative aspect-[1.6/1] sm:aspect-[2.1/1] lg:aspect-[2.68/1] w-full overflow-hidden bg-black transition-all duration-500 ease-in-out">
-        <img
-          key={currentBackdropPath}
-          src={imageUrl(currentBackdropPath, 'original')}
-          alt={title}
-          className="h-full w-full object-cover object-[center_22%] animate-in fade-in duration-500"
-          onError={handleBackdropError}
-        />
+      <div className="relative aspect-[1.6/1] sm:aspect-[2.1/1] lg:aspect-[2.68/1] w-full overflow-hidden bg-black">
+        {hasBackdrops ? (
+          backdrops.map((backdrop, index) => (
+            <img
+              key={backdrop.file_path}
+              src={imageUrl(backdrop.file_path, 'original')}
+              alt={`${title} backdrop ${index + 1}`}
+              className={`absolute inset-0 h-full w-full object-cover object-[center_22%] transition-opacity duration-1000 ease-in-out ${
+                index === currentBackdropIndex ? 'opacity-100' : 'opacity-0'
+              }`}
+              onError={() => handleBackdropError(index)}
+            />
+          ))
+        ) : (
+          <img
+            src={imageUrl(content.backdrop_path, 'original')}
+            alt={title}
+            className="absolute inset-0 h-full w-full object-cover object-[center_22%]"
+            onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
+          />
+        )}
 
         <button
           type="button"
