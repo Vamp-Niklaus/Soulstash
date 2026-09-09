@@ -44,6 +44,7 @@ export function DetailHero({
   onToggleWatchlist,
   onOpenSaveModal,
   onPlay,
+  isPlayerOpen,
 }) {
   const [viewerOpen, setViewerOpen] = useState(false);
   
@@ -60,7 +61,7 @@ export function DetailHero({
   const [failedBackdrops, setFailedBackdrops] = useState(new Set());
 
   useEffect(() => {
-    if (!hasBackdrops || backdrops.length <= 1) return;
+    if (!hasBackdrops || backdrops.length <= 1 || isPlayerOpen) return;
     const interval = setInterval(() => {
       setCurrentBackdropIndex((prev) => {
         let nextIndex = (prev + 1) % backdrops.length;
@@ -72,9 +73,9 @@ export function DetailHero({
         }
         return nextIndex;
       });
-    }, 2000);
+    }, 3500);
     return () => clearInterval(interval);
-  }, [backdrops.length, failedBackdrops, hasBackdrops]);
+  }, [backdrops.length, failedBackdrops, hasBackdrops, isPlayerOpen]);
 
   const handleBackdropError = (index) => {
     setFailedBackdrops(prev => new Set(prev).add(index));
