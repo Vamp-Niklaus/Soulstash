@@ -183,7 +183,8 @@ app.get('/avatar-search', async (req: any, res: any) => {
     });
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: 'Upstream API error' });
+      console.error(`[Soulstash] Upstream API failed with status ${response.status}`);
+      return res.status(502).json({ error: 'Upstream API error' });
     }
 
     const data = await response.json();
