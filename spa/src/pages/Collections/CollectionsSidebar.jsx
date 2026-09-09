@@ -144,6 +144,7 @@ export function CollectionsSidebar({
                         : 'bg-transparent border-transparent hover:bg-white/[0.04]'
                     }`}
                     draggable={!isFixed}
+                    data-collection-row
                     tabIndex={0}
                     onDragStart={!isFixed ? (event) => page.handleCollectionDragStart(event, collectionId) : undefined}
                     onDragEnter={!isFixed ? () => page.handleCollectionDragEnter(collectionId) : undefined}
@@ -193,11 +194,11 @@ export function CollectionsSidebar({
                     ) : (
                       <span className="h-9 w-5 flex-shrink-0" aria-hidden="true" />
                     )}
-                    <div className="group relative w-[48px] h-[48px] rounded-[16px] overflow-hidden flex-shrink-0">
+                    <div className="relative w-[48px] h-[48px] rounded-[16px] flex-shrink-0">
                       <img
                         src={collection.banner || FALLBACK_AVATAR}
                         alt={collection.name}
-                        className="w-full h-full object-cover transition-transform duration-300"
+                        className="w-full h-full object-cover rounded-[16px]"
                         onError={(event) => {
                           event.currentTarget.src = FALLBACK_AVATAR;
                         }}
@@ -208,9 +209,10 @@ export function CollectionsSidebar({
                             e.stopPropagation();
                             setEditingPosterCollection(collection);
                           }}
-                          className="absolute top-1 right-1 p-1 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-black/80"
+                          className="poster-edit-btn absolute -top-1 -right-1 p-[3px] bg-black/70 rounded-full text-white hover:bg-black/90"
+                          title="Change poster"
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
                         </button>
