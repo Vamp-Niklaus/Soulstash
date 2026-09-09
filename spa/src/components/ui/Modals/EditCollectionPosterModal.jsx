@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { FALLBACK_AVATAR } from '../../../utils/constants.js';
 import { imageUrl } from '../../../utils/formatters.js';
 import { apiFetch } from '../../../api/client.js';
@@ -102,19 +103,22 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
     onSave(posters[currentIndex], updatedMovies);
   };
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-[4vw]">
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/85 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Modal Content */}
-      <div className="relative z-10 w-full h-full max-w-[1400px] flex flex-col items-center justify-center gap-5">
+      {/* Modal Content - Constrained exactly to 16:9 to fit screen */}
+      <div 
+        className="relative z-10 w-full flex items-center justify-center" 
+        style={{ maxWidth: 'min(96vw, 170vh)' }}
+      >
         
         {/* Landscape Image Viewer */}
-        <div className="relative w-full h-full rounded-[20px] overflow-hidden flex items-center justify-center bg-black/40 shadow-2xl">
+        <div className="relative w-full aspect-video rounded-[20px] overflow-hidden flex items-center justify-center bg-black/40 shadow-2xl">
           
           {/* Bottom Controls (Inside Image) */}
           {!loading && (
@@ -151,7 +155,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
               <img
                 src={posters[currentIndex]}
                 alt="Selected Banner"
-                className="w-full h-full object-contain transition-opacity duration-300"
+                className="w-full h-full object-cover transition-opacity duration-300"
               />
 
               {posters.length > 1 && (
@@ -188,6 +192,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
