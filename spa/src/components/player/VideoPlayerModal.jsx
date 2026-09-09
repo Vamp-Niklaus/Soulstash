@@ -1,9 +1,10 @@
-import { setNativeScale } from '../../utils/helpers.js';
+import { setNativeScale } from '../../utils/formatters.js';
 import { useCallback, useMemo } from 'react';
 import { SESSION_SCRAPED } from '../../utils/constants.js';
-import { isDirectMediaUrl } from '../../utils/helpers.js';
+import { isDirectMediaUrl } from '../../utils/formatters.js';
 import { Capacitor } from '@capacitor/core';
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from '../../utils/toast.js';
 import { apiFetch } from '../../api/client.js';
 import { ActionButton } from '../ui/ActionButton.jsx';
@@ -23,16 +24,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const [draggingPlayer, setDraggingPlayer] = useState(false);
   const [iframeReloadKey, setIframeReloadKey] = useState(0);
   const [scale, setScale] = useState(1.0);
-  const [sourceState, setSourceState] = useState({
-    loading: false,
-    cacheHit: false,
-    error: ''
-  });
   const iframeRef = useRef(null);
-
-  useEffect(() => {
-    // No-op timer removed
-  }, [request]);
+  
   const playerBoxRef = useRef(null);
   const dragStateRef = useRef(null);
   const isDesktopViewport = typeof window !== 'undefined' ? window.innerWidth >= 768 : true;
@@ -98,6 +91,49 @@ export function VideoPlayerModal({ request, onClose }) {
     };
   }, []);
 
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!window.history.state || !window.history.state.playerOpen) {
+      window.history.pushState({ playerOpen: true }, '');
+    }
+
+    const handlePopState = () => {
+      // If we are in fullscreen, the back button should ONLY exit fullscreen
+      if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+        else if (document.msExitFullscreen) document.msExitFullscreen();
+        
+        // Push the state back so the next back press closes the modal
+        window.history.pushState({ playerOpen: true }, '');
+      } else {
+        // Otherwise, close the modal
+        if (onCloseRef.current) onCloseRef.current();
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      // We explicitly DO NOT call history.back() here to avoid StrictMode bugs.
+      // History cleanup is handled by handleCloseClick instead.
+    };
+  }, []);
+
+  const handleCloseClick = () => {
+    if (window.history.state && window.history.state.playerOpen) {
+      window.history.back();
+    } else {
+      if (onCloseRef.current) onCloseRef.current();
+    }
+  };
+
   const handleToggleZoom = () => {
     setScale((prev) => {
       const next = prev === 1.0 ? 1.15 : prev === 1.15 ? 1.3 : 1.0;
@@ -116,7 +152,6 @@ export function VideoPlayerModal({ request, onClose }) {
     const handleFullscreenChange = async () => {
       const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
       
-      // Handle screen orientation for Capacitor Android app
       if (Capacitor.isNativePlatform()) {
         try {
           if (fsElement) {
@@ -135,7 +170,7 @@ export function VideoPlayerModal({ request, onClose }) {
         fsElement.style.width = '100vw';
         fsElement.style.height = '100vh';
         fsElement.style.overflow = 'hidden';
-        fsElement.style.backgroundColor = 'black'; // Ensure black background in fullscreen
+        fsElement.style.backgroundColor = 'black'; 
       } else if (iframeRef.current) {
         iframeRef.current.style.transform = scale !== 1.0 ? `scale(${scale})` : 'none';
         iframeRef.current.style.transformOrigin = 'center center';
@@ -149,174 +184,102 @@ export function VideoPlayerModal({ request, onClose }) {
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 
-    // Call it immediately in case fullscreen was already active
     handleFullscreenChange();
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       
-      // Always lock to portrait when player unmounts
       if (Capacitor.isNativePlatform()) {
         ScreenOrientation.lock({ type: 'portrait' }).catch(console.error);
       }
     };
   }, [scale]);
 
-  useEffect(() => {
-    let ignore = false;
+  const queryParams = useMemo(() => {
     const params = new URLSearchParams({
       mediaType: request.mediaType,
-      tmdbId: String(request.tmdbId)
+      tmdbId: String(request.tmdbId),
+      t: Date.now().toString()
     });
-
     if (request.imdbId) params.set('imdbId', request.imdbId);
     if (request.mediaType === 'series') {
       params.set('seasonNumber', String(request.seasonNumber || 1));
       params.set('episodeNumber', String(request.episodeNumber || 1));
     }
+    return params;
+  }, [request]);
 
-    setSourceState({
-      loading: true,
-      cacheHit: false,
-      error: ''
-    });
+  const { data: sourcePayload, isLoading: sourceLoading, error: sourceError, isFetching } = useQuery({
+    queryKey: ['playerSources', request.mediaType, request.tmdbId, request.seasonNumber, request.episodeNumber, request.imdbId],
+    queryFn: () => apiFetch(`/api/player/sources?${queryParams.toString()}`),
+    enabled: !!request.tmdbId,
+    retry: (failureCount, error) => {
+      if (error?.status === 503 && failureCount < 30) return true;
+      return false;
+    },
+    retryDelay: 4000,
+    refetchInterval: (query) => {
+      // Keep polling if the backend says it's scraping
+      if (query.state.data?.scraping) return 4000;
+      return false;
+    }
+  });
 
-    const applyPayload = (payload, { resetActive = false } = {}) => {
-      const nextSources = Array.isArray(payload?.sources)
-        ? payload.sources.filter((source) => source?.url || source?.pending)
+  useEffect(() => {
+    if (sourcePayload) {
+      const nextSources = Array.isArray(sourcePayload.sources)
+        ? sourcePayload.sources.filter((source) => source?.url || source?.pending)
         : [];
-      const resolvedSources = [...nextSources, ...fallbackSources];
+      const resolvedSources = [...nextSources, ...(fallbackSources || [])];
       const nextSignature = JSON.stringify({
-        updatedAt: payload?.updatedAt || '',
+        updatedAt: sourcePayload.updatedAt || '',
         urls: resolvedSources.map((source) => source?.url || '')
       });
 
-      setHindiSources(nextSources);
-      setSourceSignature(nextSignature);
-      setActiveUrl((current) => {
-        // If we already have a working source playing, DO NOT switch it
-        if (current && resolvedSources.some((s) => s.url === current)) {
-          return current;
-        }
-
-        // Otherwise, find the best default source
-        const playable = resolvedSources.filter(s => s.url);
-        if (!playable.length) return '';
-
-        // Priority 1: VidNest
-        const vidnest = playable.find(s => {
-          const l = s.label?.toLowerCase() || '';
-          return l.includes('vidnest') || s.id?.toLowerCase().includes('vidnest');
-        });
-        if (vidnest) return vidnest.url;
-
-        // Priority 2: Videasy
-        const videasy = playable.find(s => {
-          const l = s.label?.toLowerCase() || '';
-          return l.includes('videasy') || l.includes('vid-easy') || s.id?.includes('videasy');
-        });
-        if (videasy) return videasy.url;
-
-        // Priority 3: YouTube
-        const youtube = playable.find(s => {
-          const l = s.label?.toLowerCase() || '';
-          return l.includes('youtube') || s.id?.includes('youtube');
-        });
-        if (youtube) return youtube.url;
-
-        // Fallback: First available
-        return playable[0].url;
-      });
-
-
-      setSourceState({
-        loading: false,
-        cacheHit: Boolean(payload?.cacheHit),
-        scraping: Boolean(payload?.scraping),
-        notAvailable: Boolean(payload?.notAvailable),
-        error: nextSources.some(s => s.url) || fallbackSources.length ? '' : 'No player sources found.'
-      });
-
-    };
-
-
-    let pollAttempt = 0;
-    const MAX_POLL_ATTEMPTS = 30; // 30 Ãƒâ€” 4s = 120s max wait for a scrape
-
-    const fetchSources = async (isManualRefresh = false) => {
-      if (ignore) return;
-      const sessionKey = `${params.get('tmdbId')}-${params.get('seasonNumber') || '0'}-${params.get('episodeNumber') || '0'}`;
-      try {
-        const queryParams = new URLSearchParams(params);
-        if (isManualRefresh) {
-          queryParams.set('refresh', '1');
-        }
-        queryParams.set('t', Date.now().toString());
-
-        let payload;
-        try {
-          payload = await apiFetch(`/api/player/sources?${queryParams.toString()}`);
-        } catch (fetchError) {
-          if (ignore) return;
-          // 503 = TMDB down but backend may still scrape via fallback -  keep polling
-          if (fetchError?.status === 503 && pollAttempt < MAX_POLL_ATTEMPTS) {
-            pollAttempt++;
-            setSourceState((prev) => ({
-              ...prev,
-              loading: false,
-              scraping: true,
-              error: ''
-            }));
-            setTimeout(() => !ignore && fetchSources(false), 4000);
-            return;
-          }
-          // Hard failure - show error but don't hide fallback sources
-          setSourceState({
-            loading: false,
-            cacheHit: false,
-            scraping: false,
-            error: fallbackSources.length ? '' : fetchError?.message || 'Failed to load sources.'
-          });
-          return;
-        }
-
-        if (ignore) return;
-
-        applyPayload(payload);
-
-        if (payload?.scraping && pollAttempt < MAX_POLL_ATTEMPTS) {
-          // Backend is still scraping - keep polling until it finishes or we hit the limit
-          pollAttempt++;
-          setTimeout(() => !ignore && fetchSources(false), 4000);
-        } else {
+      if (sourceSignature !== nextSignature) {
+        setHindiSources(nextSources);
+        setSourceSignature(nextSignature);
+        
+        if (!sourcePayload.scraping) {
+          const sessionKey = `${request.tmdbId}-${request.seasonNumber || '0'}-${request.episodeNumber || '0'}`;
           SESSION_SCRAPED.add(sessionKey);
         }
-      } catch (error) {
-        if (ignore) return;
-        setSourceState({
-          loading: false,
-          cacheHit: false,
-          scraping: false,
-          error: fallbackSources.length ? '' : error?.message || 'Failed to load sources.'
+
+        setActiveUrl((current) => {
+          if (current && resolvedSources.some((s) => s.url === current)) {
+            return current;
+          }
+
+          const playable = resolvedSources.filter(s => s.url);
+          if (!playable.length) return '';
+
+          const vidnest = playable.find(s => {
+            const l = s.label?.toLowerCase() || '';
+            return l.includes('vidnest') || s.id?.toLowerCase().includes('vidnest');
+          });
+          if (vidnest) return vidnest.url;
+
+          const videasy = playable.find(s => {
+            const l = s.label?.toLowerCase() || '';
+            return l.includes('videasy') || l.includes('vid-easy') || s.id?.includes('videasy');
+          });
+          if (videasy) return videasy.url;
+
+          const youtube = playable.find(s => {
+            const l = s.label?.toLowerCase() || '';
+            return l.includes('youtube') || s.id?.includes('youtube');
+          });
+          if (youtube) return youtube.url;
+
+          return playable[0].url;
         });
       }
-    };
+    }
+  }, [sourcePayload, fallbackSources, request, sourceSignature]);
 
+  const sources = useMemo(() => buildPlayerSourceSlots(hindiSources, fallbackSources, isFetching), [hindiSources, fallbackSources, isFetching]);
 
-    fetchSources();
-
-    return () => {
-      ignore = true;
-    };
-  }, [request]);
-
-  // legacySources removed - buildPlayerSourceSlots covers all 8 fixed slots.
-
-  const sources = useMemo(() => buildPlayerSourceSlots(hindiSources, fallbackSources, sourceState.loading), [hindiSources, fallbackSources, sourceState.loading]);
-
-  // Auto-select a default source whenever sources load and nothing is playing yet.
-  // Priority: VidNest -> VIDEASY -> YouTube -> first available.
   useEffect(() => {
     setActiveUrl((current) => {
       if (current && sources.some((s) => s.url === current)) return current;
@@ -342,14 +305,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const activeSource = sources.find((source) => source.url === activeUrl) || defaultSource;
   const availableSources = useMemo(() => sources.filter((source) => source?.url), [sources]);
 
-
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
 
-  useEffect(() => {
-    if (activeUrl) {
-      console.log('[Soulstash Player Debug] Rendering player for URL:', activeUrl, '| VideoJS:', canUseVideoJs);
-    }
-  }, [activeUrl, canUseVideoJs]);
   const canEmbedSource = canUseVideoJs || activeSource?.embeddable !== false;
   const availableHeight = `calc(100dvh - ${modalPadding * 2 + verticalInset * 2}px)`;
   const mediaHeight = `calc(${availableHeight} - ${chromeAllowance - 18}px)`;
@@ -395,8 +352,6 @@ export function VideoPlayerModal({ request, onClose }) {
     setIframeReloadKey((current) => current + 1);
   }, [activeUrl]);
 
-  // No automatic exit-fullscreen reload, preventing stream restart
-
   const settlePlayerPosition = useCallback((currentOffset) => {
     const playerNode = playerBoxRef.current;
     if (!playerNode || typeof window === 'undefined') {
@@ -430,8 +385,6 @@ export function VideoPlayerModal({ request, onClose }) {
     if (!isAndroidViewport || event.pointerType !== 'touch') return;
     if (!event.target.closest('[data-player-drag-handle]')) return;
     if (event.target.closest('button, a')) return;
-    // Don't preventDefault here - wait for movement threshold so taps
-    // pass through to the iframe for play/pause controls.
 
     dragStateRef.current = {
       pointerId: event.pointerId,
@@ -454,8 +407,6 @@ export function VideoPlayerModal({ request, onClose }) {
       const dx = event.clientX - dragState.startX;
       const dy = event.clientY - dragState.startY;
 
-      // Activate drag only after movement exceeds threshold.
-      // This lets quick taps pass through to the iframe.
       if (!dragState.activated) {
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
         dragState.activated = true;
@@ -477,7 +428,6 @@ export function VideoPlayerModal({ request, onClose }) {
       if (dragState.activated) {
         stopPlayerDrag();
       } else {
-        // Was a tap, not a drag. Clean up without settling.
         dragStateRef.current = null;
       }
     };
@@ -507,11 +457,7 @@ export function VideoPlayerModal({ request, onClose }) {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const modal = playerBoxRef.current?.closest('[data-player-modal]');
-      // Only auto-focus the stream button if we are already in keyboard-nav mode
-      // (i.e. the user has pressed a key before). If they opened the player with
-      // a mouse click, we leave focus alone so the ring stays hidden.
       if (!modal) return;
-      // Import-free check: tvNav sets html.tv-nav-active when keyboard mode is on.
       const isKeyboardNav = document.documentElement.classList.contains('tv-nav-active');
       if (!isKeyboardNav) return;
       if (modal.contains(document.activeElement)) return;
@@ -520,13 +466,16 @@ export function VideoPlayerModal({ request, onClose }) {
         playerBoxRef.current?.querySelector('button[data-player-source="true"]:not(:disabled)') ||
         playerBoxRef.current?.querySelector('button[data-player-action="true"]:not(:disabled), a[data-player-action="true"]');
       if (sourceButton) {
-        // Use applyFocusViaNav to properly register with the tvNav system
         sourceButton.focus({ preventScroll: true });
         sourceButton.classList.add('tv-focused');
       }
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeUrl, sources.length]);
+
+  const errorDisplay = sourceError 
+    ? (fallbackSources.length ? '' : sourceError?.message || 'Failed to load sources.')
+    : '';
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[9999] bg-transparent" data-player-modal="true">
@@ -585,7 +534,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   ))
                 ) : (
                   <span className="text-[11px] font-medium text-white/50">
-                    {sourceState.error || 'No source links yet.'}
+                    {errorDisplay || 'No source links yet.'}
                   </span>
                 )}
               </div>
@@ -631,7 +580,7 @@ export function VideoPlayerModal({ request, onClose }) {
               <button
                 type="button"
                 data-player-action="true"
-                onClick={onClose}
+                onClick={handleCloseClick}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
                 aria-label="Close player"
               >
@@ -645,7 +594,7 @@ export function VideoPlayerModal({ request, onClose }) {
             className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
             style={mediaAreaStyle}
           >
-            {sourceState.loading && !activeUrl ? (
+            {isFetching && !activeUrl ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-6">
                 <div className="batman-loader-wrapper">
                   <div className="batman-loader" />
@@ -656,7 +605,7 @@ export function VideoPlayerModal({ request, onClose }) {
               </div>
             ) : !activeUrl ? (
               <div className="flex h-full w-full items-center justify-center px-6 text-center text-sm text-white/65">
-                {sourceState.error || 'No playable source is available for this title right now.'}
+                {errorDisplay || 'No playable source is available for this title right now.'}
               </div>
             ) : canUseVideoJs ? (
               <div className="flex h-full w-full items-center justify-center bg-black">

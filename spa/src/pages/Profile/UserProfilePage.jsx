@@ -1,9 +1,10 @@
 import { imageUrl } from '../../utils/formatters.js';
 import { useAuthSession } from '../../hooks/index.js';
-import { cachedApiFetch, getToken, clearAuthSession, apiFetch } from '../../api/client.js';
-import { collectionItemCount, normalizeCollections } from '../../utils/helpers.js';
+import { getToken, clearAuthSession, apiFetch } from '../../api/client.js';
+import { collectionItemCount, normalizeCollections } from '../../utils/collectionsCache.js';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../utils/toast.js';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { UserProfileSkeleton, EditProfileSkeleton } from '../../components/ui/Skeletons/index.js';
@@ -19,64 +20,75 @@ export function UserProfilePage() {
   const { username = '' } = useParams();
   const navigate = useNavigate();
   const auth = useAuthSession();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [profilePayload, setProfilePayload] = useState(null);
-  const [favoritePeople, setFavoritePeople] = useState([]);
+  const queryClient = useQueryClient();
   const [favoriteRemoveTarget, setFavoriteRemoveTarget] = useState(null);
-  const [followersCount, setFollowersCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [isFollowedBy, setIsFollowedBy] = useState(false);
 
   useEffect(() => {
     document.title = username ? `${username} - Soulstash` : 'Profile - Soulstash';
   }, [username]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const { data: profilePayload, isLoading: loading, isError, error } = useQuery({
+    queryKey: ['profile', username],
+    queryFn: () => apiFetch(`/api/user/profile/${encodeURIComponent(username)}`)
+  });
 
-    setLoading(true);
-    setError('');
+  const followMutation = useMutation({
+    mutationFn: () => apiFetch('/api/user/follow', {
+      method: 'POST',
+      body: JSON.stringify({ username })
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile', username] });
+    },
+    onError: (err) => {
+      toast(err.message, 'error');
+    }
+  });
 
-    cachedApiFetch(`/api/user/profile/${encodeURIComponent(username)}`)
-      .then((payload) => {
-        if (!cancelled) {
-          setProfilePayload(payload);
-          if (payload?.user?.favoritePeople && payload?.isOwner) {
-            setFavoritePeople(payload.user.favoritePeople);
-          }
-          setFollowersCount(payload?.user?.followersCount || 0);
-          setFollowingCount(payload?.user?.followingCount || 0);
-          setIsFollowing(Boolean(payload?.isFollowing));
-          setIsFollowedBy(Boolean(payload?.isFollowedBy));
-        }
-      })
-      .catch((fetchError) => {
-        if (!cancelled) {
-          setError(fetchError.message || 'Failed to load profile');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
+  const unfollowMutation = useMutation({
+    mutationFn: () => apiFetch('/api/user/unfollow', {
+      method: 'POST',
+      body: JSON.stringify({ username })
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile', username] });
+    },
+    onError: (err) => {
+      toast(err.message, 'error');
+    }
+  });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [username]);
+  const removeFavoriteMutation = useMutation({
+    mutationFn: (id) => apiFetch('/api/user/favorites/remove', {
+      method: 'POST',
+      body: JSON.stringify({ id })
+    }),
+    onSuccess: () => {
+      toast('Removed from favorites');
+      setFavoriteRemoveTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['profile', username] });
+    },
+    onError: (err) => {
+      toast(err.message, 'error');
+      setFavoriteRemoveTarget(null);
+    }
+  });
 
   if (loading) {
     return <UserProfileSkeleton />;
   }
 
-  if (error || !profilePayload?.user) {
-    return <div className="app-error">{error || 'Profile not found.'}</div>;
+  if (isError || !profilePayload?.user) {
+    return <div className="app-error">{error?.message || 'Profile not found.'}</div>;
   }
 
   const user = profilePayload.user;
+  const followersCount = user.followersCount || 0;
+  const followingCount = user.followingCount || 0;
+  const isFollowing = Boolean(profilePayload.isFollowing);
+  const isFollowedBy = Boolean(profilePayload.isFollowedBy);
+  const favoritePeople = (user.favoritePeople && profilePayload.isOwner) ? user.favoritePeople : [];
+
   const collections = normalizeCollections(Array.isArray(user.collections) ? user.collections : []);
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.fullName || user.username;
   const watched = collections.find((collection) => collection.name === 'Watched');
@@ -152,29 +164,15 @@ export function UserProfilePage() {
                 <button
                   type="button"
                   className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-[#e6e6e6]"
-                  onClick={async () => {
+                  onClick={() => {
                     if (!getToken()) {
                       navigate('/login');
                       return;
                     }
-                    try {
-                      if (isFollowing) {
-                        await apiFetch('/api/user/unfollow', {
-                          method: 'POST',
-                          body: JSON.stringify({ username })
-                        });
-                        setIsFollowing(false);
-                        setFollowersCount((current) => Math.max(0, current - 1));
-                      } else {
-                        await apiFetch('/api/user/follow', {
-                          method: 'POST',
-                          body: JSON.stringify({ username })
-                        });
-                        setIsFollowing(true);
-                        setFollowersCount((current) => current + 1);
-                      }
-                    } catch (err) {
-                      toast(err.message, 'error');
+                    if (isFollowing) {
+                      unfollowMutation.mutate();
+                    } else {
+                      followMutation.mutate();
                     }
                   }}
                 >
@@ -312,20 +310,9 @@ export function UserProfilePage() {
         message={favoriteRemoveTarget ? `"${favoriteRemoveTarget.name}" will be removed from your favorites.` : ''}
         confirmLabel="Remove"
         danger
-        onConfirm={async () => {
+        onConfirm={() => {
           if (!favoriteRemoveTarget) return;
-          try {
-            await apiFetch('/api/user/favorites/remove', {
-              method: 'POST',
-              body: JSON.stringify({ id: favoriteRemoveTarget.id })
-            });
-            setFavoritePeople((current) => current.filter((person) => person.id !== favoriteRemoveTarget.id));
-            toast('Removed from favorites');
-          } catch (err) {
-            toast(err.message, 'error');
-          } finally {
-            setFavoriteRemoveTarget(null);
-          }
+          removeFavoriteMutation.mutate(favoriteRemoveTarget.id);
         }}
         onClose={() => setFavoriteRemoveTarget(null)}
       />

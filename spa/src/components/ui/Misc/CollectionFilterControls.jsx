@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimeFilterIcon } from './AnimeFilter.jsx';
-import { filterLabel, sortLabel } from '../../../utils/helpers.js';
+import { filterLabel, sortLabel } from '../../../utils/formatters.js';
 import { useDropdownKeyNav } from '../../../hooks/index.js';
 export function CollectionFilterControls({
   filters,

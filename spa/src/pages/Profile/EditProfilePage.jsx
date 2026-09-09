@@ -1,5 +1,6 @@
-import { getToken, emitAuthChange, clearClientDataCaches } from '../../api/client.js';
-import { useAuthSession } from '../../hooks/index.js';
+import { getToken, emitAuthChange, API_BASE_URL } from '../../api/client.js';
+import { useAuthSession } from '../../hooks/useAuthSession.js';
+import { useQueryClient } from '@tanstack/react-query';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '../../utils/toast.js';
@@ -14,6 +15,7 @@ import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
 
 export function EditProfilePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const auth = useAuthSession();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,7 +44,7 @@ export function EditProfilePage() {
     }
 
     let cancelled = false;
-    fetch('/api/user/profile', {
+    fetch(`${API_BASE_URL}/api/user/profile`, {
       headers: {
         Authorization: `Bearer ${getToken()}`
       }
@@ -93,7 +95,7 @@ export function EditProfilePage() {
         formData.append('avatar', avatarFile);
       }
 
-      const response = await fetch('/api/user/update-profile', {
+      const response = await fetch(`${API_BASE_URL}/api/user/update-profile`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${getToken()}`
@@ -107,7 +109,7 @@ export function EditProfilePage() {
 
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
       localStorage.setItem('user', JSON.stringify({ ...currentUser, ...payload }));
-      clearClientDataCaches();
+      queryClient.clear();
       emitAuthChange();
       toast('Profile updated');
       navigate(`/user/${payload.username || auth.username}`);

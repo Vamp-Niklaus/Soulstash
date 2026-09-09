@@ -1,4 +1,4 @@
-import { saveAuthSession } from '../../api/client.js';
+import { saveAuthSession, API_BASE_URL } from '../../api/client.js';
 import { AuthPageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { useAuthSession, useSessionState } from '../../hooks/index.js';
 import React, { useState, useEffect, useRef } from 'react';
@@ -67,7 +67,7 @@ export function RegisterPage() {
     setUsernameState((current) => ({ ...current, checking: true, message: '' }));
     usernameCheckTimerRef.current = window.setTimeout(async () => {
       try {
-        const response = await fetch(`/api/auth/check-username?username=${encodeURIComponent(trimmed)}`);
+        const response = await fetch(`${API_BASE_URL}/api/auth/check-username?username=${encodeURIComponent(trimmed)}`);
         const payload = await response.json().catch(() => ({}));
         setUsernameState({
           checking: false,
@@ -107,7 +107,7 @@ export function RegisterPage() {
     setOtpSending(true);
     setError('');
     try {
-      const response = await fetch('/api/auth/send-otp', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -189,7 +189,7 @@ export function RegisterPage() {
 
     setVerifyLoading(true);
     try {
-      const response = await fetch('/api/auth/verify-otp-and-register', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/verify-otp-and-register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,7 +1,7 @@
 import { imageUrl } from '../../../utils/formatters.js';
 import { useState } from 'react';
 import { FALLBACK_AVATAR } from '../../../utils/constants.js';
-import { splitTrendingIntoColumns } from '../../../utils/helpers.js';
+import { splitTrendingIntoColumns } from '../../../utils/formatters.js';
 import React, { useEffect, useRef } from 'react';
 import { FALLBACK_AUTH_POSTERS } from '../../../utils/constants.js';
 

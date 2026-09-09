@@ -1,0 +1,1452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soulstash - SPA React LLD Explorer</title>
+  <!-- Outfit / Inter fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(17, 24, 39, 0.85);
+      --bg-sidebar: #0f172a;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      
+      --color-hook: #fbbf24;      /* Gold/Yellow */
+      --color-page: #3b82f6;      /* Blue */
+      --color-component: #10b981; /* Emerald Green */
+      --color-entry: #ef4444;     /* Red/Coral */
+      --color-api: #a855f7;       /* Purple */
+      
+      --glow-hook: rgba(251, 191, 36, 0.25);
+      --glow-page: rgba(59, 130, 246, 0.25);
+      --glow-component: rgba(16, 185, 129, 0.25);
+      --glow-entry: rgba(239, 68, 68, 0.25);
+      --glow-api: rgba(168, 85, 247, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Outfit', sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+    }
+
+    #app-container {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+
+    /* Canvas Viewport */
+    #viewport {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      background-image: 
+        radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        radial-gradient(rgba(255, 255, 255, 0.02) 1.5px, transparent 1.5px);
+      background-size: 30px 30px, 150px 150px;
+    }
+    
+    #viewport:active {
+      cursor: grabbing;
+    }
+
+    #canvas {
+      position: absolute;
+      transform-origin: 0 0;
+      width: 3200px;
+      height: 2000px;
+    }
+
+    #connections-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: visible !important;
+    }
+
+    /* Restore button floating in top right */
+    #restore-sidebar-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: var(--text-main);
+      padding: 10px 16px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      z-index: 9;
+      display: none;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    #restore-sidebar-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: #3b82f6;
+    }
+
+    /* Sidebar Inspector panel absolute over viewport */
+    #sidebar {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 480px;
+      height: 100%;
+      background-color: var(--bg-sidebar);
+      border-left: 1px solid var(--border-color);
+      box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    #sidebar.collapsed {
+      transform: translateX(100%);
+    }
+
+    #sidebar-resize-handle {
+      position: absolute;
+      left: -3px;
+      top: 0;
+      width: 6px;
+      height: 100%;
+      cursor: col-resize;
+      background: transparent;
+      z-index: 12;
+    }
+    
+    #sidebar-resize-handle:hover,
+    #sidebar-resize-handle.resizing {
+      background: #3b82f6;
+      box-shadow: 0 0 8px #3b82f6;
+    }
+
+    .sidebar-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border-color);
+      background: linear-gradient(to bottom, rgba(255,255,255,0.02), transparent);
+    }
+
+    .sidebar-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      background: linear-gradient(45deg, #fbbf24, #3b82f6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-header p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .sidebar-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    /* HUD Legend */
+    #hud-legend {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      z-index: 5;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .hud-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+      color: var(--text-muted);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-size: 12.5px;
+    }
+
+    .legend-color {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+    }
+
+    .legend-arrow {
+      width: 30px;
+      height: 6px;
+    }
+
+    /* Zoom Controls HUD */
+    #hud-zoom {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      display: flex;
+      gap: 4px;
+      padding: 6px;
+      z-index: 5;
+    }
+
+    .hud-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+
+    .hud-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* Class Cards Container */
+    .class-card {
+      position: absolute;
+      width: 340px;
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      z-index: 2;
+      transition: box-shadow 0.2s, border-color 0.2s;
+      overflow: hidden;
+    }
+
+    .class-card .card-header {
+      cursor: move;
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .class-card:hover {
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+
+    .class-card.selected {
+      border-color: var(--border-active) !important;
+      box-shadow: 0 0 25px var(--glow-active) !important;
+    }
+
+    .card-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .card-stereotype {
+      font-family: 'Fira Code', monospace;
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.8px;
+    }
+
+    .card-name {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .card-file {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: 'Fira Code', monospace;
+    }
+
+    .card-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .card-section:last-child {
+      border-bottom: none;
+    }
+
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .card-method {
+      font-family: 'Fira Code', monospace;
+      font-size: 11.5px;
+      padding: 5px 8px;
+      margin: 3px 0;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .card-method:hover {
+      background: rgba(255,255,255,0.05);
+      color: #60a5fa;
+    }
+
+    /* Highlighted class functions (Forward = Yellow, Backward = Red) */
+    .card-method.flow-highlight {
+      border: 1px solid #fbbf24 !important;
+      background: rgba(251, 191, 36, 0.15) !important;
+      color: #fbbf24 !important;
+      box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
+    }
+
+    .card-method.flow-highlight-back {
+      border: 1px solid #ef4444 !important;
+      background: rgba(239, 68, 68, 0.15) !important;
+      color: #ef4444 !important;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.2);
+    }
+
+    .card-method.active-hover {
+      background: rgba(59, 130, 246, 0.15) !important;
+      color: #93c5fd !important;
+    }
+
+    /* Node stereotypes styling */
+    .type-hook { border-top: 4px solid var(--color-hook); }
+    .type-hook .card-stereotype { color: var(--color-hook); }
+    .type-hook.selected { --border-active: var(--color-hook); --glow-active: var(--glow-hook); }
+
+    .type-page { border-top: 4px solid var(--color-page); }
+    .type-page .card-stereotype { color: var(--color-page); }
+    .type-page.selected { --border-active: var(--color-page); --glow-active: var(--glow-page); }
+
+    .type-component { border-top: 4px solid var(--color-component); }
+    .type-component .card-stereotype { color: var(--color-component); }
+    .type-component.selected { --border-active: var(--color-component); --glow-active: var(--glow-component); }
+
+    .type-entry { border-top: 4px solid var(--color-entry); }
+    .type-entry .card-stereotype { color: var(--color-entry); }
+    .type-entry.selected { --border-active: var(--color-entry); --glow-active: var(--glow-entry); }
+
+    .type-api { border-top: 4px solid var(--color-api); }
+    .type-api .card-stereotype { color: var(--color-api); }
+    .type-api.selected { --border-active: var(--color-api); --glow-active: var(--glow-api); }
+
+    /* SVG Lines & Markers */
+    path.uml-relation {
+      fill: none;
+      stroke-width: 2px;
+      transition: stroke 0.2s, stroke-width 0.2s;
+    }
+
+    path.uml-relation.active-relation {
+      stroke-width: 3.5px !important;
+      filter: drop-shadow(0 0 5px var(--relation-glow));
+    }
+
+    path.uml-relation.active-relation-back {
+      stroke: #ef4444 !important;
+      stroke-width: 3.5px !important;
+      filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.5));
+    }
+
+    /* Inspector Panel */
+    .inspector-stereotype {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .inspector-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .inspector-meta {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      font-family: 'Fira Code', monospace;
+    }
+
+    .inspector-block {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .inspector-block-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .method-desc {
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .code-signature {
+      background: #060913;
+      padding: 10px;
+      border-radius: 6px;
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      overflow-x: auto;
+      border: 1px solid rgba(255,255,255,0.05);
+      color: #38bdf8;
+      margin-top: 8px;
+    }
+
+    .import-badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      margin: 2px;
+    }
+
+    .dependency-badge {
+      display: inline-block;
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      margin: 2px;
+    }
+
+    /* Trace Timeline */
+    .trace-timeline {
+      margin-top: 10px;
+      border-left: 2px dashed rgba(255, 255, 255, 0.1);
+      padding-left: 16px;
+      position: relative;
+    }
+
+    .trace-node {
+      margin-bottom: 20px;
+      position: relative;
+    }
+
+    .trace-node::before {
+      content: '';
+      position: absolute;
+      left: -22px;
+      top: 4px;
+      width: 10px;
+      height: 10px;
+      background: var(--timeline-dot, #fbbf24);
+      border: 2px solid var(--bg-sidebar);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--timeline-dot, #fbbf24);
+    }
+
+    .trace-class {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #38bdf8;
+      font-family: 'Fira Code', monospace;
+    }
+
+    .trace-method {
+      font-size: 14px;
+      font-weight: 600;
+      font-family: 'Fira Code', monospace;
+      margin: 2px 0;
+    }
+
+    .trace-spec {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      margin-top: 60px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-container">
+    
+    <!-- Legend -->
+    <div id="hud-legend">
+      <div class="hud-title">Elements</div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: var(--color-entry);"></div>
+        <span>Entry Boots</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: var(--color-page);"></div>
+        <span>React Page</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: var(--color-hook);"></div>
+        <span>Custom Hook</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: var(--color-component);"></div>
+        <span>UI Component</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: var(--color-api);"></div>
+        <span>API / Helper</span>
+      </div>
+      
+      <div class="hud-title" style="margin-top: 14px;">UML Connections</div>
+      <div class="legend-item">
+        <svg class="legend-arrow" viewBox="0 0 30 10">
+          <line x1="0" y1="5" x2="30" y2="5" stroke="#3b82f6" stroke-width="2" />
+        </svg>
+        <span>Imports / Hooks</span>
+      </div>
+    </div>
+
+    <!-- Zoom HUD -->
+    <div id="hud-zoom">
+      <button class="hud-btn" id="zoom-in">+</button>
+      <button class="hud-btn" id="zoom-reset">⟲</button>
+      <button class="hud-btn" id="zoom-out">−</button>
+      <button class="hud-btn" id="layout-reset" title="Reset Card Positions" style="font-size: 14px;">🧹</button>
+    </div>
+
+    <!-- Restore button (Visible when sidebar is closed/hidden) -->
+    <button id="restore-sidebar-btn">📊 Open Inspector</button>
+
+    <!-- Canvas -->
+    <div id="viewport">
+      <div id="canvas">
+        <svg id="connections-layer">
+          <defs>
+            <marker id="arrow-association" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9" fill="none" stroke="#3b82f6" stroke-width="1.5" />
+            </marker>
+          </defs>
+        </svg>
+        <div id="cards-container"></div>
+      </div>
+    </div>
+
+    <!-- Sidebar Detail Inspector (Floating on top) -->
+    <div id="sidebar">
+      <!-- Resize Handle -->
+      <div id="sidebar-resize-handle"></div>
+      
+      <div class="sidebar-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <h1>SPA React LLD</h1>
+          <button id="close-sidebar-btn" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 4px; transition: color 0.2s;" onmouseover="this.style.color='#f43f5e'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+        </div>
+        <p>Click any React route or lifecycle hook to trace state declarations, parameters (props), and view rendering blocks</p>
+      </div>
+      
+      <div class="sidebar-content" id="inspector-body">
+        <div class="empty-state">
+          Select any route, hook, or utility function to trace state hooks, component parameters, and UI renders.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const diagramData = {
+      nodes: [
+        {
+          id: "main-entry",
+          name: "React DOM Bootstrap (main.jsx)",
+          stereotype: "entry",
+          file: "spa/src/main.jsx",
+          x: 50,
+          y: 350,
+          desc: "Entry bootstrapper script. Mounts AppShell inside ReactDOM.createRoot and wraps routes under React Router's BrowserRouter.",
+          imports: ["react", "react-dom", "react-router-dom", "AppShell"],
+          methods: [
+            { name: "Root Render", ref: "rootRender", trace: "bootFlow" }
+          ]
+        },
+        {
+          id: "app-shell",
+          name: "AppShell (App.jsx)",
+          stereotype: "entry",
+          file: "spa/src/App.jsx",
+          x: 450,
+          y: 350,
+          desc: "Orchestrates routing grids, TV D-pad listeners, and builds the layouts wrapper.",
+          imports: ["react-router-dom", "useAuthSession", "useTvFocus", "Capacitor"],
+          methods: [
+            { name: "AppShell()", ref: "AppShell", trace: "shellRenderLocal" },
+            { name: "Route Mapping", ref: "routeTree", trace: "shellRoutesLocal" }
+          ]
+        },
+        {
+          id: "use-auth-session",
+          name: "useAuthSession Hook",
+          stereotype: "hook",
+          file: "spa/src/hooks/useAuthSession.js",
+          x: 850,
+          y: 150,
+          desc: "React Custom Hook: Manages token session checks. Reads cookies on boot and attaches listeners to keep authorization synced across multiple tabs.",
+          imports: ["react.useState", "react.useEffect", "getToken", "getCurrentUsername"],
+          methods: [
+            { name: "useAuthSession()", ref: "useAuthSession", trace: "authSessionHookLocal" }
+          ]
+        },
+        {
+          id: "use-live-collections",
+          name: "useLiveCollections Hook",
+          stereotype: "hook",
+          file: "spa/src/hooks/useLiveCollections.js",
+          x: 1250,
+          y: 150,
+          desc: "React Custom Hook: Tracks collections cache syncs. Subscribes to collections updates window events to ensure zero-flicker navigations.",
+          imports: ["react.useState", "react.useEffect", "getCachedUserCollections", "loadUserCollections"],
+          methods: [
+            { name: "useLiveCollections()", ref: "useLiveCollections", trace: "liveCollHookLocal" }
+          ]
+        },
+        {
+          id: "login-page",
+          name: "LoginPage (LoginPage.jsx)",
+          stereotype: "page",
+          file: "spa/src/pages/Auth/LoginPage.jsx",
+          x: 850,
+          y: 550,
+          desc: "Renders the authentication form layout. Manages inputs state and submissions callbacks.",
+          imports: ["react.useState", "react.useEffect", "useAuthSession", "saveAuthSession"],
+          methods: [
+            { name: "LoginPage()", ref: "LoginPage", trace: "loginFlow" },
+            { name: "handleSubmit()", ref: "handleSubmit", trace: "loginSubmitLocal" }
+          ]
+        },
+        {
+          id: "detail-page",
+          name: "DetailPage (DetailPage.jsx)",
+          stereotype: "page",
+          file: "spa/src/pages/Content/DetailPage.jsx",
+          x: 1250,
+          y: 550,
+          desc: "Loads movie metadata details, cast lists, and streaming links. Manages video players overlay visibility, list modifications, and retry loaders.",
+          imports: ["react.useState", "react.useEffect", "useParams", "useAuthSession", "useLiveCollections", "apiFetch"],
+          methods: [
+            { name: "DetailPage()", ref: "DetailPage", trace: "detailPageLocal" },
+            { name: "load()", ref: "load", trace: "detailLoadFlow" }
+          ]
+        },
+        {
+          id: "auth-api",
+          name: "API client (client.js)",
+          stereotype: "api",
+          file: "spa/src/api/client.js",
+          x: 1650,
+          y: 150,
+          desc: "Handles outgoing API calls. Reads and writes token cookies, and appends Bearer credentials to fetch headers.",
+          imports: ["js-cookie"],
+          methods: [
+            { name: "apiFetch()", ref: "apiFetch", trace: "apiFetchLocal" },
+            { name: "saveAuthSession()", ref: "saveAuthSession", trace: "apiSaveLocal" }
+          ]
+        },
+        {
+          id: "helpers-utility",
+          name: "Helpers Utility (helpers.js)",
+          stereotype: "api",
+          file: "spa/src/utils/helpers.js",
+          x: 1650,
+          y: 550,
+          desc: "Handles collections caching, local storage lookups, and broadcast channel updates.",
+          imports: ["localStorage"],
+          methods: [
+            { name: "loadUserCollections()", ref: "loadUserCollections", trace: "helperLoadLocal" },
+            { name: "getCachedUserCollections()", ref: "getCachedUserCollections", trace: "helperGetCacheLocal" }
+          ]
+        }
+      ],
+      connections: [
+        { id: "entry-shell", from: "main-entry", to: "app-shell", type: "association" },
+        { id: "shell-auth-hook", from: "app-shell", to: "use-auth-session", type: "association" },
+        { id: "shell-login", from: "app-shell", to: "login-page", type: "association" },
+        { id: "shell-detail", from: "app-shell", to: "detail-page", type: "association" },
+        { id: "login-auth-hook", from: "login-page", to: "use-auth-session", type: "association" },
+        { id: "login-api", from: "login-page", to: "auth-api", type: "association" },
+        { id: "detail-auth-hook", from: "detail-page", to: "use-auth-session", type: "association" },
+        { id: "detail-live-hook", from: "detail-page", to: "use-live-collections", type: "association" },
+        { id: "detail-api", from: "detail-page", to: "auth-api", type: "association" },
+        { id: "detail-helpers", from: "detail-page", to: "helpers-utility", type: "association" },
+        { id: "live-helpers", from: "use-live-collections", to: "helpers-utility", type: "association" },
+        { id: "live-api", from: "use-live-collections", to: "auth-api", type: "association" }
+      ],
+      traces: {
+        bootFlow: {
+          title: "SPA Bootstrapping Flow",
+          route: "Index Load",
+          path: ["entry-shell"],
+          nodes: [
+            {
+              class: "main.jsx",
+              method: "Root Render",
+              takes: "None",
+              returns: "Virtual DOM Tree",
+              desc: "WHAT: Mounts the React app inside the HTML container.<br>HOW: Selects document.getElementById('root'), binds AppShell, and wraps it in react-router-dom's BrowserRouter.<br>WHY: Initializes routing histories and hooks context layers."
+            },
+            {
+              class: "App.jsx",
+              method: "AppShell()",
+              takes: "None",
+              returns: "Renders layout shell wrapping active Route component",
+              desc: "WHAT: Main layout shell.<br>HOW: Maps routes, boots useTvFocus D-pad navigations, and monitors fullscreen listeners.<br>WHY: Standardizes headers, navigations, and footer shells."
+            }
+          ]
+        },
+        loginFlow: {
+          title: "User Login Flow (React State & Action)",
+          route: "/login",
+          path: ["shell-login", "login-auth-hook", "login-api"],
+          nodes: [
+            {
+              class: "App.jsx",
+              method: "AppShell()",
+              takes: "None",
+              returns: "Renders LoginPage for path='/login'",
+              desc: "WHAT: Resolves page components based on location path changes.<br>HOW: AppShell routes URL path '/login' directly to the LoginPage component.<br>WHY: Binds authentication views."
+            },
+            {
+              class: "LoginPage",
+              method: "LoginPage()",
+              takes: "None (Props: None)",
+              returns: "Renders AuthPageLayout with login form input fields",
+              desc: "WHAT: Binds input fields and logins states.<br>HOW: Tracks user inputs using React state hooks.<br>STATE: pageReady (boolean loading check), username (input string), password (input string), loading (boolean to disable submit buttons), error (string displaying login failures).<br>RENDERS: &lt;AuthPageLayout&gt; wrapping input elements."
+            },
+            {
+              class: "useAuthSession",
+              method: "useAuthSession()",
+              takes: "None",
+              returns: "{ isLoggedIn: boolean, user: Object, ... }",
+              desc: "WHAT: Session Hook. Validates token session states.<br>HOW: Declares session states using useState, parses document cookies on boot, and runs redirect updates if isLoggedIn is true.<br>WHY: Prevents authenticated users from viewing login paths."
+            },
+            {
+              class: "LoginPage",
+              method: "handleSubmit(event)",
+              takes: "Form onSubmit Event object",
+              returns: "Promise completing authentication",
+              desc: "WHAT: Validates and posts forms data.<br>HOW: Prevents default events, sets loading to true, and issues POST /api/auth/login. On success, calls saveAuthSession() and redirects to '/'.<br>WHY: Submits details to the backend API synchronously."
+            },
+            {
+              class: "API client",
+              method: "saveAuthSession(token, user)",
+              takes: "JWT string, User detail profile object",
+              returns: "void",
+              desc: "WHAT: Persists session profiles locally.<br>HOW: Writes JWT tokens directly to document cookies (using js-cookie) and caches profiles in localStorage.<br>WHY: Keeps authentication persistent across browser sessions."
+            }
+          ]
+        },
+        detailLoadFlow: {
+          title: "DetailPage Content and Collections Loading Flow",
+          route: "/movie/:id or /series/:id",
+          path: ["shell-detail", "detail-live-hook", "live-helpers", "live-api"],
+          nodes: [
+            {
+              class: "App.jsx",
+              method: "AppShell()",
+              takes: "None",
+              returns: "Renders DetailPage with type='movie'|'series'",
+              desc: "WHAT: Routes path mapping parameters.<br>HOW: Renders DetailPage passing target media type as a React Prop.<br>WHY: Dynamic layout routing."
+            },
+            {
+              class: "DetailPage",
+              method: "DetailPage()",
+              takes: "Props: { type: 'movie'|'series' }",
+              returns: "Renders Details headers, cast row lists, and Player modals",
+              desc: "WHAT: Details layout component.<br>HOW: Declares state hooks to track API data and modal states.<br>STATE: content (holds TMDB payload), credits (holds cast array), loading (boolean), loadError (string), saveModalOpen (boolean), playerRequest (holds stream links details).<br>WHY: Displays movie posters, metadata details, and registers overlay video players."
+            },
+            {
+              class: "useLiveCollections",
+              method: "useLiveCollections()",
+              takes: "None",
+              returns: "{ collections: Array, loading: boolean }",
+              desc: "WHAT: Custom hook managing collection synchronizations.<br>HOW: Syncs from local caches instantly. If missing, calls loadUserCollections() to fetch from the DB. Listens for window event 'soulstash:collections-updated' to sync mutations instantly.<br>WHY: Eliminates catalog flash lags when users navigate lists."
+            },
+            {
+              class: "Helpers Utility",
+              method: "loadUserCollections()",
+              takes: "None",
+              returns: "Promise resolving user playlists collections array",
+              desc: "WHAT: Queries user collections details.<br>HOW: Pulls token from client, invokes apiFetch('/api/users/profile'), parses collections list subdocuments, and saves them to local cache.<br>WHY: Fetches database states and populates local caches."
+            },
+            {
+              class: "API client",
+              method: "apiFetch(path, options)",
+              takes: "endpoint path, request options",
+              returns: "Promise resolving API payload response",
+              desc: "WHAT: Custom fetch HTTP request client.<br>HOW: Attaches Bearer JWT headers automatically by reading document cookies via getToken().<br>WHY: Enforces JWT authorization header injection."
+            }
+          ]
+        }
+      }
+    };
+
+    const serviceKey = 'spa_react';
+
+    function savePositions() {
+      const positions = {};
+      diagramData.nodes.forEach(node => {
+        const el = document.getElementById(`node-${node.id}`);
+        if (el) {
+          positions[node.id] = {
+            x: parseInt(el.style.left),
+            y: parseInt(el.style.top)
+          };
+        }
+      });
+      localStorage.setItem('soulstash_lld_positions_' + serviceKey, JSON.stringify(positions));
+    }
+
+    function loadPositions() {
+      const saved = localStorage.getItem('soulstash_lld_positions_' + serviceKey);
+      if (saved) {
+        try {
+          const positions = JSON.parse(saved);
+          diagramData.nodes.forEach(node => {
+            if (positions[node.id]) {
+              node.x = positions[node.id].x;
+              node.y = positions[node.id].y;
+            }
+          });
+        } catch (e) {
+          console.error('Failed to parse saved positions', e);
+        }
+      }
+    }
+
+    let zoomLevel = 1.0;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    
+    // Drag card variables
+    let activeDragCard = null;
+    let cardDragOffsetX = 0;
+    let cardDragOffsetY = 0;
+
+    const viewport = document.getElementById("viewport");
+    const canvas = document.getElementById("canvas");
+    const cardsContainer = document.getElementById("cards-container");
+    const connectionsLayer = document.getElementById("connections-layer");
+    const inspectorBody = document.getElementById("inspector-body");
+
+    function init() {
+      loadPositions();
+      renderCards();
+      setupEventListeners();
+      
+      setTimeout(() => {
+        drawAllConnections();
+      }, 150);
+    }
+
+    function renderCards() {
+      cardsContainer.innerHTML = "";
+      diagramData.nodes.forEach(node => {
+        const card = document.createElement("div");
+        card.id = `node-${node.id}`;
+        card.className = `class-card type-${node.stereotype}`;
+        card.style.left = `${node.x}px`;
+        card.style.top = `${node.y}px`;
+        
+        let methodsHtml = "";
+        node.methods.forEach((m, idx) => {
+          methodsHtml += `
+            <div class="card-method" data-node="${node.id}" data-idx="${idx}" id="method-${node.id}-${m.ref}">
+              <span>${m.name}</span>
+              <span style="font-size: 10px; color: var(--text-muted);">▶</span>
+            </div>
+          `;
+        });
+
+        card.innerHTML = `
+          <div class="card-header">
+            <span class="card-stereotype">&lt;&lt;${node.stereotype}&gt;&gt;</span>
+            <span class="card-name">${node.name}</span>
+            <span class="card-file">${node.file.split('/').pop()}</span>
+          </div>
+          <div class="card-section">
+            <div class="section-title">Hooks / Functions</div>
+            ${methodsHtml}
+          </div>
+        `;
+        cardsContainer.appendChild(card);
+      });
+    }
+
+    // Dynamic Connections calculations (Updates paths in place instead of recreating them)
+    function drawAllConnections() {
+      diagramData.connections.forEach(conn => {
+        const fromEl = document.getElementById(`node-${conn.from}`);
+        const toEl = document.getElementById(`node-${conn.to}`);
+        if (!fromEl || !toEl) return;
+
+        const fromRect = {
+          x: parseInt(fromEl.style.left),
+          y: parseInt(fromEl.style.top),
+          w: fromEl.offsetWidth,
+          h: fromEl.offsetHeight
+        };
+        const toRect = {
+          x: parseInt(toEl.style.left),
+          y: parseInt(toEl.style.top),
+          w: toEl.offsetWidth,
+          h: toEl.offsetHeight
+        };
+
+        let startPt = { x: 0, y: 0 };
+        let endPt = { x: 0, y: 0 };
+        
+        if (fromRect.x + fromRect.w < toRect.x) {
+          startPt = { x: fromRect.x + fromRect.w, y: fromRect.y + fromRect.h / 2 };
+          endPt = { x: toRect.x, y: toRect.y + toRect.h / 2 };
+        } else if (toRect.x + toRect.w < fromRect.x) {
+          startPt = { x: fromRect.x, y: fromRect.y + fromRect.h / 2 };
+          endPt = { x: toRect.x + toRect.w, y: toRect.y + toRect.h / 2 };
+        } else if (fromRect.y + fromRect.h < toRect.y) {
+          startPt = { x: fromRect.x + fromRect.w / 2, y: fromRect.y + fromRect.h };
+          endPt = { x: toRect.x + toRect.w / 2, y: toRect.y };
+        } else {
+          startPt = { x: fromRect.x + fromRect.w / 2, y: fromRect.y };
+          endPt = { x: toRect.x + toRect.w / 2, y: toRect.y + toRect.h };
+        }
+
+        const cp1x = startPt.x + (endPt.x - startPt.x) / 2;
+        const cp1y = startPt.y;
+        const cp2x = startPt.x + (endPt.x - startPt.x) / 2;
+        const cp2y = endPt.y;
+        const d = `M ${startPt.x} ${startPt.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endPt.x} ${endPt.y}`;
+        
+        let path = document.getElementById(`relation-${conn.id}`);
+        if (!path) {
+          path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("id", `relation-${conn.id}`);
+          path.setAttribute("class", "uml-relation");
+          if (conn.type === "realization") {
+            path.setAttribute("stroke", "var(--color-interface)");
+            path.setAttribute("stroke-dasharray", "5,5");
+            path.setAttribute("marker-end", "url(#arrow-realization)");
+            path.style.setProperty("--relation-glow", "rgba(168, 85, 247, 0.5)");
+          } else if (conn.type === "dependency") {
+            path.setAttribute("stroke", "var(--color-entity)");
+            path.setAttribute("stroke-dasharray", "4,4");
+            path.setAttribute("marker-end", "url(#arrow-association)");
+            path.style.setProperty("--relation-glow", "rgba(16, 185, 129, 0.5)");
+          } else {
+            path.setAttribute("stroke", "#3b82f6");
+            path.setAttribute("marker-end", "url(#arrow-association)");
+            path.style.setProperty("--relation-glow", "rgba(59, 130, 246, 0.5)");
+          }
+          connectionsLayer.appendChild(path);
+        }
+        
+        path.setAttribute("d", d);
+      });
+    }
+
+    function updateTransform() {
+      canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
+    }
+
+    // Clear animations helper
+    function clearAnimations() {
+      const activeAnims = connectionsLayer.querySelectorAll(".trace-circle");
+      activeAnims.forEach(c => c.remove());
+      
+      document.querySelectorAll(".card-method").forEach(m => {
+        m.classList.remove("flow-highlight");
+        m.classList.remove("flow-highlight-back");
+      });
+      document.querySelectorAll("path.uml-relation").forEach(p => {
+        p.classList.remove("active-relation");
+        p.classList.remove("active-relation-back");
+      });
+    }
+
+    // Resolves interface classes and mock components IDs robustly
+    function findClassNode(className) {
+      const clean = className.toLowerCase().replace(" (interface)", "").replace("-", "").replace(" ", "").replace(".", "");
+      return diagramData.nodes.find(n => {
+        const cleanNodeId = n.id.toLowerCase().replace("-", "").replace(" ", "");
+        const cleanNodeName = n.name.toLowerCase().replace(" (interface)", "").replace("-", "").replace(" ", "").replace(".", "");
+        return cleanNodeId.includes(clean) || clean.includes(cleanNodeId) ||
+               cleanNodeName.includes(clean) || clean.includes(cleanNodeName);
+      });
+    }
+
+    // Animates split flows: upstream in red, downstream in yellow
+    function animateAllSplits(callingTracesAndIndices) {
+      clearAnimations();
+      
+      callingTracesAndIndices.forEach(({ trace, clickedNodeIdx }) => {
+        trace.path.forEach((connId, i) => {
+          const isUpstream = (i < clickedNodeIdx);
+          const color = isUpstream ? "#ef4444" : "#fbbf24";
+          const relationClass = isUpstream ? "active-relation-back" : "active-relation";
+
+          const pathEl = document.getElementById(`relation-${connId}`);
+          if (pathEl) {
+            if (!pathEl.classList.contains(relationClass)) {
+              pathEl.classList.add(relationClass);
+            }
+            
+            const exists = Array.from(connectionsLayer.querySelectorAll(".trace-circle")).some(c => {
+              const mpath = c.querySelector("mpath");
+              return mpath && mpath.getAttribute("href") === `#relation-${connId}` && c.getAttribute("fill") === color;
+            });
+            
+            if (!exists) {
+              const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+              circle.setAttribute("r", "5");
+              circle.setAttribute("fill", color);
+              circle.setAttribute("filter", `drop-shadow(0 0 4px ${color})`);
+              circle.setAttribute("class", "trace-circle");
+              
+              const animateMotion = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+              animateMotion.setAttribute("dur", "1.5s");
+              animateMotion.setAttribute("repeatCount", "indefinite");
+              
+              if (isUpstream) {
+                animateMotion.setAttribute("keyPoints", "1;0");
+                animateMotion.setAttribute("keyTimes", "0;1");
+                animateMotion.setAttribute("calcMode", "linear");
+              }
+              
+              const mpath = document.createElementNS("http://www.w3.org/2000/svg", "mpath");
+              mpath.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", `#relation-${connId}`);
+              mpath.setAttribute("href", `#relation-${connId}`);
+              
+              animateMotion.appendChild(mpath);
+              circle.appendChild(animateMotion);
+              connectionsLayer.appendChild(circle);
+            }
+          }
+        });
+
+        // Highlight targeted class methods inside nodes
+        trace.nodes.forEach((node, nodeIdx) => {
+          const classNode = findClassNode(node.class);
+          if (classNode) {
+            const cleanMethodName = node.method.split("(")[0].trim().replace("POST ", "").replace("GET ", "");
+            const methodEl = document.querySelector(`.card-method[data-node="${classNode.id}"][id*="-${cleanMethodName}"]`);
+            if (methodEl) {
+              const isNodeBack = (nodeIdx < clickedNodeIdx);
+              methodEl.classList.add(isNodeBack ? "flow-highlight-back" : "flow-highlight");
+            }
+          }
+        });
+      });
+    }
+
+    // Searches all trace configurations to see where a specific class method is invoked
+    function findBackwardTraces(nodeId, methodRef) {
+      const matchingTraces = [];
+      const node = diagramData.nodes.find(n => n.id === nodeId);
+      const method = node.methods.find(m => m.ref === methodRef);
+      
+      const cleanNodeName = node.name.replace(" Hook", "").replace(" Utility", "").replace(" Scraper", "").replace(" API", "").replace(" client", "").split(" (")[0].trim();
+      const cleanMethodName = method.name.split("(")[0].trim();
+
+      for (const [key, trace] of Object.entries(diagramData.traces)) {
+        const hasNode = trace.nodes.some(tn => {
+          const tnClass = tn.class.replace(" Hook", "").replace(" Utility", "").replace(" Scraper", "").replace(" API", "").replace(" client", "").split(" (")[0].trim();
+          const tnMethod = tn.method.split("(")[0].trim().replace("POST ", "").replace("GET ", "");
+          return (tnClass.toLowerCase().includes(cleanNodeName.toLowerCase()) || cleanNodeName.toLowerCase().includes(tnClass.toLowerCase())) &&
+                 (tnMethod.toLowerCase().includes(cleanMethodName.toLowerCase()) || cleanMethodName.toLowerCase().includes(tnMethod.toLowerCase()));
+        });
+        if (hasNode) {
+          matchingTraces.push({ key, ...trace });
+        }
+      }
+      return matchingTraces;
+    }
+
+    // Inspect detailed flow and draw path animations
+    function inspectMethod(nodeId, methodIndex) {
+      const node = diagramData.nodes.find(n => n.id === nodeId);
+      const method = node.methods[methodIndex];
+
+      document.querySelectorAll(".class-card").forEach(c => c.classList.remove("selected"));
+      document.getElementById(`node-${nodeId}`).classList.add("selected");
+      
+      document.querySelectorAll(".card-method").forEach(m => m.classList.remove("active-hover"));
+      const element = document.querySelector(`.card-method[data-node="${nodeId}"][data-idx="${methodIndex}"]`);
+      if (element) element.classList.add("active-hover");
+
+      let timelineHtml = "";
+      
+      // Determine if entrypoint (forward) or internal method (backward)
+      if (node.id === "main-entry" || node.id === "app-shell") {
+        // Forward trace logic (Starts at entry - all downstream are yellow)
+        const trace = diagramData.traces[method.trace];
+        if (trace) {
+          animateAllSplits([{ trace, clickedNodeIdx: 0 }]);
+          
+          trace.nodes.forEach((tNode) => {
+            timelineHtml += `
+              <div class="trace-node" style="--timeline-dot: #fbbf24;">
+                <div class="trace-class" style="color: #fbbf24;">${tNode.class}</div>
+                <div class="trace-method">${tNode.method}</div>
+                <div class="trace-spec">
+                  <div><strong>Takes:</strong> <code style="font-family: monospace;">${tNode.takes}</code></div>
+                  <div><strong>Returns:</strong> <code style="font-family: monospace;">${tNode.returns}</code></div>
+                  <div style="margin-top: 6px; line-height: 1.5;">${tNode.desc}</div>
+                </div>
+              </div>
+            `;
+          });
+        }
+      } else {
+        // Bidirectional trace logic (Clicked a method in the middle of stack)
+        const callingTraces = findBackwardTraces(node.id, method.ref);
+        if (callingTraces.length > 0) {
+          const tracesAndIndices = [];
+          
+          callingTraces.forEach(trace => {
+            // Find the index of the clicked node in this trace
+            const cleanNodeName = node.name.replace(" Hook", "").replace(" Utility", "").replace(" Scraper", "").replace(" API", "").replace(" client", "").split(" (")[0].trim();
+            const cleanMethodName = method.name.split("(")[0].trim();
+            const clickedNodeIdx = trace.nodes.findIndex(tn => {
+              const tnClass = tn.class.replace(" Hook", "").replace(" Utility", "").replace(" Scraper", "").replace(" API", "").replace(" client", "").split(" (")[0].trim();
+              const tnMethod = tn.method.split("(")[0].trim().replace("POST ", "").replace("GET ", "");
+              return (tnClass.toLowerCase().includes(cleanNodeName.toLowerCase()) || cleanNodeName.toLowerCase().includes(tnClass.toLowerCase())) &&
+                     (tnMethod.toLowerCase().includes(cleanMethodName.toLowerCase()) || cleanMethodName.toLowerCase().includes(tnMethod.toLowerCase()));
+            });
+            
+            if (clickedNodeIdx !== -1) {
+              tracesAndIndices.push({ trace, clickedNodeIdx });
+            }
+          });
+
+          // Animate the split connection lines and class nodes
+          animateAllSplits(tracesAndIndices);
+
+          // Render split timeline for each matching trace
+          tracesAndIndices.forEach(({ trace, clickedNodeIdx }) => {
+            timelineHtml += `
+              <div style="border-top: 1px dashed rgba(255,255,255,0.05); margin-top: 12px; padding-top: 12px;">
+                <div style="font-size: 12px; font-weight: 700; color: #60a5fa; margin-bottom: 8px;">Bidirectional Flow via ${trace.route}:</div>
+              </div>
+            `;
+            
+            trace.nodes.forEach((tNode, idx) => {
+              let dotColor = "#fbbf24";
+              let headerColor = "#fbbf24";
+              let label = "Downstream";
+              
+              if (idx < clickedNodeIdx) {
+                dotColor = "#ef4444";
+                headerColor = "#ef4444";
+                label = "Upstream Caller";
+              } else if (idx === clickedNodeIdx) {
+                dotColor = "#3b82f6";
+                headerColor = "#60a5fa";
+                label = "Active Selected Hook/Function";
+              } else {
+                dotColor = "#fbbf24";
+                headerColor = "#fbbf24";
+                label = "Downstream Callee";
+              }
+
+              timelineHtml += `
+                <div class="trace-node" style="--timeline-dot: ${dotColor};">
+                  <div style="font-size: 9px; text-transform: uppercase; font-weight: bold; color: ${headerColor}; letter-spacing: 0.5px;">${label}</div>
+                  <div class="trace-class" style="color: ${headerColor};">${tNode.class}</div>
+                  <div class="trace-method">${tNode.method}</div>
+                  <div class="trace-spec">
+                    <div><strong>Takes:</strong> <code style="font-family: monospace;">${tNode.takes}</code></div>
+                    <div><strong>Returns:</strong> <code style="font-family: monospace;">${tNode.returns}</code></div>
+                    <div style="margin-top: 6px; line-height: 1.5;">${tNode.desc}</div>
+                  </div>
+                </div>
+              `;
+            });
+          });
+        } else {
+          // Fallback to local method trace if any
+          clearAnimations();
+          const localTrace = diagramData.traces[method.trace];
+          if (localTrace) {
+            localTrace.nodes.forEach(tNode => {
+              timelineHtml += `
+                <div class="trace-node" style="--timeline-dot: #fbbf24;">
+                  <div class="trace-class" style="color: #fbbf24;">${tNode.class}</div>
+                  <div class="trace-method">${tNode.method}</div>
+                  <div class="trace-spec">
+                    <div><strong>Takes:</strong> <code style="font-family: monospace;">${tNode.takes}</code></div>
+                    <div><strong>Returns:</strong> <code style="font-family: monospace;">${tNode.returns}</code></div>
+                    <div style="margin-top: 6px; line-height: 1.5;">${tNode.desc}</div>
+                  </div>
+                </div>
+              `;
+            });
+          }
+        }
+      }
+
+      if (!timelineHtml) {
+        timelineHtml = `
+          <div style="font-size: 13px; color: var(--text-muted); line-height: 1.5;">
+            Direct execution handler. No external trace routes required.
+          </div>
+        `;
+      }
+      
+      // Populate sidebar panel content
+      let importsHtml = "";
+      if (node.imports && node.imports.length > 0) {
+        node.imports.forEach(imp => {
+          importsHtml += `<span class="import-badge">${imp}</span>`;
+        });
+      }
+
+      let html = `
+        <div class="inspector-stereotype" style="color: var(--color-${node.stereotype})">&lt;&lt;${node.stereotype}&gt;&gt;</div>
+        <div class="inspector-title">${node.name}</div>
+        <div class="inspector-meta">${node.file}</div>
+        
+        <div class="inspector-block">
+          <div class="inspector-block-title">Component / Hook Role</div>
+          <div style="font-size: 13px; line-height: 1.5; color: var(--text-muted);">${node.desc}</div>
+        </div>
+
+        <div class="inspector-block">
+          <div class="inspector-block-title">Imports</div>
+          <div style="margin-top: 4px;">${importsHtml || 'None'}</div>
+        </div>
+
+        <div class="inspector-block" style="border-left: 4px solid ${node.id === 'main-entry' || node.id === 'app-shell' ? '#fbbf24' : '#3b82f6'};">
+          <div class="inspector-block-title" style="color: ${node.id === 'main-entry' || node.id === 'app-shell' ? '#fbbf24' : '#3b82f6'};">
+            ${node.id === 'main-entry' || node.id === 'app-shell' ? 'Downstream Execution Flow (Forward)' : 'Bidirectional Call Trace (Upstream Red & Downstream Yellow)'}
+          </div>
+          <div class="trace-timeline">
+            ${timelineHtml}
+          </div>
+        </div>
+      `;
+
+      inspectorBody.innerHTML = html;
+    }
+
+    function setupEventListeners() {
+      // Panning canvas logic
+      viewport.addEventListener("mousedown", (e) => {
+        if (e.target.closest(".class-card") || e.target.closest("#hud-legend") || e.target.closest("#hud-zoom") || e.target.closest("#restore-sidebar-btn")) return;
+        isDragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+      });
+
+      // Card Drag & Drop setup
+      cardsContainer.addEventListener("mousedown", (e) => {
+        const cardHeader = e.target.closest(".card-header");
+        if (!cardHeader) return;
+        
+        activeDragCard = cardHeader.closest(".class-card");
+        isDragging = false; // Disable canvas panning
+        
+        const rect = activeDragCard.getBoundingClientRect();
+        cardDragOffsetX = (e.clientX - rect.left) / zoomLevel;
+        cardDragOffsetY = (e.clientY - rect.top) / zoomLevel;
+        
+        e.stopPropagation();
+      });
+
+      // Sidebar Resize & Toggle Elements
+      const sidebar = document.getElementById("sidebar");
+      const resizeHandle = document.getElementById("sidebar-resize-handle");
+      const restoreBtn = document.getElementById("restore-sidebar-btn");
+      const closeBtn = document.getElementById("close-sidebar-btn");
+      
+      let isResizing = false;
+      let currentWidth = 480;
+
+      resizeHandle.addEventListener("mousedown", (e) => {
+        isResizing = true;
+        resizeHandle.classList.add("resizing");
+        document.body.style.cursor = "col-resize";
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
+      function collapseSidebar() {
+        sidebar.classList.add("collapsed");
+        restoreBtn.style.display = "block";
+      }
+
+      function expandSidebar() {
+        sidebar.classList.remove("collapsed");
+        restoreBtn.style.display = "none";
+      }
+
+      closeBtn.addEventListener("click", collapseSidebar);
+      restoreBtn.addEventListener("click", expandSidebar);
+
+      window.addEventListener("mousemove", (e) => {
+        if (activeDragCard) {
+          const canvasRect = canvas.getBoundingClientRect();
+          const newLeft = (e.clientX - canvasRect.left) / zoomLevel - cardDragOffsetX;
+          const newTop = (e.clientY - canvasRect.top) / zoomLevel - cardDragOffsetY;
+          
+          activeDragCard.style.left = `${newLeft}px`;
+          activeDragCard.style.top = `${newTop}px`;
+          
+          // Re-draw connection paths in real-time
+          drawAllConnections();
+        } else if (isDragging) {
+          panX = e.clientX - startX;
+          panY = e.clientY - startY;
+          updateTransform();
+        } else if (isResizing) {
+          const newWidth = window.innerWidth - e.clientX;
+          if (newWidth > 300 && newWidth < 900) {
+            currentWidth = newWidth;
+            sidebar.style.width = `${newWidth}px`;
+          } else if (newWidth <= 300) {
+            collapseSidebar();
+          }
+        }
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (activeDragCard) {
+          activeDragCard = null;
+          savePositions();
+        }
+        isDragging = false;
+        if (isResizing) {
+          isResizing = false;
+          resizeHandle.classList.remove("resizing");
+          document.body.style.cursor = "";
+        }
+      });
+
+      viewport.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const zoomFactor = 0.05;
+        if (e.deltaY < 0) {
+          zoomLevel = Math.min(2.0, zoomLevel + zoomFactor);
+        } else {
+          zoomLevel = Math.max(0.4, zoomLevel - zoomFactor);
+        }
+        updateTransform();
+      });
+
+      cardsContainer.addEventListener("click", (e) => {
+        const methodEl = e.target.closest(".card-method");
+        if (!methodEl) return;
+        const nodeId = methodEl.getAttribute("data-node");
+        const idx = parseInt(methodEl.getAttribute("data-idx"));
+        inspectMethod(nodeId, idx);
+      });
+
+      document.getElementById("zoom-in").addEventListener("click", () => {
+        zoomLevel = Math.min(2.0, zoomLevel + 0.1);
+        updateTransform();
+      });
+      document.getElementById("zoom-out").addEventListener("click", () => {
+        zoomLevel = Math.max(0.4, zoomLevel - 0.1);
+        updateTransform();
+      });
+      document.getElementById("zoom-reset").addEventListener("click", () => {
+        zoomLevel = 1.0;
+        panX = 0;
+        panY = 0;
+        updateTransform();
+        // Redraw to restore original alignment
+        drawAllConnections();
+      });
+
+      document.getElementById("layout-reset").addEventListener("click", () => {
+        localStorage.removeItem('soulstash_lld_positions_' + serviceKey);
+        window.location.reload();
+      });
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>

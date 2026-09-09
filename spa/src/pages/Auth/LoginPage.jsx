@@ -31,7 +31,6 @@ export function LoginPage() {
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
-
     if (!username.trim() || !password) {
       setError('Please enter username and password');
       return;
@@ -39,7 +38,8 @@ export function LoginPage() {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/login', {
+      const { API_BASE_URL } = await import('../../api/client.js');
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password })

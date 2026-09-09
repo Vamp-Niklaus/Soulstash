@@ -1,35 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../../utils/toast.js';
 import { FALLBACK_AVATAR, PUBLISH_MIN_COLLECTION_TITLES } from '../../../utils/constants.js';
-import {
-  collectionItemCount, filteredCollectionMovies, refreshCollectionsView,
-  broadcastCollections, getCachedUserCollections, normalizeCollections,
-  lastKnownCollectionVersion
-} from '../../../utils/helpers.js';
-import { contentIdFromItem, mediaTypeFromItem, hasStoredRating, hasActiveCollectionContentFilters, normalizeMediaType } from '../../../utils/formatters.js';
-import { useGridKeyNav } from '../../../hooks/index.js';
+import { broadcastCollections, collectionItemCount, normalizeCollections } from '../../../utils/collectionsCache.js';
+import { filteredCollectionMovies } from '../../../utils/formatters.js';
+import { hasActiveCollectionContentFilters } from '../../../utils/formatters.js';
 import { apiFetch } from '../../../api/client.js';
 import { CollectionVisibilityBadge } from './CollectionVisibilityBadge.jsx';
 import { CollectionFilterControls } from './CollectionFilterControls.jsx';
 import { ContentCard } from '../Cards/ContentCard.jsx';
 import { ConfirmModal } from '../Modals/ConfirmModal.jsx';
-
-// Re-export normalizeCollection locally since it's used internally
-function normalizeCollectionItem(collection) {
-  const movies = Array.isArray(collection?.movies) ? collection.movies : [];
-  const isPublic = collection?.isPublic === true || collection?.isPublished === true;
-  return {
-    ...collection,
-    _id: collection?._id || collection?.name,
-    name: collection?.name || '',
-    movies,
-    movieCount: movies.length,
-    isPublic,
-    isPublished: collection?.isPublished === true
-  };
-}
 
 export function CollectionDetailPane({
   username,
@@ -46,16 +28,15 @@ export function CollectionDetailPane({
   showPublishControls = false
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const movies = useMemo(() => filteredCollectionMovies(collection, filters, watchedIds), [collection, filters, watchedIds]);
   const showFilteredResultsCount = hasActiveCollectionContentFilters(filters);
-  const [publishLoading, setPublishLoading] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [isDesktopFilters, setIsDesktopFilters] = useState(() => window.innerWidth >= 768);
   const [mobileFilterMenuStyle, setMobileFilterMenuStyle] = useState({ top: 0, left: 0 });
   const mobileFilterMenuRef = useRef(null);
   const mobileFilterTriggerRef = useRef(null);
-  const attemptedRatingBackfillRef = useRef('');
   const isDefaultCollection = ['Watched', 'Watchlist'].includes(collection?.name);
   const canPublish = isOwner && !isDefaultCollection && (collectionItemCount(collection) >= PUBLISH_MIN_COLLECTION_TITLES);
   const isPublished = collection?.isPublished === true;
@@ -63,8 +44,6 @@ export function CollectionDetailPane({
   const isLongCollectionName = (collection?.name || '').length > 20;
 
   const detailGridRef = useRef(null);
-  useGridKeyNav(detailGridRef, 'button[data-card]');
-
   function buildMobileFilterMenuPosition(trigger) {
     const rect = trigger.getBoundingClientRect();
     const viewportPadding = 16;
@@ -97,47 +76,50 @@ export function CollectionDetailPane({
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [mobileFiltersOpen]);
 
-
-  async function applyPublishChange(nextPublished) {
-    try {
-      setPublishLoading(true);
-      const currentCollections = normalizeCollections(getCachedUserCollections());
-      if (currentCollections.length) {
-        const optimistic = currentCollections.map((c) =>
-          String(c._id || c.name) === String(collection._id || collection.name)
-            ? { ...c, isPublished: nextPublished, isPublic: nextPublished ? true : false }
-            : c
-        );
-        broadcastCollections(optimistic);
+  const publishMutation = useMutation({
+    mutationFn: (nextPublished) => apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/publish`, {
+      method: 'POST',
+      body: JSON.stringify({ publish: nextPublished })
+    }),
+    onMutate: async (nextPublished) => {
+      // Optimistic update
+      await queryClient.cancelQueries({ queryKey: ['collections'] });
+      const previousCollections = queryClient.getQueryData(['collections']);
+      
+      if (previousCollections) {
+        queryClient.setQueryData(['collections'], (old) => {
+          if (!old) return old;
+          return normalizeCollections(old).map(c => 
+            String(c._id || c.name) === String(collection._id || collection.name)
+              ? { ...c, isPublished: nextPublished, isPublic: nextPublished ? true : false }
+              : c
+          );
+        });
       }
-      const response = await apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/publish`, {
-        method: 'POST',
-        body: JSON.stringify({ publish: nextPublished })
-      });
-      if (response?.snapshot?.collections) {
-        broadcastCollections(normalizeCollections(response.snapshot.collections), response?.snapshot?.collectionVersion);
-      } else {
-        if (window.CollectionStore?.invalidate) window.CollectionStore.invalidate();
-        if (window.CollectionStore?.getCollections) {
-          const latest = await window.CollectionStore.getCollections();
-          broadcastCollections(normalizeCollections(latest), lastKnownCollectionVersion);
-        } else {
-          const latest = await refreshCollectionsView();
-          broadcastCollections(latest, lastKnownCollectionVersion);
-        }
+      return { previousCollections };
+    },
+    onError: (err, nextPublished, context) => {
+      toast(err.message, 'error');
+      if (context?.previousCollections) {
+        queryClient.setQueryData(['collections'], context.previousCollections);
       }
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+    },
+    onSuccess: (response, nextPublished) => {
+      // This page is rendered from useLiveCollections, so update its shared
+      // cache from the authoritative response instead of only invalidating an
+      // unrelated React Query entry.
+      if (Array.isArray(response?.collections)) {
+        broadcastCollections(response.collections, response.collectionVersion);
+      }
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
       if (onPublishChange) onPublishChange();
       toast(nextPublished ? 'Collection published' : 'Collection unpublished');
-    } catch (error) {
-      await refreshCollectionsView();
-      toast(error.message, 'error');
-    } finally {
-      setPublishLoading(false);
     }
-  }
+  });
 
   async function togglePublish() {
-    if (!isOwner || publishLoading || !collection?._id || isDefaultCollection) return;
+    if (!isOwner || publishMutation.isPending || !collection?._id || isDefaultCollection) return;
     if (!canPublish) {
       toast(`Add at least ${PUBLISH_MIN_COLLECTION_TITLES} titles to publish this collection`, 'info');
       return;
@@ -147,7 +129,7 @@ export function CollectionDetailPane({
       setPublishConfirmOpen(true);
       return;
     }
-    await applyPublishChange(nextPublished);
+    publishMutation.mutate(nextPublished);
   }
 
   if (!collection?.name) {
@@ -412,7 +394,7 @@ export function CollectionDetailPane({
         confirmLabel="Make Public & Publish"
         onConfirm={async () => {
           setPublishConfirmOpen(false);
-          await applyPublishChange(true);
+          publishMutation.mutate(true);
         }}
         onClose={() => setPublishConfirmOpen(false)}
       />

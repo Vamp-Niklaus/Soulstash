@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import React from 'react';
 import { AuthPosterColumns } from './AuthPosterColumns.jsx';
+import { SmartFooter } from '../../layout/SmartFooter.jsx';
 
 export function AuthPageLayout({ title, subtitle, children, altLabel, altAction, altHref, posterColumn = true }) {
   const navigate = useNavigate();
@@ -25,9 +26,7 @@ export function AuthPageLayout({ title, subtitle, children, altLabel, altAction,
                 {altAction}
               </button>
             </p>
-            <div className="mt-10 text-center">
-              <p className="text-[15px] font-medium text-white/80">&copy; 2026 Soulstash. All rights reserved.</p>
-            </div>
+            <SmartFooter variant="auth" />
           </div>
         </div>
       </div>

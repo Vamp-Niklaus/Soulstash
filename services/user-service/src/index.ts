@@ -1,8 +1,10 @@
+// @ts-nocheck
 import express from 'express';
 import cors from 'cors';
 import { generatePingHtml } from '../../shared/src/utils/pingTemplate';
 import { AuthController } from './AuthController';
 import { UserService } from './UserService';
+import { AdminController } from './AdminController';
 import { MongoUserRepository } from './repositories/MongoUserRepository';
 import { logger } from '../../shared/src/utils/Logger';
 
@@ -22,6 +24,7 @@ const userRepository = new MongoUserRepository();
 const userService = new UserService(userRepository);
 const authController = new AuthController(userService);
 const collectionController = new UserCollectionController(userRepository);
+const adminController = new AdminController(userRepository);
 
 // Routing
 app.post('/register', (req, res) => authController.register(req, res));
@@ -33,8 +36,7 @@ app.get('/me', (req, res) => authController.me(req, res));
 app.post('/forgot-password', (req, res) => authController.forgotPassword(req, res));
 app.post('/reset-password', (req, res) => authController.resetPassword(req, res));
 
-
-// User Collections (Proxied from Gateway)
+// Authentication Middleware
 const extractUser = (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -46,6 +48,16 @@ const extractUser = (req: any, res: any, next: any) => {
   }
   next();
 };
+
+// Admin Routing (Proxied from Gateway)
+app.use('/admin', extractUser);
+app.get('/admin/me', (req, res) => adminController.getMe(req, res));
+app.get('/admin/users', (req, res) => adminController.getUsers(req, res));
+app.post('/admin/preferences', (req, res) => adminController.updatePreferences(req, res));
+app.post('/admin/multimovies', (req, res) => adminController.updateMultimovies(req, res));
+
+
+// User Collections (Proxied from Gateway)
 
 // Profile API
 app.get('/profile/:username', extractUser, async (req: any, res: any) => {

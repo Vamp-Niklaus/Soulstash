@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import { cachedApiFetch, apiFetch } from '../../api/client.js';
-import { broadcastCollections, normalizeCollections, normalizeCollection, filteredCollectionMovies, optimisticUpdateCollectionItems, refreshCollectionsView, lastKnownCollectionVersion, trashItemFromCollectionCache, confirmTrashItem, restoreTrashItem, updateCollectionsCache, getCachedUserCollections } from '../../utils/helpers.js';
+import { useNavigate, useLocation, useParams, useOutletContext } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '../../api/client.js';
+import { normalizeCollection } from '../../utils/collectionsCache.js';
+import { filteredCollectionMovies } from '../../utils/formatters.js';
 import { useLiveCollections, useAuthSession, useSessionState } from '../../hooks/index.js';
 import { contentIdFromItem } from '../../utils/formatters.js';
 import { toast } from '../../utils/toast.js';
@@ -9,17 +11,37 @@ import { CollectionDetailPane } from '../../components/ui/Misc/CollectionDetailP
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 import { CollectionSearchDrawer } from '../../components/ui/Misc/CollectionSearchDrawer.jsx';
 import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
+
 export function UserCollectionDetailPage() {
   const { username = '', collectionName = '' } = useParams();
+  const outletContext = useOutletContext();
+  const inLayout = outletContext?.inLayout || false;
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuthSession();
   const decodedCollectionName = decodeURIComponent(collectionName);
   const { collections, loading } = useLiveCollections();
-  const [publicCollection, setPublicCollection] = useState(null);
-  const [publicLoading, setPublicLoading] = useState(true);
-  const [publicError, setPublicError] = useState('');
+  
   const isOwner = auth.isLoggedIn && auth.username === username;
+  
+  const queryClient = useQueryClient();
+
+  const { data: publicCollectionData, isLoading: publicLoadingQuery, error: publicQueryError } = useQuery({
+    queryKey: ['collection', username, decodedCollectionName],
+    queryFn: () => apiFetch(`/api/collection/${encodeURIComponent(username)}/${encodeURIComponent(decodedCollectionName)}`),
+    enabled: !isOwner,
+  });
+
+  const publicCollection = useMemo(() => {
+    if (!publicCollectionData) return null;
+    return Array.isArray(publicCollectionData)
+      ? publicCollectionData[0]
+      : publicCollectionData?.collection || publicCollectionData?.data || publicCollectionData;
+  }, [publicCollectionData]);
+
+  const publicLoading = isOwner ? false : publicLoadingQuery;
+  const publicError = publicQueryError ? (publicQueryError.message || 'Collection not found.') : '';
+
   const watchedCollection = useMemo(() => collections.find((item) => item.name === 'Watched'), [collections]);
   const watchedIds = useMemo(
     () =>
@@ -28,6 +50,7 @@ export function UserCollectionDetailPage() {
         : new Set(),
     [isOwner, watchedCollection]
   );
+  
   const collection = useMemo(
     () =>
       normalizeCollection(
@@ -35,6 +58,7 @@ export function UserCollectionDetailPage() {
       ),
     [collections, decodedCollectionName, isOwner, publicCollection]
   );
+  
   const [filters, setFilters] = useSessionState(`collection-page:${location.pathname}:filters`, { contentType: 'all', anime: 'yes', sortBy: 'recent', hideWatched: false });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState(null);
@@ -43,39 +67,6 @@ export function UserCollectionDetailPage() {
   useEffect(() => {
     document.title = `${decodedCollectionName} | Soulstash`;
   }, [decodedCollectionName]);
-
-  useEffect(() => {
-    // Owner sees their own collection from the live cache - no public fetch needed.
-    if (isOwner) {
-      setPublicLoading(false);
-      return;
-    }
-    let ignore = false;
-    setPublicLoading(true);
-    setPublicError('');
-    cachedApiFetch(`/api/collection/${encodeURIComponent(username)}/${encodeURIComponent(decodedCollectionName)}`)
-      .then((payload) => {
-        if (!ignore) {
-          const resolvedCollection = Array.isArray(payload)
-            ? payload[0]
-            : payload?.collection || payload?.data || payload;
-          setPublicCollection(resolvedCollection || null);
-        }
-      })
-      .catch((error) => {
-        if (!ignore) {
-          setPublicError(error.message || 'Collection not found.');
-          setPublicCollection(null);
-        }
-      })
-      .finally(() => {
-        if (!ignore) setPublicLoading(false);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [decodedCollectionName, isOwner, username]);
-
 
   useEffect(() => {
     console.log('[Soulstash][React] UserCollectionDetailPage mounted', {
@@ -88,6 +79,31 @@ export function UserCollectionDetailPage() {
   }, [username, decodedCollectionName, collection?.name, loading]);
 
   const movies = useMemo(() => filteredCollectionMovies(collection, filters, watchedIds), [collection, filters, watchedIds]);
+
+  const addMutation = useMutation({
+    mutationFn: async (payload) => {
+      if (window.CollectionStore?.addToCollection) {
+        return await window.CollectionStore.addToCollection(collection._id, payload);
+      }
+      return await apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/add`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['collection', username, decodedCollectionName] });
+      toast(response?.message || 'Added to collection');
+    },
+    onError: (error) => {
+      if (error.status === 409) {
+        toast('Already in this collection', 'info');
+      } else {
+        const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
+        toast(`Failed to add: ${msg}`, 'error');
+      }
+    }
+  });
 
   async function handleAddToCollection(item, mediaType) {
     if (!collection?._id) return;
@@ -110,106 +126,66 @@ export function UserCollectionDetailPage() {
           };
 
     const contentId = Number(payload.movieId || payload.seriesId);
-    const optimisticSnapshot = optimisticUpdateCollectionItems(collection._id, (movies) => {
-      const exists = movies.some((entry) => contentIdFromItem(entry) === contentId);
-      if (exists) return movies;
-      return [
-        mediaType === 'Series'
-          ? { seriesId: contentId, title: payload.title, poster_path: payload.poster_path, release_date: payload.release_date, media_type: 'Series', addedAt: new Date().toISOString() }
-          : { movieId: contentId, title: payload.title, poster_path: payload.poster_path, release_date: payload.release_date, media_type: 'Movie', addedAt: new Date().toISOString() },
-        ...movies
-      ];
-    });
-
-    try {
-      setPendingItems(prev => new Set(prev).add(contentId));
-      const response = window.CollectionStore?.addToCollection
-        ? await window.CollectionStore.addToCollection(collection._id, payload)
-        : await apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/add`, {
-            method: 'POST',
-            body: JSON.stringify(payload)
-          });
-      if (!window.CollectionStore?.addToCollection) {
-        if (Array.isArray(response?.collections)) {
-          updateCollectionsCache(normalizeCollections(response.collections), response?.collectionVersion);
-        }
-      }
-      toast(response.message || 'Added to collection');
-    } catch (error) {
-      if (error.status === 409) {
-        toast('Already in this collection', 'info');
-        return;
-      }
-      if (optimisticSnapshot) {
-        optimisticUpdateCollectionItems(collection._id, (movies) => {
-          return movies.filter((entry) => contentIdFromItem(entry) !== contentId);
+    
+    setPendingItems(prev => new Set(prev).add(contentId));
+    
+    await addMutation.mutateAsync(payload, {
+      onSettled: () => {
+        setPendingItems(prev => {
+          const next = new Set(prev);
+          next.delete(contentId);
+          return next;
         });
       }
-      const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
-      toast(`Failed to add: ${msg}`, 'error');
-    } finally {
-      setPendingItems(prev => {
-        const next = new Set(prev);
-        next.delete(contentId);
-        return next;
-      });
-    }
+    });
   }
-
 
   function handleRemoveFromCollection(itemId, title) {
     setRemoveTarget({ itemId, title });
   }
 
+  const removeMutation = useMutation({
+    mutationFn: async ({ collectionId, itemId, target }) => {
+      if (window.CollectionStore?.removeFromCollection) {
+        return await window.CollectionStore.removeFromCollection(collectionId, target.movieId, target.seriesId);
+      }
+      return await apiFetch(
+        `/api/user/collections/${encodeURIComponent(collectionId)}/remove`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ id: itemId })
+        }
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['collection', username, decodedCollectionName] });
+      toast(`Removed ${variables.title}`);
+    },
+    onError: (error) => {
+      const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
+      toast(`Failed to remove: ${msg}`, 'error');
+    }
+  });
+
   async function confirmRemoveFromCollection() {
     if (!removeTarget) return;
     const collectionId = collection?._id || collection?.name || decodedCollectionName;
     if (!collectionId) return;
-      const pendingRemoval = removeTarget;
-      setRemoveTarget(null);
+    
+    const pendingRemoval = removeTarget;
+    setRemoveTarget(null);
 
-      const itemId = Number(pendingRemoval.itemId);
-      const liveCollection = getCachedUserCollections()
-        .find(c => String(c._id || c.name) === String(collectionId) || String(c.name) === String(collectionId));
-      
-      const target = (liveCollection?.movies || []).find(
-        (item) => Number(item.movieId || item.seriesId || item.id || item._id || 0) === itemId
-      );
+    const itemId = Number(pendingRemoval.itemId);
+    const target = (collection?.movies || []).find(
+      (item) => Number(item.movieId || item.seriesId || item.id || item._id || 0) === itemId
+    );
 
-      if (!target) {
-        confirmTrashItem(collectionId, itemId);
-        return;
-      }
-
-    // Optimistically move item out of collection cache and into trash
-    trashItemFromCollectionCache(collectionId, itemId);
-
-    try {
-      if (window.CollectionStore?.removeFromCollection) {
-        await window.CollectionStore.removeFromCollection(collectionId, target.movieId, target.seriesId);
-      } else {
-        const removeResp = await apiFetch(
-          `/api/user/collections/${encodeURIComponent(collectionId)}/remove`,
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              id: itemId
-            })
-          }
-        );
-        if (Array.isArray(removeResp?.collections)) {
-          updateCollectionsCache(normalizeCollections(removeResp.collections), removeResp?.collectionVersion);
-        }
-      }
-      // Backend confirmed -> permanently purge from trash
-      confirmTrashItem(collectionId, itemId);
-      toast(`Removed ${pendingRemoval.title}`);
-    } catch (error) {
-      // Backend failed -> restore item from trash back into the collection
-      restoreTrashItem(collectionId, itemId);
-      const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
-      toast(`Failed to remove: ${msg}`, 'error');
+    if (!target) {
+      return;
     }
+
+    await removeMutation.mutateAsync({ collectionId, itemId, target, title: pendingRemoval.title });
   }
 
   // Show spinner while either the owner's live-cache or the public fetch is still in flight.
@@ -241,7 +217,7 @@ export function UserCollectionDetailPage() {
             onOpenDrawer={() => setDrawerOpen(true)}
             onRemoveFromCollection={handleRemoveFromCollection}
             isOwner={isOwner}
-            useBannerAsBackdrop
+            useBannerAsBackdrop={!inLayout}
           />
         </div>
       ) : (
@@ -262,4 +238,3 @@ export function UserCollectionDetailPage() {
     </div>
   );
 }
-

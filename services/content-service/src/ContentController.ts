@@ -107,7 +107,6 @@ export class ContentController {
   // }
 
 
-  // rakesh
 private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
   // 1. Handle adult content visibility explicitly
   if (item?.adult === true && !canViewAdult) return false;

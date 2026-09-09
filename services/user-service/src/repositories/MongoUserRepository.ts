@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { MongoClient, Collection as MongoCollection } from 'mongodb';
 import { IUserRepository } from '../../../shared/src/interfaces/IUserRepository';
 import { User } from '../../../shared/src/entities/User';

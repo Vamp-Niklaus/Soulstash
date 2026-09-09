@@ -822,10 +822,48 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
 
 body {
     transition: background 0.3s ease-in-out;
-    background-image: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('/dark-bg.png') !important;
+    background-image: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('/images/dark-bg.png') !important;
     background-color: rgb(0, 0, 0) !important;
     background-repeat: repeat !important;
     background-size: auto !important;
     background-attachment: fixed !important;
 }
 
+
+/* ==================================================
+   TV UI PREMIUM FOCUS STATES
+   ================================================== */
+.tv-focus-card {
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out;
+  will-change: transform;
+  transform-origin: center;
+}
+
+.tv-focus-card.is-focused {
+  background-color: #1d1d1d !important;
+  border-color: rgba(255, 255, 255, 0.8) !important;
+  transform: scale(1.06) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15), 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 255, 255, 0.08) !important;
+  z-index: 10 !important;
+}
+
+.tv-focus-pill {
+  transition: background-color 150ms ease-out, box-shadow 150ms ease-out;
+  border-radius: 6px;
+  padding: 4px 12px;
+}
+
+.tv-focus-pill.is-focused {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4), 0 0 16px rgba(255, 255, 255, 0.12) !important;
+}
+
+.tv-focus-icon {
+  transition: all 150ms ease-out;
+  border-radius: 50%;
+}
+
+.tv-focus-icon.is-focused, .tv-focus-icon:focus-visible {
+  color: white !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}

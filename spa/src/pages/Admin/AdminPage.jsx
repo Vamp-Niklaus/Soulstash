@@ -1,137 +1,106 @@
 import { getToken, saveAuthSession, apiFetch } from '../../api/client.js';
-import { useMemo } from 'react';
-import React, { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import React from 'react';
 import { useAuthSession } from '../../hooks/index.js';
 import { toast } from '../../utils/toast.js';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+// Quick inline component if it was missing before, or just keep it as is if it was working
+function DetailStat({ label, value }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-[#a6a6a6]">{label}</span>
+      <span className="text-sm text-white font-medium">{value}</span>
+    </div>
+  );
+}
 
 export function AdminPage() {
   const auth = useAuthSession();
-  const [data, setData] = useState({ totalUsers: 0, users: [] });
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [adminInfo, setAdminInfo] = useState({
-    loading: true,
-    isAdmin: false,
-    showAdult: false,
-    multimovies: { available: true, rootUrls: [''], baseUrls: [''] }
-  });
+  
   const [multimoviesForm, setMultimoviesForm] = useState({ rootUrl: '', baseUrl: '' });
-  const [savingMultimovies, setSavingMultimovies] = useState(false);
+
+  const { data: adminInfo, isPending: adminLoading, isError: adminError, error: adminErrorObj } = useQuery({
+    queryKey: ['adminMe'],
+    queryFn: () => apiFetch('/api/admin/me'),
+    enabled: auth.isLoggedIn,
+    retry: false
+  });
 
   useEffect(() => {
-    let ignore = false;
-
-    if (!auth.isLoggedIn) {
-      setAdminInfo({
-        loading: false,
-        isAdmin: false,
-        showAdult: false,
-        multimovies: { available: true, rootUrls: [''], baseUrls: [''] }
+    if (adminInfo?.multimovies) {
+      setMultimoviesForm({
+        rootUrl: adminInfo.multimovies?.rootUrls?.[0] || '',
+        baseUrl: adminInfo.multimovies?.baseUrls?.[0] || ''
       });
-      setLoading(false);
-      return () => {
-        ignore = true;
-      };
     }
+  }, [adminInfo]);
 
-    apiFetch('/api/admin/me')
-      .then((payload) => {
-        if (!ignore) {
-          const multimovies = payload?.multimovies || { available: true, rootUrls: [''], baseUrls: [''] };
-          setAdminInfo({
-            loading: false,
-            isAdmin: true,
-            showAdult: Boolean(payload?.showAdult),
-            multimovies
-          });
-          setMultimoviesForm({
-            rootUrl: multimovies?.rootUrls?.[0] || '',
-            baseUrl: multimovies?.baseUrls?.[0] || ''
-          });
-        }
-      })
-      .catch((error) => {
-        if (!ignore) {
-          if (error?.status === 403) {
-            setAdminInfo({
-              loading: false,
-              isAdmin: false,
-              showAdult: false,
-              multimovies: { available: true, rootUrls: [''], baseUrls: [''] }
-            });
-          } else {
-            toast(error.message, 'error');
-            setAdminInfo({
-              loading: false,
-              isAdmin: false,
-              showAdult: false,
-              multimovies: { available: true, rootUrls: [''], baseUrls: [''] }
-            });
-          }
-        }
-      });
+  const { data: usersData, isPending: usersLoading } = useQuery({
+    queryKey: ['adminUsers'],
+    queryFn: () => apiFetch('/api/admin/users'),
+    enabled: !!adminInfo,
+  });
 
-    return () => {
-      ignore = true;
-    };
-  }, [auth.isLoggedIn]);
-
-  useEffect(() => {
-    let ignore = false;
-
-    if (!adminInfo.isAdmin) {
-      setLoading(false);
-      return () => {
-        ignore = true;
-      };
+  const preferencesMutation = useMutation({
+    mutationFn: (showAdult) => apiFetch('/api/admin/preferences', {
+      method: 'POST',
+      body: JSON.stringify({ showAdult })
+    }),
+    onSuccess: (response) => {
+      queryClient.setQueryData(['adminMe'], (old) => ({
+        ...old,
+        showAdult: Boolean(response?.showAdult)
+      }));
+      saveAuthSession(getToken(), { ...auth.user, admin: true, showAdult: Boolean(response?.showAdult) });
+      toast(response?.showAdult ? 'Admin mode enabled' : 'Admin mode disabled');
+    },
+    onError: (error) => {
+      toast(error.message, 'error');
     }
+  });
 
-    setLoading(true);
-
-    apiFetch('/api/admin/users')
-      .then((payload) => {
-        if (!ignore) {
-          setData(payload);
-          document.title = 'Admin | Soulstash';
-        }
-      })
-      .catch((error) => {
-        if (!ignore) {
-          toast(error.message, 'error');
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
-          setLoading(false);
-        }
+  const multimoviesMutation = useMutation({
+    mutationFn: (form) => apiFetch('/api/admin/multimovies', {
+      method: 'POST',
+      body: JSON.stringify(form)
+    }),
+    onSuccess: (response) => {
+      const multimovies = response?.multimovies;
+      queryClient.setQueryData(['adminMe'], (old) => ({ ...old, multimovies }));
+      setMultimoviesForm({
+        rootUrl: multimovies?.rootUrls?.[0] || '',
+        baseUrl: multimovies?.baseUrls?.[0] || ''
       });
-
-    return () => {
-      ignore = true;
-    };
-  }, [adminInfo.isAdmin]);
+      toast('Multimovies config updated');
+    },
+    onError: (error) => toast(error.message, 'error')
+  });
 
   const filteredUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return data.users;
-    }
+    const usersList = usersData?.users || [];
+    if (!normalizedQuery) return usersList;
 
-    return data.users.filter((user) =>
+    return usersList.filter((user) =>
       [user.username, user.email, user.firstName, user.lastName, user.bio]
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(normalizedQuery))
     );
-  }, [data.users, query]);
+  }, [usersData, query]);
 
-  if (adminInfo.loading) {
+  if (!auth.isLoggedIn || adminLoading) {
     return <div className="app-loading">Checking admin access...</div>;
   }
 
-  if (!adminInfo.isAdmin) {
-    return <div className="app-error">Admin access only.</div>;
+  if (adminError || !adminInfo) {
+    return <div className="app-error">Admin access only. {adminErrorObj ? `(${adminErrorObj.message})` : '(No admin info)'}</div>;
   }
+
+  const showAdult = Boolean(adminInfo.showAdult);
 
   return (
     <div className="space-y-8">
@@ -147,24 +116,12 @@ export function AdminPage() {
           <div className="flex w-full flex-col gap-3 lg:w-auto lg:items-end">
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.12]"
-              onClick={async () => {
-                const nextValue = !adminInfo.showAdult;
-                try {
-                  const response = await apiFetch('/api/admin/preferences', {
-                    method: 'POST',
-                    body: JSON.stringify({ showAdult: nextValue })
-                  });
-                  setAdminInfo((current) => ({ ...current, showAdult: Boolean(response?.showAdult) }));
-                  saveAuthSession(getToken(), { ...auth.user, admin: true, showAdult: Boolean(response?.showAdult) });
-                  toast(response?.showAdult ? 'Admin mode enabled' : 'Admin mode disabled');
-                } catch (error) {
-                  toast(error.message, 'error');
-                }
-              }}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.12] disabled:opacity-60"
+              disabled={preferencesMutation.isPending}
+              onClick={() => preferencesMutation.mutate(!showAdult)}
             >
-              <i className={`fas ${adminInfo.showAdult ? 'fa-eye' : 'fa-eye-slash'}`}></i>
-              <span>{adminInfo.showAdult ? 'Admin mode on' : 'Admin mode off'}</span>
+              <i className={`fas ${showAdult ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+              <span>{showAdult ? 'Admin mode on' : 'Admin mode off'}</span>
             </button>
             <input
               type="text"
@@ -179,7 +136,7 @@ export function AdminPage() {
         <div className="admin-grid grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
           <div className="admin-stat-card rounded-2xl p-5">
             <p className="text-sm text-[#9f9f9f]">Total users</p>
-            <p className="text-3xl font-semibold text-white mt-2">{data.totalUsers}</p>
+            <p className="text-3xl font-semibold text-white mt-2">{usersData?.totalUsers || 0}</p>
           </div>
           <div className="admin-stat-card rounded-2xl p-5">
             <p className="text-sm text-[#9f9f9f]">Visible results</p>
@@ -188,7 +145,7 @@ export function AdminPage() {
           <div className="admin-stat-card rounded-2xl p-5">
             <p className="text-sm text-[#9f9f9f]">Total saved items</p>
             <p className="text-3xl font-semibold text-white mt-2">
-              {data.users.reduce((sum, user) => sum + (user.totalSavedItems || 0), 0)}
+              {(usersData?.users || []).reduce((sum, user) => sum + (user.totalSavedItems || 0), 0)}
             </p>
           </div>
         </div>
@@ -204,29 +161,10 @@ export function AdminPage() {
             <button
               type="button"
               className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.12] disabled:opacity-60"
-              disabled={savingMultimovies}
-              onClick={async () => {
-                try {
-                  setSavingMultimovies(true);
-                  const response = await apiFetch('/api/admin/multimovies', {
-                    method: 'POST',
-                    body: JSON.stringify(multimoviesForm)
-                  });
-                  const multimovies = response?.multimovies || adminInfo.multimovies;
-                  setAdminInfo((current) => ({ ...current, multimovies }));
-                  setMultimoviesForm({
-                    rootUrl: multimovies?.rootUrls?.[0] || '',
-                    baseUrl: multimovies?.baseUrls?.[0] || ''
-                  });
-                  toast('Multimovies config updated');
-                } catch (error) {
-                  toast(error.message, 'error');
-                } finally {
-                  setSavingMultimovies(false);
-                }
-              }}
+              disabled={multimoviesMutation.isPending}
+              onClick={() => multimoviesMutation.mutate(multimoviesForm)}
             >
-              {savingMultimovies ? 'Saving...' : 'Save Multimovies URLs'}
+              {multimoviesMutation.isPending ? 'Saving...' : 'Save Multimovies URLs'}
             </button>
           </div>
           <div className="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2">
@@ -254,7 +192,7 @@ export function AdminPage() {
         </div>
       </section>
 
-      {loading ? (
+      {usersLoading ? (
         <div className="app-loading">Loading users...</div>
       ) : (
         <section className="admin-grid grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -312,4 +250,3 @@ export function AdminPage() {
     </div>
   );
 }
-

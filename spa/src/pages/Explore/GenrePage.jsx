@@ -1,80 +1,40 @@
-import { cachedApiFetch } from '../../api/client.js';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { apiFetch } from '../../api/client.js';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 
 export function GenrePage() {
   const { id, name } = useParams();
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [fetchingMore, setFetchingMore] = useState(false);
-  const [retryTick, setRetryTick] = useState(0);
 
   const genreId = id;
   const genreName = decodeURIComponent(name || '');
 
-  // Initial page load
   useEffect(() => {
-    let ignore = false;
-    setLoading(true);
-    setError('');
-    setItems([]);
-    setPage(1);
-    setHasMore(true);
+    document.title = `${genreName} | Soulstash`;
+  }, [genreName]);
 
-    cachedApiFetch(`/api/movies?genre=${genreId}&limit=20&page=1&retry=${retryTick}`)
-      .then((data) => {
-        if (!ignore) {
-          const fetchedItems = Array.isArray(data?.movies) ? data.movies : [];
-          setItems(fetchedItems);
-          const totalPages = data?.pagination?.pages ?? 1;
-          setHasMore(fetchedItems.length > 0 && 1 < totalPages);
-          document.title = `${genreName} | Soulstash`;
-        }
-      })
-      .catch((requestError) => {
-        if (!ignore) setError(requestError.message || `Unable to load ${genreName} titles.`);
-      })
-      .finally(() => {
-        if (!ignore) setLoading(false);
-      });
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ['genre', genreId],
+    queryFn: ({ pageParam = 1 }) => apiFetch(`/api/movies?genre=${genreId}&limit=20&page=${pageParam}`),
+    getNextPageParam: (lastPage, allPages) => {
+      const totalPages = lastPage?.pagination?.pages ?? 1;
+      return allPages.length < totalPages ? allPages.length + 1 : undefined;
+    },
+  });
 
-    return () => { ignore = true; };
-  }, [genreId, genreName, retryTick]);
-
-  // Fetch next page when `page` changes
-  useEffect(() => {
-    if (page === 1) return;
-    let ignore = false;
-    setFetchingMore(true);
-
-    cachedApiFetch(`/api/movies?genre=${genreId}&limit=20&page=${page}`)
-      .then((data) => {
-        if (!ignore) {
-          const fetchedItems = Array.isArray(data?.movies) ? data.movies : [];
-          setItems((prev) => {
-            const existingIds = new Set(prev.map((i) => i.id));
-            const unique = fetchedItems.filter((i) => !existingIds.has(i.id));
-            return [...prev, ...unique];
-          });
-          const totalPages = data?.pagination?.pages ?? 1;
-          setHasMore(fetchedItems.length > 0 && page < totalPages);
-        }
-      })
-      .catch(() => {
-        if (!ignore) setHasMore(false);
-      })
-      .finally(() => {
-        if (!ignore) setFetchingMore(false);
-      });
-
-    return () => { ignore = true; };
-  }, [page, genreId]);
+  const items = data ? data.pages.flatMap((page) => Array.isArray(page.movies) ? page.movies : []) : [];
 
   // Sentinel ref — fires once when the sentinel div enters the viewport
   const observerRef = useRef(null);
@@ -84,7 +44,7 @@ export function GenrePage() {
       observerRef.current.disconnect();
       observerRef.current = null;
     }
-    if (!node || !hasMore || fetchingMore || loading) return;
+    if (!node || !hasNextPage || isFetchingNextPage || isLoading) return;
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
@@ -92,15 +52,15 @@ export function GenrePage() {
           // Disconnect immediately so it only fires once per scroll-reach
           observerRef.current?.disconnect();
           observerRef.current = null;
-          setPage((p) => p + 1);
+          fetchNextPage();
         }
       },
       { rootMargin: '300px' }
     );
     observerRef.current.observe(node);
-  }, [hasMore, fetchingMore, loading]);
+  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage]);
 
-  if (loading && !error) {
+  if (isLoading && !isError) {
     return (
       <section className="content-section">
         <div className="mb-5 flex items-center justify-between gap-4">
@@ -114,13 +74,13 @@ export function GenrePage() {
   return (
     <section className="content-section">
       <SectionHeader title={genreName} large />
-      {error ? (
+      {isError ? (
         <div className="app-error">
-          <p>{error}</p>
+          <p>{error?.message || `Unable to load ${genreName} titles.`}</p>
           <button
             type="button"
             className="mt-4 rounded-full bg-white/10 px-5 py-2 text-white transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
-            onClick={() => setRetryTick((current) => current + 1)}
+            onClick={() => refetch()}
           >
             Try again
           </button>
@@ -134,15 +94,15 @@ export function GenrePage() {
           </div>
 
           {/* Sentinel element — observed to trigger next page load */}
-          {hasMore && (
+          {hasNextPage && (
             <div ref={sentinelRef} className="mt-8 flex justify-center h-12">
-              {fetchingMore && (
+              {isFetchingNextPage && (
                 <div className="w-6 h-6 border-2 border-white/20 border-t-white/80 rounded-full animate-spin self-center" />
               )}
             </div>
           )}
 
-          {!hasMore && items.length > 0 && (
+          {!hasNextPage && items.length > 0 && (
             <p className="mt-8 text-center text-sm text-white/30">All titles loaded</p>
           )}
         </>
