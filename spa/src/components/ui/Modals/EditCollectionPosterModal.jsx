@@ -56,16 +56,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
       
       const uniqueUrls = [...new Set(rawUrls)];
 
-      const preloadImage = (src) => {
-        return new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => resolve(src);
-          img.onerror = () => resolve(null);
-          img.src = src;
-        });
-      };
-
-      const validUrls = (await Promise.all(uniqueUrls.map(preloadImage))).filter(Boolean);
+      const validUrls = uniqueUrls;
 
       if (isMounted) {
         setUpdatedMovies(moviesWithBackdrops);
@@ -156,6 +147,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
                 src={posters[currentIndex]}
                 alt="Selected Banner"
                 className="w-full h-full object-cover transition-opacity duration-300"
+                onError={(e) => { e.target.src = FALLBACK_AVATAR; }}
               />
 
               {posters.length > 1 && (
