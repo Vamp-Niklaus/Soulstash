@@ -428,6 +428,20 @@ export function CollectionDetailPane({
         onClose={() => setPosterEditOpen(false)}
         collection={collection}
         onSave={async (url, updatedMovies) => {
+          setPosterEditOpen(false);
+
+          const previousCollections = queryClient.getQueryData(['collections']);
+          if (previousCollections) {
+            queryClient.setQueryData(['collections'], old => {
+              if (!old) return old;
+              return old.map(c => 
+                (c.name === collection.name || c._id === collection._id)
+                  ? { ...c, banner: url, movies: updatedMovies || c.movies }
+                  : c
+              );
+            });
+          }
+
           try {
             const collectionId = collection._id || collection.name;
             const payload = { banner: url };
@@ -444,9 +458,11 @@ export function CollectionDetailPane({
             queryClient.invalidateQueries({ queryKey: ['collections'] });
             toast('Banner updated!');
           } catch (err) {
+            if (previousCollections) {
+              queryClient.setQueryData(['collections'], previousCollections);
+            }
             toast('Failed to update banner', 'error');
           }
-          setPosterEditOpen(false);
         }}
       />
     </div>
