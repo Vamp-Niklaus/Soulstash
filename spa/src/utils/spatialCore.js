@@ -57,7 +57,8 @@ export function score(fromR, toR, dir) {
   const horiz = dir === 'ArrowLeft' || dir === 'ArrowRight';
   const pri   = Math.abs(horiz ? dx : dy);
   const lat   = Math.abs(horiz ? dy : dx);
-  return pri + lat * 3;
+  // Prioritize primary axis distance over lateral perfect alignment
+  return (pri * 3) + lat;
 }
 
 export function applyFocus(el, scroll = true) {

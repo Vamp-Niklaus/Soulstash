@@ -238,7 +238,7 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
           <button 
             ref={closeBtnRef}
             onClick={onClose} 
-            className={`p-2 text-white/50 transition-colors outline-none rounded-lg ${selectedIndex === -2 ? 'ring-2 ring-white text-white' : 'hover:text-white'}`}
+            className={`p-2 transition-all outline-none rounded-xl ${selectedIndex === -2 ? 'bg-white/10 ring-4 ring-white text-white scale-110 shadow-lg' : 'text-white/50 hover:text-white hover:bg-white/5'}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -268,7 +268,7 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
                   onMouseEnter={() => setSelectedIndex(index)}
                   onFocus={() => setSelectedIndex(index)}
                   className={`relative text-left w-full cursor-pointer group aspect-[3/4] rounded-xl overflow-hidden bg-white/5 transition-all outline-none ${
-                    isSelected ? 'ring-4 ring-[#64FFDA] scale-[1.02] shadow-lg shadow-[#64FFDA]/20' : 'hover:ring-2 hover:ring-white/30'
+                    isSelected ? 'ring-[6px] ring-[#64FFDA] scale-[1.05] shadow-[0_0_30px_rgba(100,255,218,0.4)] z-10' : 'opacity-70 hover:opacity-100 hover:ring-2 hover:ring-white/30'
                   }`}
                 >
                   <img 
