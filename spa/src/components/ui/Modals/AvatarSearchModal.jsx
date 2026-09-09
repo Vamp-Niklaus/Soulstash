@@ -268,10 +268,13 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
                     ref={el => resultRefs.current[index] = el}
                     onClick={() => handleSelect(item)}
                     onFocus={() => setSelectedIndex(index)}
-                    className={`relative text-left w-full cursor-pointer group aspect-[3/4] rounded-xl overflow-hidden bg-white/5 transition-all outline-none ${
-                      isSelected ? 'ring-4 ring-[#64FFDA] ring-offset-2 ring-offset-[#111111] scale-[1.05] shadow-[0_0_30px_rgba(100,255,218,0.4)] z-10' : 'opacity-70 hover:opacity-100 hover:ring-2 hover:ring-white/30 hover:ring-offset-2 hover:ring-offset-[#111111]'
-                    }`}
+                    className="relative text-left w-full cursor-pointer group aspect-[3/4] rounded-xl bg-white/5 outline-none"
                   >
+                    <div className={`absolute inset-[-4px] rounded-[16px] transition-all duration-200 z-20 pointer-events-none ${
+                      isSelected ? 'border-[4px] border-[#64FFDA] shadow-[0_0_30px_rgba(100,255,218,0.4)]' : 'border-2 border-transparent group-hover:border-white/30'
+                    }`} />
+                    
+                    <div className={`absolute inset-0 rounded-xl overflow-hidden transition-transform duration-200 ${isSelected ? 'scale-[1.05] z-10' : 'opacity-70 group-hover:opacity-100'}`}>
                   <img 
                     src={imgUrl} 
                     alt={name}
@@ -281,6 +284,7 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-3 pt-8">
                     <p className="text-white text-sm font-medium truncate">{name}</p>
                   </div>
+                    </div>
                 </button>
               );
             })}
