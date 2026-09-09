@@ -103,7 +103,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-[4vw]">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/85 backdrop-blur-sm"
@@ -111,10 +111,10 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
       />
 
       {/* Modal Content */}
-      <div className="relative z-10 w-[95vw] max-w-[1400px] flex flex-col items-center gap-5">
+      <div className="relative z-10 w-full h-full max-w-[1400px] flex flex-col items-center justify-center gap-5">
         
         {/* Landscape Image Viewer */}
-        <div className="relative w-full aspect-[16/9] rounded-[20px] overflow-hidden bg-[#111] shadow-2xl flex items-center justify-center">
+        <div className="relative w-full h-full rounded-[20px] overflow-hidden flex items-center justify-center bg-black/40 shadow-2xl">
           
           {/* Bottom Controls (Inside Image) */}
           {!loading && (
@@ -122,7 +122,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
               {/* Close Button */}
               <button
                 onClick={onClose}
-                className="absolute left-4 bottom-4 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/20 hover:bg-black/40 rounded-full focus:outline-none z-20 flex items-center justify-center"
+                className="absolute left-4 bottom-4 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20 flex items-center justify-center"
                 title="Close"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -134,7 +134,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
               <button
                 onClick={handleSave}
                 disabled={loading}
-                className="absolute right-4 bottom-4 p-3 text-[#64FFDA] hover:text-[#52e0c0] drop-shadow-lg hover:scale-110 transition-all bg-black/20 hover:bg-black/40 rounded-full focus:outline-none z-20 flex items-center justify-center disabled:opacity-50"
+                className="absolute right-4 bottom-4 p-3 text-[#64FFDA] hover:text-[#52e0c0] drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20 flex items-center justify-center disabled:opacity-50"
                 title="Save Banner"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -151,7 +151,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
               <img
                 src={posters[currentIndex]}
                 alt="Selected Banner"
-                className="w-full h-full object-cover transition-opacity duration-300"
+                className="w-full h-full object-contain transition-opacity duration-300"
               />
 
               {posters.length > 1 && (
@@ -159,7 +159,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
                   {/* Left arrow */}
                   <button
                     onClick={handlePrev}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/20 hover:bg-black/40 rounded-full focus:outline-none"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -169,7 +169,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
                   {/* Right arrow */}
                   <button
                     onClick={handleNext}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/20 hover:bg-black/40 rounded-full focus:outline-none"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -183,7 +183,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
 
         {/* Indicator */}
         {!loading && posters.length > 1 && (
-          <div className="text-white/50 text-sm font-medium">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-black/40 text-white/80 text-sm font-medium z-20">
             {currentIndex + 1} / {posters.length}
           </div>
         )}
