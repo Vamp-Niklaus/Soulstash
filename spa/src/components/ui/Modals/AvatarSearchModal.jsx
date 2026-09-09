@@ -270,7 +270,7 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
                   onMouseEnter={() => setSelectedIndex(index)}
                   onFocus={() => setSelectedIndex(index)}
                   className={`relative text-left w-full cursor-pointer group aspect-[3/4] rounded-xl overflow-hidden bg-white/5 transition-all outline-none ${
-                    isSelected ? 'ring-[6px] ring-[#64FFDA] scale-[1.05] shadow-[0_0_30px_rgba(100,255,218,0.4)] z-10' : 'opacity-70 hover:opacity-100 hover:ring-2 hover:ring-white/30'
+                    isSelected ? 'ring-[4px] ring-inset ring-[#64FFDA] scale-[1.05] shadow-[0_0_30px_rgba(100,255,218,0.4)] z-10' : 'opacity-70 hover:opacity-100'
                   }`}
                 >
                   <img 
