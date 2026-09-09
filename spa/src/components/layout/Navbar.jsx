@@ -3,6 +3,7 @@ import { useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { NavbarSkeleton } from '../ui/Skeletons/index.js';
 import { FALLBACK_AVATAR, FALLBACK_LOGO } from '../../utils/constants.js';
 import { useAuthSession } from '../../hooks/index.js';
+import { apiFetch, emitAuthChange } from '../../api/client.js';
 import { NavbarSearchOverlay } from './NavbarSearchOverlay.jsx';
 import { useSearchAutocomplete } from '../../hooks/useSearchAutocomplete.js';
 import { WatchedIcon, WatchlistIcon, CollectionIcon, HomeIcon, ProfileIcon, SearchIcon, CloseIcon } from './NavIcons.jsx';

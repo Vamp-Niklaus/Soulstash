@@ -52,7 +52,14 @@ export class AuthController {
       res.status(200).json({ 
         message: 'Login successful',
         token,
-        user: { id: fullUser.id, username: fullUser.username, admin: false, avatar: fullUser.avatar || null }
+        user: {
+          id: fullUser.id,
+          username: fullUser.username,
+          fullName: fullUser.fullName || '',
+          admin: fullUser.admin === true,
+          showAdult: fullUser.showAdult === true,
+          avatar: fullUser.avatar || null
+        }
       });
     } catch (error: any) {
       logger.error('Login failed', error);
@@ -88,13 +95,22 @@ export class AuthController {
       const secret = config.get('jwtSecret') || 'fallback_secret';
       const decoded: any = jwt.verify(token, secret);
       
-      const user = await this.userService.getUser(decoded.userId);
+      // Read the document directly so the session response includes profile and
+      // admin fields that the domain entity intentionally does not expose.
+      const user = await (this.userService as any).userRepository.findByUsername(decoded.username);
       if (!user) {
         res.status(404).json({ error: 'User not found' });
         return;
       }
 
-      res.json({ user: { id: user.id, username: user.username, admin: false, avatar: (user as any).avatar || null } });
+      res.json({ user: {
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName || '',
+        admin: user.admin === true,
+        showAdult: user.showAdult === true,
+        avatar: user.avatar || null
+      } });
     } catch (err) {
       res.status(403).json({ error: 'Invalid token' });
     }

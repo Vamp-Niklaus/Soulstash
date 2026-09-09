@@ -66,17 +66,28 @@ export class AdminController {
         const watchlistCount = Array.isArray(watchlist?.movies) ? watchlist.movies.length : 0;
         const totalSavedItems = collections.reduce((sum: number, c: any) => sum + (Array.isArray(c.movies) ? c.movies.length : 0), 0);
 
+        const id = u._id?.toString?.() || String(u.id || u.username);
+        const followers = Array.isArray(u.followers) ? u.followers : [];
+        const following = Array.isArray(u.following) ? u.following : [];
+
         return {
-          _id: u._id.toString(),
-          id: u._id.toString(),
+          _id: id,
+          id,
           username: u.username,
           email: u.email || '',
           firstName: u.firstName || '',
           lastName: u.lastName || '',
-          fullName: u.fullName || '',
+          fullName: u.fullName || [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.username || '',
           bio: u.bio || '',
+          dateOfBirth: u.dateOfBirth || '',
+          instagramHandle: u.instagramHandle || '',
+          xHandle: u.xHandle || '',
+          youtubeHandle: u.youtubeHandle || '',
           avatar: u.avatar || null,
           admin: !!u.admin,
+          showAdult: !!u.showAdult,
+          followersCount: followers.length,
+          followingCount: following.length,
           createdAt: u.createdAt,
           collections: collections.map((c: any) => ({
             name: c.name,

@@ -55,10 +55,14 @@ export function LoginPage() {
       // so fetch the profile right away and patch localStorage.
       try {
         const { apiFetch: fetchApi } = await import('../../api/client.js');
-        const profile = await fetchApi(`/api/user/profile/${encodeURIComponent(username.trim())}`);
-        if (profile?.avatar) {
+        const profileResponse = await fetchApi(`/api/user/profile/${encodeURIComponent(username.trim())}`);
+        // This endpoint returns { user }, unlike the self-profile endpoint.
+        // Merge the complete record immediately so the navbar never renders a
+        // stale fallback avatar after navigation.
+        const profile = profileResponse?.user || profileResponse;
+        if (profile && typeof profile === 'object') {
           const stored = JSON.parse(localStorage.getItem('user') || '{}');
-          localStorage.setItem('user', JSON.stringify({ ...stored, avatar: profile.avatar }));
+          localStorage.setItem('user', JSON.stringify({ ...stored, ...profile }));
           const { emitAuthChange } = await import('../../api/client.js');
           emitAuthChange();
         }

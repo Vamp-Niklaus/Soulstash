@@ -196,8 +196,8 @@ export function AdminPage() {
         <div className="app-loading">Loading users...</div>
       ) : (
         <section className="admin-grid grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {filteredUsers.map((user) => (
-            <article key={user._id} className="admin-user-card rounded-[24px] p-6">
+          {filteredUsers.map((user, userIndex) => (
+            <article key={user.id || user._id || user.username || `user-${userIndex}`} className="admin-user-card rounded-[24px] p-6">
               <div className="flex items-start gap-4">
                 <img
                   src={user.avatar || FALLBACK_AVATAR}
@@ -214,7 +214,8 @@ export function AdminPage() {
                       {user.collectionCount || 0} collections
                     </span>
                   </div>
-                  <p className="text-sm text-[#a6a6a6] mt-2">{user.email || 'No email saved'}</p>
+                  <p className="text-sm text-[#d0d0d0] mt-2">{user.fullName || 'No name saved'}</p>
+                  <p className="text-sm text-[#a6a6a6] mt-1">{user.email || 'No email saved'}</p>
                   <p className="text-sm text-[#d0d0d0] mt-3">{user.bio || 'No bio available.'}</p>
                 </div>
               </div>
@@ -224,15 +225,17 @@ export function AdminPage() {
                 <DetailStat label="Watchlist" value={String(user.watchlistCount || 0)} />
                 <DetailStat label="Total Saved" value={String(user.totalSavedItems || 0)} />
                 <DetailStat label="Joined" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Unknown'} />
+                <DetailStat label="Followers" value={String(user.followersCount || 0)} />
+                <DetailStat label="Following" value={String(user.followingCount || 0)} />
               </div>
 
               <div className="mt-6">
                 <p className="text-xs uppercase tracking-[0.2em] text-[#8f44f0] mb-3">Collections</p>
                 <div className="flex flex-wrap gap-2">
                   {(user.collections || []).length ? (
-                    user.collections.map((collection) => (
+                    user.collections.map((collection, collectionIndex) => (
                       <span
-                        key={`${user._id}-${collection.name}`}
+                        key={`${user.id || user._id || user.username || userIndex}-${collection.name || 'collection'}-${collectionIndex}`}
                         className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#e2e2e2]"
                       >
                         {collection.name} ({Array.isArray(collection.movies) ? collection.movies.length : 0})
