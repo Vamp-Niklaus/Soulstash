@@ -1,6 +1,6 @@
-// @ts-nocheck
 import { Request, Response } from 'express';
 import { logger } from '../../shared/src/utils/Logger';
+import { config } from '../../shared/src/utils/ConfigManager';
 
 export class AdminController {
   private userRepository: any;
@@ -17,22 +17,24 @@ export class AdminController {
     }
 
     const coll = await this.userRepository.connect();
+    const dbName = config.get('mongoDbName') || 'test';
+    const db = (this.userRepository as any).client.db(dbName);
     const dbUser = await coll.findOne({ username: user.username });
     if (!dbUser || dbUser.admin !== true) {
       res.status(403).json({ error: 'Forbidden: Admin access only' });
       return null;
     }
-    return { coll, dbUser };
+    return { coll, dbUser, db };
   }
 
   public async getMe(req: Request, res: Response) {
     try {
       const auth = await this.checkAdmin(req, res);
       if (!auth) return;
-      const { coll, dbUser } = auth;
+      const { db, dbUser } = auth;
 
-      const sourceConfigsColl = coll.s.db.collection('sourceConfigs');
-      const multimoviesConfig = await sourceConfigsColl.findOne({ _id: 'multimovies_config' });
+      const sourceConfigsColl = db.collection('SourceConfigs');
+      const multimoviesConfig = await sourceConfigsColl.findOne({ _id: 'multimovies' });
 
       res.json({
         admin: true,
@@ -97,13 +99,13 @@ export class AdminController {
     try {
       const auth = await this.checkAdmin(req, res);
       if (!auth) return;
-      const { coll } = auth;
+      const { db } = auth;
 
       const { rootUrl, baseUrl, available } = req.body;
-      const sourceConfigsColl = coll.s.db.collection('sourceConfigs');
+      const sourceConfigsColl = db.collection('SourceConfigs');
 
       await sourceConfigsColl.updateOne(
-        { _id: 'multimovies_config' },
+        { _id: 'multimovies' },
         { 
           $set: { 
             className: 'multimovies',
@@ -116,7 +118,14 @@ export class AdminController {
         { upsert: true }
       );
 
-      res.json({ success: true });
+      res.json({ 
+        success: true,
+        multimovies: {
+          available: available !== false,
+          rootUrl: rootUrl,
+          baseUrl: baseUrl
+        }
+      });
     } catch (err: any) {
       logger.error(`[AdminController] updateMultimovies error: ${err.message}`);
       res.status(500).json({ error: 'Internal Server Error' });

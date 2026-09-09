@@ -33,8 +33,8 @@ export function AdminPage() {
   useEffect(() => {
     if (adminInfo?.multimovies) {
       setMultimoviesForm({
-        rootUrl: adminInfo.multimovies?.rootUrls?.[0] || '',
-        baseUrl: adminInfo.multimovies?.baseUrls?.[0] || ''
+        rootUrl: adminInfo.multimovies?.rootUrl || '',
+        baseUrl: adminInfo.multimovies?.baseUrl || ''
       });
     }
   }, [adminInfo]);
@@ -72,8 +72,8 @@ export function AdminPage() {
       const multimovies = response?.multimovies;
       queryClient.setQueryData(['adminMe'], (old) => ({ ...old, multimovies }));
       setMultimoviesForm({
-        rootUrl: multimovies?.rootUrls?.[0] || '',
-        baseUrl: multimovies?.baseUrls?.[0] || ''
+        rootUrl: multimovies?.rootUrl || '',
+        baseUrl: multimovies?.baseUrl || ''
       });
       toast('Multimovies config updated');
     },
