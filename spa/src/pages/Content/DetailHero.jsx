@@ -208,6 +208,19 @@ export function DetailHero({
               {currentPosterIndex + 1} / {posters.length}
             </div>
           )}
+
+          {/* Preload adjacent posters for smooth swiping */}
+          {hasPosters && posters.length > 1 && [-2, -1, 1, 2].map(offset => {
+            const index = (currentPosterIndex + offset + posters.length) % posters.length;
+            return (
+              <img 
+                key={`preload-${index}`} 
+                src={imageUrl(posters[index].file_path, 'original')} 
+                alt="" 
+                className="hidden" 
+              />
+            );
+          })}
         </div>
       )}
     </section>
