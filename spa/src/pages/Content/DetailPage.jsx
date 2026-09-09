@@ -157,6 +157,7 @@ export function DetailPage({ type }) {
           page.setSaveModalOpen(true);
         }}
         onPlay={handlePlayClick}
+        isPlayerOpen={!!page.playerRequest?.tmdbId}
       />
 
       {/* 2. Overview + genres */}
