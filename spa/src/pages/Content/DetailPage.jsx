@@ -31,6 +31,7 @@ import { PlayerErrorBoundary } from '../../components/player/PlayerErrorBoundary
 
 import { DetailHero } from './DetailHero.jsx';
 import { SeasonEpisodeSection } from './SeasonEpisodeSection.jsx';
+import { SimilarSection } from './SimilarSection.jsx';
 
 import {
   formatRuntime, yearFrom, getLanguageName, getPrimaryCountry,
@@ -251,7 +252,14 @@ export function DetailPage({ type }) {
         )}
       </section>
 
-      {/* 5. Modals */}
+      {/* 5. Similar Content */}
+      <SimilarSection 
+        similar={content.similar?.results} 
+        collections={page.collections} 
+        type={type} 
+      />
+
+      {/* 6. Modals */}
       <SaveToCollectionModal
         open={page.saveModalOpen}
         onClose={() => page.setSaveModalOpen(false)}
@@ -275,7 +283,7 @@ export function DetailPage({ type }) {
         saving={page.createLoading}
       />
 
-      {/* 6. Video player (rendered only when a play request is active) */}
+      {/* 7. Video player (rendered only when a play request is active) */}
       {page.playerRequest?.tmdbId && (
         <PlayerErrorBoundary onClose={() => page.setPlayerRequest(null)}>
           <VideoPlayerModal
