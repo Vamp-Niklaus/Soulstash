@@ -104,13 +104,21 @@ export class AdminController {
       const { rootUrl, baseUrl, available } = req.body;
       const sourceConfigsColl = db.collection('SourceConfigs');
 
+      const existingDoc = await sourceConfigsColl.findOne({ _id: 'multimovies' });
+      let nextBaseUrls = existingDoc?.baseUrls || [];
+      let nextRootUrls = existingDoc?.rootUrls || [];
+
+      // Prepend new URLs, removing any existing identical entries to avoid duplicates
+      nextBaseUrls = [baseUrl, ...nextBaseUrls.filter((u: string) => u !== baseUrl)];
+      nextRootUrls = [rootUrl, ...nextRootUrls.filter((u: string) => u !== rootUrl)];
+
       await sourceConfigsColl.updateOne(
         { _id: 'multimovies' },
         { 
           $set: { 
             className: 'multimovies',
-            rootUrls: [rootUrl], 
-            baseUrls: [baseUrl], 
+            rootUrls: nextRootUrls, 
+            baseUrls: nextBaseUrls, 
             available: available !== false,
             updatedAt: new Date() 
           } 
