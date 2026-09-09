@@ -263,16 +263,15 @@ export function AvatarSearchModal({ open, onClose, onSelect }) {
               const isSelected = index === selectedIndex;
               
               return (
-                <button 
-                  key={imgUrl + index} 
-                  ref={el => resultRefs.current[index] = el}
-                  onClick={() => handleSelect(item)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  onFocus={() => setSelectedIndex(index)}
-                  className={`relative text-left w-full cursor-pointer group aspect-[3/4] rounded-xl overflow-hidden bg-white/5 transition-all outline-none ${
-                    isSelected ? 'ring-4 ring-[#64FFDA] ring-offset-2 ring-offset-[#111111] scale-[1.05] shadow-[0_0_30px_rgba(100,255,218,0.4)] z-10' : 'opacity-70 hover:opacity-100 hover:ring-2 hover:ring-white/30 hover:ring-offset-2 hover:ring-offset-[#111111]'
-                  }`}
-                >
+                  <button 
+                    key={imgUrl + index} 
+                    ref={el => resultRefs.current[index] = el}
+                    onClick={() => handleSelect(item)}
+                    onFocus={() => setSelectedIndex(index)}
+                    className={`relative text-left w-full cursor-pointer group aspect-[3/4] rounded-xl overflow-hidden bg-white/5 transition-all outline-none ${
+                      isSelected ? 'ring-4 ring-[#64FFDA] ring-offset-2 ring-offset-[#111111] scale-[1.05] shadow-[0_0_30px_rgba(100,255,218,0.4)] z-10' : 'opacity-70 hover:opacity-100 hover:ring-2 hover:ring-white/30 hover:ring-offset-2 hover:ring-offset-[#111111]'
+                    }`}
+                  >
                   <img 
                     src={imgUrl} 
                     alt={name}
