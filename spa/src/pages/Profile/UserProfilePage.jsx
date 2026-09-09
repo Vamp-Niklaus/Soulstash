@@ -1,6 +1,6 @@
 import { imageUrl } from '../../utils/formatters.js';
 import { useAuthSession } from '../../hooks/index.js';
-import { getToken, clearAuthSession, apiFetch } from '../../api/client.js';
+import { getToken, clearAuthSession, apiFetch, emitAuthChange } from '../../api/client.js';
 import { collectionItemCount, normalizeCollections } from '../../utils/collectionsCache.js';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
@@ -97,6 +97,19 @@ export function UserProfilePage() {
   const customCollections = collections.filter((collection) => !['Watched', 'Watchlist'].includes(collection.name));
   const showFavorites = profilePayload?.isOwner && favoritePeople.length;
   const isOwner = profilePayload?.isOwner && auth.username === username;
+
+  // When viewing your own profile, sync avatar into localStorage so the navbar updates
+  useEffect(() => {
+    if (!isOwner || !user) return;
+    try {
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      const profileAvatar = user.avatar || null;
+      if (stored.avatar !== profileAvatar) {
+        localStorage.setItem('user', JSON.stringify({ ...stored, avatar: profileAvatar }));
+        emitAuthChange();
+      }
+    } catch {}
+  }, [isOwner, user?.avatar]);
 
   return (
     <div className="space-y-7">

@@ -50,6 +50,20 @@ export function LoginPage() {
       }
 
       saveAuthSession(payload.token, payload.user);
+
+      // Hydrate avatar: the login response may not include it,
+      // so fetch the profile right away and patch localStorage.
+      try {
+        const { apiFetch: fetchApi } = await import('../../api/client.js');
+        const profile = await fetchApi(`/api/user/profile/${encodeURIComponent(username.trim())}`);
+        if (profile?.avatar) {
+          const stored = JSON.parse(localStorage.getItem('user') || '{}');
+          localStorage.setItem('user', JSON.stringify({ ...stored, avatar: profile.avatar }));
+          const { emitAuthChange } = await import('../../api/client.js');
+          emitAuthChange();
+        }
+      } catch {}
+
       if (window.CollectionStore?.invalidate) window.CollectionStore.invalidate();
       if (window.CollectionStore?.syncCollections) window.CollectionStore.syncCollections().catch(() => {});
       toast(payload.message || 'Login successful!', 'success');
