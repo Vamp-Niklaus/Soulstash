@@ -324,7 +324,8 @@ export function UserProfilePage() {
 
       {avatarViewerOpen && (
         <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 backdrop-blur-sm animate-in fade-in duration-200"
+          className="fixed inset-0 z-[9999] flex items-center justify-center animate-in fade-in duration-200"
+          style={{ background: 'radial-gradient(circle at center, rgba(30, 30, 30, 0.8) 0%, rgba(0, 0, 0, 0.2) 60%, transparent 100%)' }}
           onClick={() => setAvatarViewerOpen(false)}
         >
           <button 
@@ -339,7 +340,7 @@ export function UserProfilePage() {
           <img 
             src={user.avatar || FALLBACK_AVATAR}
             alt={user.username}
-            className="max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl animate-in zoom-in-95 duration-200"
+            className="relative z-10 max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_80px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
             onError={(event) => {
               event.currentTarget.src = FALLBACK_AVATAR;
