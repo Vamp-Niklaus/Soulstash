@@ -36,9 +36,11 @@ export class AdminController {
       const sourceConfigsColl = db.collection('SourceConfigs');
       const multimoviesConfig = await sourceConfigsColl.findOne({ _id: 'multimovies' });
 
+      const adminMode = Number(dbUser.adminMode ?? (dbUser.showAdult === true ? 1 : 0));
       res.json({
         admin: true,
-        showAdult: dbUser.showAdult === true,
+        adminMode,
+        showAdult: adminMode === 1,
         multimovies: {
           available: multimoviesConfig?.available !== false,
           baseUrl: multimoviesConfig?.baseUrls?.[0] || 'https://multimovies.wtf/',
@@ -155,13 +157,18 @@ export class AdminController {
       if (!auth) return;
       const { coll, dbUser } = auth;
 
-      const { showAdult } = req.body;
+      const { adminMode: rawMode } = req.body;
+      const adminMode = Number(rawMode);
+      if (![0, 1, 2].includes(adminMode)) {
+        return res.status(400).json({ error: 'adminMode must be 0, 1, or 2' });
+      }
+
       await coll.updateOne(
         { username: dbUser.username },
-        { $set: { showAdult: !!showAdult, updatedAt: new Date() } }
+        { $set: { adminMode, showAdult: adminMode === 1, updatedAt: new Date() } }
       );
 
-      res.json({ success: true, showAdult: !!showAdult });
+      res.json({ success: true, adminMode, showAdult: adminMode === 1 });
     } catch (err: any) {
       logger.error(`[AdminController] updatePreferences error: ${err.message}`);
       res.status(500).json({ error: 'Internal Server Error' });

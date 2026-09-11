@@ -50,17 +50,20 @@ export function AdminPage() {
   });
 
   const preferencesMutation = useMutation({
-    mutationFn: (showAdult) => apiFetch('/api/admin/preferences', {
+    mutationFn: (adminMode) => apiFetch('/api/admin/preferences', {
       method: 'POST',
-      body: JSON.stringify({ showAdult })
+      body: JSON.stringify({ adminMode })
     }),
     onSuccess: (response) => {
+      const newMode = Number(response?.adminMode ?? 0);
       queryClient.setQueryData(['adminMe'], (old) => ({
         ...old,
-        showAdult: Boolean(response?.showAdult)
+        adminMode: newMode,
+        showAdult: newMode === 1
       }));
-      saveAuthSession(getToken(), { ...auth.user, admin: true, showAdult: Boolean(response?.showAdult) });
-      toast(response?.showAdult ? 'Admin mode enabled' : 'Admin mode disabled');
+      saveAuthSession(getToken(), { ...auth.user, admin: true, adminMode: newMode, showAdult: newMode === 1 });
+      const labels = ['Admin mode off (filtered)', 'Normal + Adult mode', 'Adult Only mode'];
+      toast(labels[newMode] || 'Preference updated');
     },
     onError: (error) => {
       toast(error.message, 'error');
@@ -104,7 +107,16 @@ export function AdminPage() {
     return <div className="app-error">Admin access only. {adminErrorObj ? `(${adminErrorObj.message})` : '(No admin info)'}</div>;
   }
 
-  const showAdult = Boolean(adminInfo.showAdult);
+  const adminMode = Number(adminInfo.adminMode ?? (adminInfo.showAdult ? 1 : 0));
+
+  // Cycle: 0 -> 1 -> 2 -> 0
+  const ADMIN_MODES = [
+    { label: 'Filter On', desc: 'Adult content hidden', icon: 'fa-shield-alt', color: 'text-green-400' },
+    { label: 'All Content', desc: 'Normal + Adult shown', icon: 'fa-eye', color: 'text-[#8f44f0]' },
+    { label: 'Adult Only', desc: 'Only adult content', icon: 'fa-fire', color: 'text-red-400' },
+  ];
+  const currentMode = ADMIN_MODES[adminMode] || ADMIN_MODES[0];
+  const nextMode = (adminMode + 1) % 3;
 
   return (
     <div className="space-y-8">
@@ -137,12 +149,14 @@ export function AdminPage() {
           <div className="flex w-full flex-col gap-3 lg:w-auto lg:items-end">
             <button
               type="button"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.12] disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-white transition-all hover:bg-white/[0.12] disabled:opacity-60"
               disabled={preferencesMutation.isPending}
-              onClick={() => preferencesMutation.mutate(!showAdult)}
+              onClick={() => preferencesMutation.mutate(nextMode)}
+              title={`Click to switch to: ${ADMIN_MODES[nextMode].label}`}
             >
-              <i className={`fas ${showAdult ? 'fa-eye' : 'fa-eye-slash'}`}></i>
-              <span>{showAdult ? 'Admin mode on' : 'Admin mode off'}</span>
+              <i className={`fas ${currentMode.icon} ${currentMode.color}`}></i>
+              <span className={currentMode.color}>{currentMode.label}</span>
+              <span className="text-white/40 text-xs">({currentMode.desc})</span>
             </button>
             <input
               type="text"

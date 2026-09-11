@@ -286,7 +286,9 @@ export class GatewayFacade {
       try {
         const fetch = global.fetch || require('node-fetch');
         const searchParams = new URLSearchParams(req.query as any).toString();
-        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/movies?${searchParams}`);
+        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/movies?${searchParams}`, {
+          headers: { ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}) }
+        });
         const data = await proxyRes.json();
         res.json(data);
       } catch (err) {
@@ -296,10 +298,40 @@ export class GatewayFacade {
     });
 
     this.app.get('/api/movies/:id', (req, res) => proxyTMDB(req, res, `/3/movie/${req.params.id}?append_to_response=videos,similar,images`));
-    this.app.get('/api/movies/:id/similar', (req, res) => proxyTMDB(req, res, `/3/movie/${req.params.id}/similar?page=${req.query.page || 1}`));
+    this.app.get('/api/movies/:id/similar', async (req: Request, res: Response) => {
+      try {
+        const fetch = global.fetch || require('node-fetch');
+        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/movies/${req.params.id}/similar?page=${req.query.page || 1}`, {
+          headers: { ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}) }
+        });
+        if (proxyRes.headers.get('content-type')?.includes('application/json')) {
+          res.status(proxyRes.status).json(await proxyRes.json());
+        } else {
+          res.status(proxyRes.status).send(await proxyRes.text());
+        }
+      } catch (err) {
+        logger.error(`Content Service Proxy Error (similar): ${err}`);
+        res.status(502).json({ error: 'Content Service is unavailable' });
+      }
+    });
     this.app.get('/api/movie/:id/credits', (req, res) => proxyTMDB(req, res, `/3/movie/${req.params.id}/credits`));
     this.app.get('/api/series/:id', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}?append_to_response=videos,similar,images`));
-    this.app.get('/api/series/:id/similar', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/similar?page=${req.query.page || 1}`));
+    this.app.get('/api/series/:id/similar', async (req: Request, res: Response) => {
+      try {
+        const fetch = global.fetch || require('node-fetch');
+        const proxyRes = await fetch(`${CONTENT_SERVICE_URL}/series/${req.params.id}/similar?page=${req.query.page || 1}`, {
+          headers: { ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}) }
+        });
+        if (proxyRes.headers.get('content-type')?.includes('application/json')) {
+          res.status(proxyRes.status).json(await proxyRes.json());
+        } else {
+          res.status(proxyRes.status).send(await proxyRes.text());
+        }
+      } catch (err) {
+        logger.error(`Content Service Proxy Error (similar series): ${err}`);
+        res.status(502).json({ error: 'Content Service is unavailable' });
+      }
+    });
     this.app.get('/api/series/:id/credits', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/credits`));
     this.app.get('/api/series/:id/season/:season', (req, res) => proxyTMDB(req, res, `/3/tv/${req.params.id}/season/${req.params.season}`));
     this.app.get('/api/person/:id', (req, res) => proxyTMDB(req, res, `/3/person/${req.params.id}?language=en-US`));
@@ -385,9 +417,10 @@ export class GatewayFacade {
         const searchParams = new URLSearchParams(req.query as any).toString();
         const suffix = req.path === '/' ? '' : req.path;
         const proxyUrl = `${CONTENT_SERVICE_URL}/search${suffix}${searchParams ? '?' + searchParams : ''}`;
-        const proxyRes = await fetch(proxyUrl);
+        const proxyRes = await fetch(proxyUrl, {
+          headers: { ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}) }
+        });
         
-        // Check if response is ndjson
         if (req.query.stream === '1') {
           res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
           const text = await proxyRes.text();

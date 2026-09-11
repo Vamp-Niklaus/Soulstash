@@ -4,12 +4,14 @@ import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { getCollectionStatus } from '../../utils/formatters.js';
 import { useAuthSession, useInfiniteScroll } from '../../hooks/index.js';
-import { apiFetch } from '../../api/client.js';
+import { apiFetch, getToken } from '../../api/client.js';
 import { preloadImages } from '../../utils/preload.js';
 
 export function SimilarSection({ similar = [], collections = [], type = 'movie' }) {
   const { id } = useParams();
   const { user } = useAuthSession();
+  // adminMode: 0=filter adult (default), 1=all, 2=adult only
+  const adminMode = user?.admin === true ? Number(user?.adminMode ?? (user?.showAdult ? 1 : 0)) : 0;
   
   const [items, setItems] = useState([]);
   const [page, setPage] = useState(1);
@@ -19,16 +21,19 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
   // Initialize with the first page from the props
   useEffect(() => {
     if (similar && similar.length > 0) {
-      const initialItems = similar.filter(item => item.poster_path);
+      // Apply client-side adult filter based on adminMode
+      const initialItems = similar.filter(item => {
+        if (!item.poster_path) return false;
+        if (adminMode === 2) return item.adult === true;
+        if (adminMode === 0) return item.adult !== true;
+        return true; // adminMode 1: show all
+      });
       setItems(initialItems);
       setPage(1);
-      // TMDB returns up to 20 results per page, if it's less, there's no more
       setHasMore(similar.length === 20);
-      
-      // Preload the initial images just in case
       preloadImages(initialItems.map(item => item.poster_path));
     }
-  }, [similar, id]);
+  }, [similar, id, adminMode]);
 
   const loadMore = async () => {
     if (loading || !hasMore) return;
@@ -39,15 +44,22 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
         ? `/api/movies/${id}/similar?page=${nextPage}` 
         : `/api/series/${id}/similar?page=${nextPage}`;
       
-      const data = await apiFetch(endpoint);
+      // Forward auth token so backend can apply adminMode filter
+      const token = getToken();
+      const data = await apiFetch(endpoint, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       if (data && data.results) {
-        const newItems = data.results.filter(
-          newItem => newItem.poster_path && !items.some(existingItem => existingItem.id === newItem.id)
-        );
+        // Also apply client-side safety filter
+        const newItems = data.results.filter(newItem => {
+          if (!newItem.poster_path) return false;
+          if (items.some(existingItem => existingItem.id === newItem.id)) return false;
+          if (adminMode === 2) return newItem.adult === true;
+          if (adminMode === 0) return newItem.adult !== true;
+          return true;
+        });
         
-        // Aggressively preload images for the newly fetched page
         preloadImages(newItems.map(item => item.poster_path));
-        
         setItems(prev => [...prev, ...newItems]);
         setPage(nextPage);
         setHasMore(data.page < data.total_pages && data.results.length > 0);

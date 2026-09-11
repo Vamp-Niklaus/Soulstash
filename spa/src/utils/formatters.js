@@ -481,14 +481,24 @@ export function saveSearchHistoryItem(item) {
 /**
  * SIMPLIFIED: Merges incoming streaming API search results with current results, deduplicating via Set,
  * and sorts by relevance/score.
+ * @param {number} adminMode - 0=filter adult, 1=show all, 2=adult only (only applies to Movie/Series, not People)
  */
-export function mergeSearchResults(currentResults, incomingResults, limit = 40) {
+export function mergeSearchResults(currentResults, incomingResults, limit = 40, adminMode = 0) {
   const mergedMap = new Map();
 
   // Deduplicate and filter bad data
   for (const item of [...currentResults, ...incomingResults]) {
-    if (!item || item.adult === true) continue;
-    if (['Movie', 'Series', 'tv'].includes(item.media_type) && Number(item.score || 0) <= 25) continue;
+    if (!item) continue;
+    
+    // Apply adult filter only to content (Movie/Series), not people
+    const isContent = ['Movie', 'Series', 'tv', 'movie'].includes(item.media_type);
+    if (isContent) {
+      if (adminMode === 2 && item.adult !== true) continue;        // adult only: skip non-adult
+      if (adminMode === 0 && item.adult === true) continue;         // filter on: skip adult
+      // adminMode === 1: allow everything
+    }
+
+    if (isContent && Number(item.score || 0) <= 25) continue;
     
     const key = `${item.media_type}:${item.id || item.username || item.title}`;
     if (!mergedMap.has(key)) mergedMap.set(key, item);

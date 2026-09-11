@@ -35,6 +35,8 @@ app.get('/ping', (req, res) => {
 });
 app.get('/trending', contentController.getTrending.bind(contentController));
 app.get('/movies', contentController.getMoviesByGenre.bind(contentController));
+app.get('/movies/:id/similar', (req, res) => contentController.getSimilar(req, res, 'movie'));
+app.get('/series/:id/similar', (req, res) => contentController.getSimilar(req, res, 'tv'));
 app.get('/search', contentController.search.bind(contentController));
 app.get('/tmdb-proxy', contentController.proxyTMDB.bind(contentController));
 app.get('/person/:id/credits', contentController.getPersonCredits.bind(contentController));

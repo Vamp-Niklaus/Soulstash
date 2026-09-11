@@ -62,19 +62,20 @@ export class ContentController {
       .catch(() => []);
   }
 
-  private async canViewAdultContent(req: Request): Promise<boolean> {
+  /** Returns the admin mode (0=filter, 1=show all, 2=adult only). Non-admins always get 0. */
+  private async getAdminMode(req: Request): Promise<0 | 1 | 2> {
     try {
       const authHeader = req.headers.authorization || '';
       const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-      if (!token) return false;
+      if (!token) return 0;
 
       const secret = config.get('jwtSecret') || 'fallback_secret';
       const decoded: any = jwt.verify(token, secret);
       const username = String(decoded?.username || '').trim();
-      if (!username) return false;
+      if (!username) return 0;
 
       const mongoUri = config.get('mongoUri');
-      if (!mongoUri) return false;
+      if (!mongoUri) return 0;
 
       if (!this.usersClient) {
         this.usersClient = new MongoClient(mongoUri);
@@ -84,11 +85,13 @@ export class ContentController {
       const dbName = config.get('mongoDbName') || 'test';
       const user = await this.usersClient.db(dbName).collection('users').findOne(
         { username: { $regex: new RegExp(`^${username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
-        { projection: { admin: 1, showAdult: 1 } }
+        { projection: { admin: 1, adminMode: 1, showAdult: 1 } }
       );
-      return user?.admin === true && user?.showAdult === true;
+      // Only admins can change the mode; for non-admins always filter
+      if (user?.admin !== true) return 0;
+      return (Number(user?.adminMode ?? (user?.showAdult === true ? 1 : 0)) as 0 | 1 | 2);
     } catch {
-      return false;
+      return 0;
     }
   }
 
@@ -107,23 +110,19 @@ export class ContentController {
   // }
 
 
-private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
-  // 1. Handle adult content visibility explicitly
-  if (item?.adult === true && !canViewAdult) return false;
+private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
+  // Admin mode 2 = adult only (reverse filter — only show adult credits)
+  if (adminMode === 2) return item?.adult === true;
+  // Admin mode 0 = filter out adult content
+  if (item?.adult === true && adminMode === 0) return false;
+  // adminMode 1 or item is not adult: continue with quality checks
 
-  // 2. Extract values safely
   const votes = Number(item?.vote_count || 0);
   const hasNoImdbId = !item?.imdb_id || String(item?.imdb_id).trim() === '';
+  if (votes <= 0 && hasNoImdbId) return false;
 
-  // 3. Reject if vote count is 0 (or less) AND there is no IMDb ID
-  if (votes <= 0 && hasNoImdbId) {
-    return false;
-  }
-
-  // 4. Validate dates/years
   const releaseDate = String(item?.release_date || item?.first_air_date || '').trim();
   const year = Number(item?.year || item?.release_year || 0);
-
   return (releaseDate.length > 0) || (Number.isFinite(year) && year > 0);
 }
 
@@ -279,6 +278,13 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
         return;
       }
 
+      const adminMode = await this.getAdminMode(req);
+      const filterMovies = (movies: any[]) => {
+        if (adminMode === 0) return movies.filter((m: any) => m?.adult !== true);
+        if (adminMode === 2) return movies.filter((m: any) => m?.adult === true);
+        return movies;
+      };
+
       if (page === 1 && limit === 36) {
         const cacheKey = `genre_${genre}_page_1`;
         const cached = await this.cacheRepo.getCache(cacheKey);
@@ -293,7 +299,7 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
           } else {
             logger.info(`[ContentController] Serving ${cacheKey} from cache`);
           }
-          res.json(cached.data);
+          res.json({ ...cached.data, movies: filterMovies(cached.data.movies) });
           return;
         }
 
@@ -301,16 +307,46 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
         const { movies, totalPages } = await this.provider.getCategoryItems(genre, page, limit);
         const payload = { movies, pagination: { page, limit, pages: totalPages } };
         await this.cacheRepo.setCache(cacheKey, payload);
-        res.json(payload);
+        res.json({ ...payload, movies: filterMovies(payload.movies) });
         return;
       }
 
       logger.info(`[ContentController] Fetching movies for genre=${genre} page=${page} limit=${limit}`);
       const { movies, totalPages } = await this.provider.getCategoryItems(genre, page, limit);
-      res.json({ movies, pagination: { page, limit, pages: totalPages } });
+      res.json({ movies: filterMovies(movies), pagination: { page, limit, pages: totalPages } });
     } catch (error: any) {
       logger.error(`[ContentController] Error fetching movies by genre: ${error.message}`);
       res.status(500).json({ error: 'Failed to load genre movies' });
+    }
+  }
+
+  public async getSimilar(req: Request, res: Response, mediaType: 'movie' | 'tv'): Promise<void> {
+    try {
+      const { id } = req.params;
+      const page = req.query.page || 1;
+      const adminMode = await this.getAdminMode(req);
+      const tmdbPath = mediaType === 'movie' 
+        ? `/3/movie/${id}/similar?page=${page}` 
+        : `/3/tv/${id}/similar?page=${page}`;
+      
+      let data;
+      try {
+        data = await this.provider.getRawTMDB(tmdbPath);
+      } catch (err: any) {
+        if (err.message && err.message.includes('404')) {
+          res.json({ page: Number(page), results: [], total_pages: 0, total_results: 0 });
+          return;
+        }
+        throw err;
+      }
+
+      let results = Array.isArray(data?.results) ? data.results : [];
+      if (adminMode === 0) results = results.filter((item: any) => item?.adult !== true);
+      else if (adminMode === 2) results = results.filter((item: any) => item?.adult === true);
+      res.json({ ...data, results });
+    } catch (err: any) {
+      logger.error(`[ContentController] getSimilar error: ${err.message}`);
+      res.status(500).json({ error: 'Failed to load similar content' });
     }
   }
 
@@ -320,6 +356,7 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
       const stream = req.query.stream as string;
       const type = (req.query.type as string) || 'content';
       const limit = parseInt(req.query.limit as string) || 40;
+      const adminMode = await this.getAdminMode(req);
 
       if (!q || q.length < 2) {
         res.json({ query: q || '', results: [] });
@@ -360,7 +397,12 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
 
         const normalizeChunk = (items: any[], mediaType: string) => {
           return (Array.isArray(items) ? items : [])
-            .filter(item => item?.id && item?.adult !== true)
+            .filter(item => {
+              if (!item?.id) return false;
+              if (adminMode === 2) return item?.adult === true; // adult only
+              if (adminMode === 1) return true; // show all
+              return item?.adult !== true; // mode 0: filter out adult
+            })
             .map(item => {
               if (mediaType === 'person') {
                 return {
@@ -396,7 +438,7 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
 
         const fetchPage = async (tmdbType: string, query: string, page: number, year: string | null = null) => {
           if (clientClosed) return;
-          let url = `/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=false&language=en-US&page=${page}`;
+          let url = `/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${adminMode === 0 ? 'false' : 'true'}&language=en-US&page=${page}`;
           if (year && tmdbType !== 'person') url += (tmdbType === 'movie' ? `&year=${year}` : `&first_air_date_year=${year}`);
           
           try {
@@ -455,7 +497,7 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
 
       const queuePages = (tmdbType: string, query: string, maxPages: number, year: string | null = null) => {
         for (let page = 1; page <= maxPages; page++) {
-          let url = `/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=false&language=en-US&page=${page}`;
+          let url = `/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${adminMode === 0 ? 'false' : 'true'}&language=en-US&page=${page}`;
           if (year && tmdbType !== 'person') url += (tmdbType === 'movie' ? `&year=${year}` : `&first_air_date_year=${year}`);
           promises.push(
             this.provider.getRawTMDB(url)
@@ -493,8 +535,16 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
       if (type === 'content' || type === 'all') {
         const seen = new Set<string>();
         const scored = [
-          ...allMovies.filter((item) => item?.adult !== true).map((m) => normalize(m, 'movie')),
-          ...allTv.filter((item) => item?.adult !== true).map((t) => normalize(t, 'tv'))
+          ...allMovies.filter((item) => {
+            if (adminMode === 2) return item?.adult === true;
+            if (adminMode === 1) return true;
+            return item?.adult !== true;
+          }).map((m) => normalize(m, 'movie')),
+          ...allTv.filter((item) => {
+            if (adminMode === 2) return item?.adult === true;
+            if (adminMode === 1) return true;
+            return item?.adult !== true;
+          }).map((t) => normalize(t, 'tv'))
         ]
           .map((item) => ({
             ...item,
@@ -725,7 +775,7 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
     try {
       const personId = req.params.id;
       logger.info(`[ContentController] Fetching person credits personId=${personId}`);
-      const canViewAdult = await this.canViewAdultContent(req);
+      const adminMode = await this.getAdminMode(req);
 
       // Fetch person detail (for imdb_id) + credits in parallel
       const [personDetail, payload] = await Promise.all([
@@ -735,10 +785,10 @@ private shouldSendPersonCredit(item: any, canViewAdult: boolean): boolean {
       const imdbPersonId: string = (personDetail as any)?.imdb_id || '';
 
       const cast: any[] = (Array.isArray(payload.cast) ? payload.cast : []).filter(
-        (item: any) => this.shouldSendPersonCredit(item, canViewAdult)
+        (item: any) => this.shouldSendPersonCredit(item, adminMode)
       );
       const crew: any[] = (Array.isArray(payload.crew) ? payload.crew : []).filter(
-        (item: any) => this.shouldSendPersonCredit(item, canViewAdult)
+        (item: any) => this.shouldSendPersonCredit(item, adminMode)
       );
 
       // Stream response as NDJSON so the frontend can render credits immediately

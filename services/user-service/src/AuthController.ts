@@ -57,6 +57,7 @@ export class AuthController {
           username: fullUser.username,
           fullName: fullUser.fullName || '',
           admin: fullUser.admin === true,
+          adminMode: Number(fullUser.adminMode ?? (fullUser.showAdult === true ? 1 : 0)),
           showAdult: fullUser.showAdult === true,
           avatar: fullUser.avatar || null
         }
@@ -108,6 +109,7 @@ export class AuthController {
         username: user.username,
         fullName: user.fullName || '',
         admin: user.admin === true,
+        adminMode: Number(user.adminMode ?? (user.showAdult === true ? 1 : 0)),
         showAdult: user.showAdult === true,
         avatar: user.avatar || null
       } });
