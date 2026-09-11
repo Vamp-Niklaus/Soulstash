@@ -12,7 +12,7 @@ import { HomePageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { HomeShelfHeader } from './HomeShelfHeader.jsx';
 import { LazyCategoryShelf } from './LazyCategoryShelf.jsx';
-
+import { preloadImages } from '../../utils/preload.js';
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -53,9 +53,21 @@ export function HomePage() {
 
   const homeShelfLimit = useHomeTwoRowLimit();
 
+  // Aggressively preload images for trending and preloaded categories
+  useEffect(() => {
+    if (trending.length > 0) {
+      preloadImages(trending.slice(0, homeShelfLimit).map(item => item.poster_path));
+    }
+    
+    // Preload first row for each pre-filled category
+    Object.values(categoryData).forEach(movies => {
+      if (Array.isArray(movies) && movies.length > 0) {
+        preloadImages(movies.slice(0, homeShelfLimit).map(item => item.poster_path));
+      }
+    });
+  }, [trending, categoryData, homeShelfLimit]);
 
   const firstCardRef = useRef(null);
-
 
   if (loading && !error) {
     return <HomePageSkeleton />;

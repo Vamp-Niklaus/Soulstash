@@ -5,6 +5,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
+import { preloadImages } from '../../utils/preload.js';
 
 const TMDB_GENRE_NAMES = {
   28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
@@ -47,6 +48,15 @@ export function GenrePage() {
 
   const items = data ? data.pages.flatMap((page) => Array.isArray(page.movies) ? page.movies : []) : [];
 
+  // Aggressively preload images as soon as new items are added to the list
+  useEffect(() => {
+    if (items.length > 0) {
+      // Just extract the poster_paths of the items
+      const newImagePaths = items.map(item => item.poster_path).filter(Boolean);
+      preloadImages(newImagePaths);
+    }
+  }, [items.length]); // Only re-run when length changes (new page loaded)
+
   // Sentinel ref — fires once when the sentinel div enters the viewport
   const observerRef = useRef(null);
   const sentinelRef = useCallback((node) => {
@@ -66,7 +76,7 @@ export function GenrePage() {
           fetchNextPage();
         }
       },
-      { rootMargin: '300px' }
+      { rootMargin: '2000px' } // Aggressively fetch 2 pages in advance
     );
     observerRef.current.observe(node);
   }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage]);

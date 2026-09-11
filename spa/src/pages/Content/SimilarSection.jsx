@@ -3,8 +3,9 @@ import { useParams } from 'react-router-dom';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { getCollectionStatus } from '../../utils/formatters.js';
-import { useAuthSession } from '../../hooks/index.js';
+import { useAuthSession, useInfiniteScroll } from '../../hooks/index.js';
 import { apiFetch } from '../../api/client.js';
+import { preloadImages } from '../../utils/preload.js';
 
 export function SimilarSection({ similar = [], collections = [], type = 'movie' }) {
   const { id } = useParams();
@@ -18,10 +19,14 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
   // Initialize with the first page from the props
   useEffect(() => {
     if (similar && similar.length > 0) {
-      setItems(similar.filter(item => item.poster_path));
+      const initialItems = similar.filter(item => item.poster_path);
+      setItems(initialItems);
       setPage(1);
       // TMDB returns up to 20 results per page, if it's less, there's no more
       setHasMore(similar.length === 20);
+      
+      // Preload the initial images just in case
+      preloadImages(initialItems.map(item => item.poster_path));
     }
   }, [similar, id]);
 
@@ -36,13 +41,14 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
       
       const data = await apiFetch(endpoint);
       if (data && data.results) {
-        setItems(prev => {
-          // Filter out duplicates just in case and items without posters
-          const newItems = data.results.filter(
-            newItem => newItem.poster_path && !prev.some(existingItem => existingItem.id === newItem.id)
-          );
-          return [...prev, ...newItems];
-        });
+        const newItems = data.results.filter(
+          newItem => newItem.poster_path && !items.some(existingItem => existingItem.id === newItem.id)
+        );
+        
+        // Aggressively preload images for the newly fetched page
+        preloadImages(newItems.map(item => item.poster_path));
+        
+        setItems(prev => [...prev, ...newItems]);
         setPage(nextPage);
         setHasMore(data.page < data.total_pages && data.results.length > 0);
       } else {
@@ -55,6 +61,13 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
       setLoading(false);
     }
   };
+
+  const sentinelRef = useInfiniteScroll({
+    onLoadMore: loadMore,
+    hasMore,
+    isLoading: loading,
+    rootMargin: '2000px' // aggressive prefetching threshold
+  });
 
   if (!items || items.length === 0) return null;
 
@@ -80,14 +93,8 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
       </div>
 
       {hasMore && (
-        <div className="mt-8 flex justify-center">
-          <button
-            onClick={loadMore}
-            disabled={loading}
-            className="rounded-full bg-white/10 px-8 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/20 active:scale-95 disabled:opacity-50"
-          >
-            {loading ? 'Loading...' : 'Show More'}
-          </button>
+        <div ref={sentinelRef} className="mt-8 flex justify-center h-10">
+          {loading && <div className="app-loading">Loading more...</div>}
         </div>
       )}
     </section>
