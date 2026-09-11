@@ -399,6 +399,7 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
           return (Array.isArray(items) ? items : [])
             .filter(item => {
               if (!item?.id) return false;
+              if (mediaType === 'person') return true; // Bypass adult filter for cast/crew
               if (adminMode === 2) return item?.adult === true; // adult only
               if (adminMode === 1) return true; // show all
               return item?.adult !== true; // mode 0: filter out adult
