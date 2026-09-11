@@ -118,9 +118,9 @@ export function TrafficPanel() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-[#e2e2e2]">
               <thead className="text-xs uppercase tracking-[0.1em] text-[#8f44f0] border-b border-white/10">
-                <tr>
                   <th className="pb-3 font-medium">Location</th>
                   <th className="pb-3 font-medium">IP Address</th>
+                  <th className="pb-3 font-medium">User(s)</th>
                   <th className="pb-3 font-medium">Requests</th>
                   <th className="pb-3 font-medium">Last Active</th>
                 </tr>
@@ -131,13 +131,24 @@ export function TrafficPanel() {
                     <tr key={idx}>
                       <td className="py-4">{loc.country ? `${loc.city || 'Unknown'}, ${loc.country}` : 'Unknown'}</td>
                       <td className="py-4">{loc.ip}</td>
+                      <td className="py-4">
+                        {loc.users && loc.users.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {loc.users.map(u => (
+                              <span key={u} className="px-2 py-0.5 bg-[#8f44f0]/20 text-[#8f44f0] rounded-md text-xs">{u}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-white/30 text-xs italic">Guest</span>
+                        )}
+                      </td>
                       <td className="py-4 font-medium text-white">{loc.count}</td>
                       <td className="py-4 text-[#a6a6a6]">{new Date(loc.lastActive).toLocaleString()}</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="4" className="py-8 text-center text-[#a6a6a6]">No location data available yet.</td>
+                    <td colSpan="5" className="py-8 text-center text-[#a6a6a6]">No location data available yet.</td>
                   </tr>
                 )}
               </tbody>

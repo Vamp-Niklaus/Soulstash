@@ -289,19 +289,24 @@ export class AdminController {
             count: { $sum: 1 },
             city: { $first: "$city" },
             country: { $first: "$country" },
-            lastActive: { $max: "$createdAt" }
+            lastActive: { $max: "$createdAt" },
+            usernames: { $addToSet: "$username" }
           } 
         },
         { $sort: { count: -1 } },
         { $limit: 50 }
       ]).toArray();
-      const locations = locationsData.map((loc: any) => ({
-        ip: loc._id || 'Unknown',
-        city: loc.city,
-        country: loc.country,
-        count: loc.count,
-        lastActive: loc.lastActive
-      }));
+      const locations = locationsData.map((loc: any) => {
+        const activeUsers = (loc.usernames || []).filter((u: string) => u && u !== 'anonymous');
+        return {
+          ip: loc._id || 'Unknown',
+          city: loc.city,
+          country: loc.country,
+          count: loc.count,
+          lastActive: loc.lastActive,
+          users: activeUsers.length > 0 ? activeUsers : null
+        };
+      });
 
       // Time series: Group by YYYY-MM-DD
       const timeSeriesData = await trafficColl.aggregate([
