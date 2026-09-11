@@ -57,6 +57,7 @@ app.post('/admin/preferences', (req, res) => adminController.updatePreferences(r
 app.post('/admin/multimovies', (req, res) => adminController.updateMultimovies(req, res));
 app.post('/admin/trafficLogs', (req, res) => adminController.postTrafficLogs(req, res));
 app.get('/admin/trafficLogs/stats', (req, res) => adminController.getTrafficStats(req, res));
+app.get('/admin/users/:username/profile', extractUser, (req, res) => adminController.getUserProfile(req, res));
 app.post('/admin/users/:username/avatar', extractUser, upload.single('avatar'), (req, res) => adminController.updateAvatar(req, res));
 
 

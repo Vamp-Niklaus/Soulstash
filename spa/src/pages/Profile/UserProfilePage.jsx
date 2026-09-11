@@ -20,6 +20,8 @@ import { AvatarSearchModal } from '../../components/ui/Modals/AvatarSearchModal.
 export function UserProfilePage() {
   const { username = '' } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdminView = location.pathname.startsWith('/admin/user');
   const auth = useAuthSession();
   const queryClient = useQueryClient();
   const [favoriteRemoveTarget, setFavoriteRemoveTarget] = useState(null);
@@ -31,8 +33,8 @@ export function UserProfilePage() {
   }, [username]);
 
   const { data: profilePayload, isLoading: loading, isError, error } = useQuery({
-    queryKey: ['profile', username],
-    queryFn: () => apiFetch(`/api/user/profile/${encodeURIComponent(username)}`)
+    queryKey: ['profile', username, isAdminView],
+    queryFn: () => apiFetch(isAdminView ? `/api/admin/users/${encodeURIComponent(username)}/profile` : `/api/user/profile/${encodeURIComponent(username)}`)
   });
 
   const followMutation = useMutation({
@@ -150,7 +152,7 @@ export function UserProfilePage() {
               <button 
                 type="button"
                 onClick={() => {
-                  if (auth.user?.admin === true && !isOwner) {
+                  if (isAdminView) {
                     setAvatarSearchOpen(true);
                   } else {
                     setAvatarViewerOpen(true);
@@ -166,11 +168,9 @@ export function UserProfilePage() {
                     event.currentTarget.src = FALLBACK_AVATAR;
                   }}
                 />
-                {auth.user?.admin === true && !isOwner && (
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-white">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
+                {(isOwner || isAdminView) && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                    <i className="fas fa-pencil-alt text-white/80"></i>
                   </div>
                 )}
               </button>
@@ -199,51 +199,57 @@ export function UserProfilePage() {
           </div>
 
           <div className="flex w-full flex-col items-stretch gap-4 lg:w-auto lg:min-w-[340px] lg:items-end">
-            {isOwner ? (
-              <div className="flex w-full flex-wrap justify-start gap-3 lg:justify-end">
+            <div className="flex w-full items-center justify-end gap-3 lg:w-auto">
+              {isAdminView ? (
+                <span className="inline-flex items-center gap-2 rounded-2xl bg-[#8f44f0]/20 px-4 py-2 text-sm font-medium text-[#8f44f0]">
+                  <i className="fas fa-shield-alt"></i> Admin View
+                </span>
+              ) : isOwner ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/edit')}
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-white/[0.06] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.12] lg:flex-none"
+                  >
+                    <i className="fas fa-edit opacity-70"></i>
+                    <span>Edit Profile</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full bg-white/[0.08] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.14]"
+                    onClick={() => {
+                      clearAuthSession();
+                      toast('Logged out', 'success');
+                      navigate('/login');
+                    }}
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
                 <button
                   type="button"
-                  className="rounded-full bg-white/[0.08] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.14]"
-                  onClick={() => navigate('/edit')}
-                >
-                  Edit Profile
-                </button>
-                <button
-                  type="button"
-                  className="rounded-full bg-white/[0.08] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.14]"
                   onClick={() => {
-                    clearAuthSession();
-                    toast('Logged out', 'success');
-                    navigate('/login');
-                  }}
-                >
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <div className="flex w-full flex-wrap justify-start gap-3 lg:justify-end">
-                <button
-                  type="button"
-                  className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-[#e6e6e6]"
-                  onClick={() => {
-                    if (!getToken()) {
+                    if (!auth.isLoggedIn) {
+                      toast('Please login to follow users');
                       navigate('/login');
                       return;
                     }
-                    if (isFollowing) {
-                      unfollowMutation.mutate();
-                    } else {
-                      followMutation.mutate();
-                    }
+                    if (isFollowing) unfollowMutation.mutate();
+                    else followMutation.mutate();
                   }}
+                  disabled={followMutation.isPending || unfollowMutation.isPending}
+                  className={`inline-flex flex-1 items-center justify-center gap-2 rounded-2xl px-6 py-3 text-sm font-medium transition-colors lg:flex-none ${
+                    isFollowing
+                      ? 'bg-white/[0.06] text-white hover:bg-white/[0.12]'
+                      : 'bg-[#8f44f0] text-white hover:bg-[#7a39d1]'
+                  } disabled:opacity-50`}
                 >
-                  {isFollowing ? 'Unfollow' : 'Follow'}
+                  <i className={`fas ${isFollowing ? 'fa-user-check' : 'fa-user-plus'} ${!isFollowing && 'opacity-90'}`}></i>
+                  <span>{isFollowing ? 'Following' : 'Follow'}</span>
                 </button>
-                {isFollowedBy ? (
-                  <span className="self-center text-xs uppercase tracking-[0.18em] text-[#9a9a9a]">Follows you</span>
-                ) : null}
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="grid w-full grid-cols-3 gap-2 md:flex md:flex-wrap md:justify-start md:gap-3 lg:justify-end">
               <div className="rounded-2xl bg-white/[0.04] px-3 py-2.5 md:px-4 md:py-3">

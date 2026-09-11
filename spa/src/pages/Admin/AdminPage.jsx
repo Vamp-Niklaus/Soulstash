@@ -219,7 +219,7 @@ export function AdminPage() {
         ) : (
           <section className="admin-grid grid grid-cols-1 xl:grid-cols-2 gap-5">
             {filteredUsers.map((user, userIndex) => (
-              <Link key={user.id || user._id || user.username || `user-${userIndex}`} to={`/user/${user.username}`} className="block">
+              <Link key={user.id || user._id || user.username || `user-${userIndex}`} to={`/admin/user/${user.username}`} className="block">
                 <article className="admin-user-card rounded-[24px] p-6 hover:bg-white/[0.02] transition-colors h-full border border-transparent hover:border-white/5">
                   <div className="flex items-start gap-4">
                   <img

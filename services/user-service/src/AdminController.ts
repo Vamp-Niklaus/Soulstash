@@ -110,6 +110,45 @@ export class AdminController {
     }
   }
 
+  public async getUserProfile(req: Request, res: Response) {
+    try {
+      const auth = await this.checkAdmin(req, res);
+      if (!auth) return;
+      const { coll } = auth;
+
+      const username = req.params.username;
+      const profileUser = await coll.findOne({ username }, { projection: { password: 0, passwordHash: 0 } });
+
+      if (!profileUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const followers = Array.isArray(profileUser.followers) ? profileUser.followers : [];
+      const following = Array.isArray(profileUser.following) ? profileUser.following : [];
+
+      // Admin sees everything (like an owner)
+      const userData = {
+        ...profileUser,
+        followersCount: followers.length,
+        followingCount: following.length,
+        favoritePeoplePublic: profileUser.favoritePeoplePublic === true,
+        collections: profileUser.collections || [],
+        favoritePeople: Array.isArray(profileUser.favoritePeople) ? profileUser.favoritePeople : []
+      };
+
+      res.json({ 
+        user: userData, 
+        isOwner: false, 
+        isAdminView: true, 
+        isFollowing: false, 
+        isFollowedBy: false 
+      });
+    } catch (err: any) {
+      logger.error(`[AdminController] getUserProfile error: ${err.message}`);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
   public async updatePreferences(req: Request, res: Response) {
     try {
       const auth = await this.checkAdmin(req, res);

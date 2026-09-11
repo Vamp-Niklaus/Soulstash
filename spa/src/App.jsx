@@ -63,6 +63,7 @@ export function AppShell() {
 
       {/* Profile */}
       <Route path="/user/:username" element={<UserProfilePage />} />
+      <Route path="/admin/user/:username" element={<UserProfilePage />} />
       <Route path="/edit" element={<EditProfilePage />} />
 
       {/* Follow List */}
