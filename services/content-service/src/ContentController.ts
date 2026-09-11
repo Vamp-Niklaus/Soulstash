@@ -438,7 +438,8 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
 
         const fetchPage = async (tmdbType: string, query: string, page: number, year: string | null = null) => {
           if (clientClosed) return;
-          let url = `/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${adminMode === 0 ? 'false' : 'true'}&language=en-US&page=${page}`;
+          const includeAdult = (adminMode !== 0 || tmdbType === 'person') ? 'true' : 'false';
+          let url = `/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${includeAdult}&language=en-US&page=${page}`;
           if (year && tmdbType !== 'person') url += (tmdbType === 'movie' ? `&year=${year}` : `&first_air_date_year=${year}`);
           
           try {
@@ -497,7 +498,8 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
 
       const queuePages = (tmdbType: string, query: string, maxPages: number, year: string | null = null) => {
         for (let page = 1; page <= maxPages; page++) {
-          let url = `/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${adminMode === 0 ? 'false' : 'true'}&language=en-US&page=${page}`;
+          const includeAdult = (adminMode !== 0 || tmdbType === 'person') ? 'true' : 'false';
+          let url = `/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${includeAdult}&language=en-US&page=${page}`;
           if (year && tmdbType !== 'person') url += (tmdbType === 'movie' ? `&year=${year}` : `&first_air_date_year=${year}`);
           promises.push(
             this.provider.getRawTMDB(url)
