@@ -118,6 +118,7 @@ export function TrafficPanel() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-[#e2e2e2]">
               <thead className="text-xs uppercase tracking-[0.1em] text-[#8f44f0] border-b border-white/10">
+                <tr>
                   <th className="pb-3 font-medium">Location</th>
                   <th className="pb-3 font-medium">IP Address</th>
                   <th className="pb-3 font-medium">User(s)</th>
