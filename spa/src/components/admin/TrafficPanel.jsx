@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
 import {
@@ -19,9 +19,14 @@ import {
 const COLORS = ['#8f44f0', '#00C49F', '#FFBB28', '#FF8042', '#a6a6a6'];
 
 export function TrafficPanel() {
+  const [ipFilter, setIpFilter] = useState('');
+
   const { data: trafficData, isPending, isError, error } = useQuery({
-    queryKey: ['adminTraffic'],
-    queryFn: () => apiFetch('/api/admin/trafficLogs/stats'),
+    queryKey: ['adminTraffic', ipFilter],
+    queryFn: () => {
+      const url = ipFilter ? `/api/admin/trafficLogs/stats?ip=${encodeURIComponent(ipFilter)}` : '/api/admin/trafficLogs/stats';
+      return apiFetch(url);
+    },
     refetchInterval: 30000 // Refresh every 30s
   });
 
@@ -100,7 +105,16 @@ export function TrafficPanel() {
         </div>
 
         <div className="rounded-[24px] border border-white/10 bg-white/[0.02] p-6 xl:col-span-2">
-          <h3 className="text-lg font-medium text-white mb-6">Top Locations & IPs</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <h3 className="text-lg font-medium text-white">Top Locations & IPs</h3>
+            <input
+              type="text"
+              placeholder="Filter by IP address..."
+              value={ipFilter}
+              onChange={(e) => setIpFilter(e.target.value)}
+              className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white w-full sm:w-64"
+            />
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-[#e2e2e2]">
               <thead className="text-xs uppercase tracking-[0.1em] text-[#8f44f0] border-b border-white/10">

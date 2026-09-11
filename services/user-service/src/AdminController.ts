@@ -157,8 +157,14 @@ export class AdminController {
       if (!auth) return;
       const { coll, dbUser } = auth;
 
-      const { adminMode: rawMode } = req.body;
-      const adminMode = Number(rawMode);
+      const { adminMode: rawMode, showAdult: rawShowAdult } = req.body;
+      let adminMode = Number(rawMode);
+      
+      // Backward compatibility for old frontend clients sending { showAdult: true/false }
+      if (Number.isNaN(adminMode) && rawShowAdult !== undefined) {
+        adminMode = rawShowAdult === true || String(rawShowAdult) === 'true' ? 1 : 0;
+      }
+
       if (![0, 1, 2].includes(adminMode)) {
         return res.status(400).json({ error: 'adminMode must be 0, 1, or 2' });
       }
@@ -264,26 +270,62 @@ export class AdminController {
       const { db } = auth;
       const trafficColl = db.collection('TrafficLogs');
 
-      const totalRequests = await trafficColl.countDocuments();
+      const ipFilter = req.query.ip ? String(req.query.ip) : null;
+      const matchStage = ipFilter ? { $match: { ip: { $regex: ipFilter, $options: 'i' } } } : { $match: {} };
+
+      const totalRequests = await trafficColl.countDocuments(ipFilter ? { ip: { $regex: ipFilter, $options: 'i' } } : {});
+      
       const methods = await trafficColl.aggregate([
+        matchStage,
         { $group: { _id: "$method", count: { $sum: 1 } } }
       ]).toArray();
-      const topPaths = await trafficColl.aggregate([
-        { $group: { _id: "$path", count: { $sum: 1 } } },
+      const requestTypes = methods.map((m: any) => ({ type: m._id || 'UNKNOWN', count: m.count }));
+
+      const locationsData = await trafficColl.aggregate([
+        matchStage,
+        { 
+          $group: { 
+            _id: "$ip", 
+            count: { $sum: 1 },
+            city: { $first: "$city" },
+            country: { $first: "$country" },
+            lastActive: { $max: "$createdAt" }
+          } 
+        },
         { $sort: { count: -1 } },
-        { $limit: 10 }
+        { $limit: 50 }
       ]).toArray();
-      const topLocations = await trafficColl.aggregate([
-        { $group: { _id: "$country", count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 10 }
+      const locations = locationsData.map((loc: any) => ({
+        ip: loc._id || 'Unknown',
+        city: loc.city,
+        country: loc.country,
+        count: loc.count,
+        lastActive: loc.lastActive
+      }));
+
+      // Time series: Group by YYYY-MM-DD
+      const timeSeriesData = await trafficColl.aggregate([
+        matchStage,
+        {
+          $group: {
+            _id: {
+              $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+            },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
       ]).toArray();
+      const timeSeries = timeSeriesData.map((ts: any) => ({
+        time: ts._id,
+        count: ts.count
+      }));
 
       res.json({
         totalRequests,
-        methods,
-        topPaths,
-        topLocations
+        requestTypes,
+        locations,
+        timeSeries
       });
     } catch (err: any) {
       logger.error(`[AdminController] getTrafficStats error: ${err.message}`);

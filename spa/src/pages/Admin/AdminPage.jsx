@@ -111,8 +111,8 @@ export function AdminPage() {
 
   // Cycle: 0 -> 1 -> 2 -> 0
   const ADMIN_MODES = [
-    { label: 'Filter On', desc: 'Adult content hidden', icon: 'fa-shield-alt', color: 'text-green-400' },
-    { label: 'All Content', desc: 'Normal + Adult shown', icon: 'fa-eye', color: 'text-[#8f44f0]' },
+    { label: 'Filter On', desc: 'Adult content hidden', icon: 'fa-shield-alt', color: 'text-yellow-400' },
+    { label: 'All Content', desc: 'Normal + Adult shown', icon: 'fa-eye', color: 'text-green-400' },
     { label: 'Adult Only', desc: 'Only adult content', icon: 'fa-fire', color: 'text-red-400' },
   ];
   const currentMode = ADMIN_MODES[adminMode] || ADMIN_MODES[0];
@@ -168,67 +168,69 @@ export function AdminPage() {
           </div>
         </div>
 
-        <div className="admin-grid grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-          <div className="admin-stat-card rounded-2xl p-5">
-            <p className="text-sm text-[#9f9f9f]">Total users</p>
-            <p className="text-3xl font-semibold text-white mt-2">{usersData?.totalUsers || 0}</p>
-          </div>
-          <div className="admin-stat-card rounded-2xl p-5">
-            <p className="text-sm text-[#9f9f9f]">Visible results</p>
-            <p className="text-3xl font-semibold text-white mt-2">{filteredUsers.length}</p>
-          </div>
-          <div className="admin-stat-card rounded-2xl p-5">
-            <p className="text-sm text-[#9f9f9f]">Total saved items</p>
-            <p className="text-3xl font-semibold text-white mt-2">
-              {(usersData?.users || []).reduce((sum, user) => sum + (user.totalSavedItems || 0), 0)}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-medium text-white">Multimovies Config</p>
-              <p className="text-sm text-[#9f9f9f]">
-                Status: {adminInfo.multimovies?.available === false ? 'Unavailable' : 'Available'}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.12] disabled:opacity-60"
-              disabled={multimoviesMutation.isPending}
-              onClick={() => multimoviesMutation.mutate(multimoviesForm)}
-            >
-              {multimoviesMutation.isPending ? 'Saving...' : 'Save Multimovies URLs'}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2">
-            <label className="flex flex-col gap-2 text-sm text-[#b7b7b7]">
-              <span>Root URL</span>
-              <input
-                type="text"
-                value={multimoviesForm.rootUrl}
-                onChange={(event) => setMultimoviesForm((current) => ({ ...current, rootUrl: event.target.value }))}
-                placeholder="https://multimovies.wtf/"
-                className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-sm text-[#b7b7b7]">
-              <span>Base URL</span>
-              <input
-                type="text"
-                value={multimoviesForm.baseUrl}
-                onChange={(event) => setMultimoviesForm((current) => ({ ...current, baseUrl: event.target.value }))}
-                placeholder="https://multimovies.fyi/"
-                className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white"
-              />
-            </label>
-          </div>
-        </div>
       </section>
 
       {activeTab === 'users' && (
-        usersLoading ? (
+        <>
+          <div className="admin-grid grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+            <div className="admin-stat-card rounded-2xl p-5">
+              <p className="text-sm text-[#9f9f9f]">Total users</p>
+              <p className="text-3xl font-semibold text-white mt-2">{usersData?.totalUsers || 0}</p>
+            </div>
+            <div className="admin-stat-card rounded-2xl p-5">
+              <p className="text-sm text-[#9f9f9f]">Visible results</p>
+              <p className="text-3xl font-semibold text-white mt-2">{filteredUsers.length}</p>
+            </div>
+            <div className="admin-stat-card rounded-2xl p-5">
+              <p className="text-sm text-[#9f9f9f]">Total saved items</p>
+              <p className="text-3xl font-semibold text-white mt-2">
+                {(usersData?.users || []).reduce((sum, user) => sum + (user.totalSavedItems || 0), 0)}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5 mb-8">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-medium text-white">Multimovies Config</p>
+                <p className="text-sm text-[#9f9f9f]">
+                  Status: {adminInfo.multimovies?.available === false ? 'Unavailable' : 'Available'}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.12] disabled:opacity-60"
+                disabled={multimoviesMutation.isPending}
+                onClick={() => multimoviesMutation.mutate(multimoviesForm)}
+              >
+                {multimoviesMutation.isPending ? 'Saving...' : 'Save Multimovies URLs'}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm text-[#b7b7b7]">
+                <span>Root URL</span>
+                <input
+                  type="text"
+                  value={multimoviesForm.rootUrl}
+                  onChange={(event) => setMultimoviesForm((current) => ({ ...current, rootUrl: event.target.value }))}
+                  placeholder="https://multimovies.wtf/"
+                  className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm text-[#b7b7b7]">
+                <span>Base URL</span>
+                <input
+                  type="text"
+                  value={multimoviesForm.baseUrl}
+                  onChange={(event) => setMultimoviesForm((current) => ({ ...current, baseUrl: event.target.value }))}
+                  placeholder="https://multimovies.fyi/"
+                  className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white"
+                />
+              </label>
+            </div>
+          </div>
+
+        {usersLoading ? (
           <div className="app-loading">Loading users...</div>
         ) : (
           <section className="admin-grid grid grid-cols-1 xl:grid-cols-2 gap-5">
@@ -287,7 +289,8 @@ export function AdminPage() {
               </Link>
             ))}
           </section>
-        )
+        )}
+        </>
       )}
 
       {activeTab === 'traffic' && (
