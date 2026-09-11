@@ -158,13 +158,15 @@ export function AdminPage() {
               <span className={currentMode.color}>{currentMode.label}</span>
               <span className="text-white/40 text-xs">({currentMode.desc})</span>
             </button>
-            <input
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search username, email, bio..."
-              className="w-full lg:w-[360px] rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white"
-            />
+            {activeTab === 'users' && (
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search username, email, bio..."
+                className="w-full lg:w-[360px] rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white"
+              />
+            )}
           </div>
         </div>
 
