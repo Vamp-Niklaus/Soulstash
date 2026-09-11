@@ -55,6 +55,9 @@ app.get('/admin/me', (req, res) => adminController.getMe(req, res));
 app.get('/admin/users', (req, res) => adminController.getUsers(req, res));
 app.post('/admin/preferences', (req, res) => adminController.updatePreferences(req, res));
 app.post('/admin/multimovies', (req, res) => adminController.updateMultimovies(req, res));
+app.post('/admin/trafficLogs', (req, res) => adminController.postTrafficLogs(req, res));
+app.get('/admin/trafficLogs/stats', (req, res) => adminController.getTrafficStats(req, res));
+app.post('/admin/users/:username/avatar', extractUser, upload.single('avatar'), (req, res) => adminController.updateAvatar(req, res));
 
 
 // User Collections (Proxied from Gateway)

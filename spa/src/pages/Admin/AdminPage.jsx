@@ -1,10 +1,13 @@
 import { getToken, saveAuthSession, apiFetch } from '../../api/client.js';
 import { useMemo, useState, useEffect } from 'react';
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { toast } from '../../utils/toast.js';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { TrafficPanel } from '../../components/admin/TrafficPanel.jsx';
 
 // Quick inline component if it was missing before, or just keep it as is if it was working
 function DetailStat({ label, value }) {
@@ -20,6 +23,7 @@ export function AdminPage() {
   const auth = useAuthSession();
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('users'); // 'users' or 'traffic'
   
   const [multimoviesForm, setMultimoviesForm] = useState({ rootUrl: '', baseUrl: '' });
 
@@ -108,9 +112,26 @@ export function AdminPage() {
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
           <div>
             <p className="text-sm uppercase tracking-[0.25em] text-[#8f44f0]">Admin Access</p>
-            <h1 className="text-3xl md:text-5xl font-semibold text-white mt-3">Users Overview</h1>
+            <div className="flex items-center gap-6 mt-3 border-b border-white/10">
+              <button
+                className={`pb-3 text-2xl md:text-3xl font-semibold transition-colors ${
+                  activeTab === 'users' ? 'text-white border-b-2 border-[#8f44f0]' : 'text-[#a6a6a6] hover:text-white'
+                }`}
+                onClick={() => setActiveTab('users')}
+              >
+                Users Overview
+              </button>
+              <button
+                className={`pb-3 text-2xl md:text-3xl font-semibold transition-colors ${
+                  activeTab === 'traffic' ? 'text-white border-b-2 border-[#8f44f0]' : 'text-[#a6a6a6] hover:text-white'
+                }`}
+                onClick={() => setActiveTab('traffic')}
+              >
+                Traffic Analytics
+              </button>
+            </div>
             <p className="text-[#b7b7b7] mt-4 max-w-2xl">
-              Admin-only dashboard. Password hashes are still hidden.
+              {activeTab === 'users' ? 'Admin-only dashboard. Password hashes are still hidden.' : 'Real-time API traffic and usage analytics.'}
             </p>
           </div>
           <div className="flex w-full flex-col gap-3 lg:w-auto lg:items-end">
@@ -192,63 +213,71 @@ export function AdminPage() {
         </div>
       </section>
 
-      {usersLoading ? (
-        <div className="app-loading">Loading users...</div>
-      ) : (
-        <section className="admin-grid grid grid-cols-1 xl:grid-cols-2 gap-5">
-          {filteredUsers.map((user, userIndex) => (
-            <article key={user.id || user._id || user.username || `user-${userIndex}`} className="admin-user-card rounded-[24px] p-6">
-              <div className="flex items-start gap-4">
-                <img
-                  src={user.avatar || FALLBACK_AVATAR}
-                  alt={user.username}
-                  className="w-16 h-16 rounded-2xl object-cover border border-white/10"
-                  onError={(event) => {
-                    event.currentTarget.src = FALLBACK_AVATAR;
-                  }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-2xl font-semibold text-white truncate">{user.username}</h2>
-                    <span className="text-xs uppercase tracking-[0.2em] text-[#8f44f0]">
-                      {user.collectionCount || 0} collections
-                    </span>
-                  </div>
-                  <p className="text-sm text-[#d0d0d0] mt-2">{user.fullName || 'No name saved'}</p>
-                  <p className="text-sm text-[#a6a6a6] mt-1">{user.email || 'No email saved'}</p>
-                  <p className="text-sm text-[#d0d0d0] mt-3">{user.bio || 'No bio available.'}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-                <DetailStat label="Watched" value={String(user.watchedCount || 0)} />
-                <DetailStat label="Watchlist" value={String(user.watchlistCount || 0)} />
-                <DetailStat label="Total Saved" value={String(user.totalSavedItems || 0)} />
-                <DetailStat label="Joined" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Unknown'} />
-                <DetailStat label="Followers" value={String(user.followersCount || 0)} />
-                <DetailStat label="Following" value={String(user.followingCount || 0)} />
-              </div>
-
-              <div className="mt-6">
-                <p className="text-xs uppercase tracking-[0.2em] text-[#8f44f0] mb-3">Collections</p>
-                <div className="flex flex-wrap gap-2">
-                  {(user.collections || []).length ? (
-                    user.collections.map((collection, collectionIndex) => (
-                      <span
-                        key={`${user.id || user._id || user.username || userIndex}-${collection.name || 'collection'}-${collectionIndex}`}
-                        className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#e2e2e2]"
-                      >
-                        {collection.name} ({Array.isArray(collection.movies) ? collection.movies.length : 0})
+      {activeTab === 'users' && (
+        usersLoading ? (
+          <div className="app-loading">Loading users...</div>
+        ) : (
+          <section className="admin-grid grid grid-cols-1 xl:grid-cols-2 gap-5">
+            {filteredUsers.map((user, userIndex) => (
+              <Link key={user.id || user._id || user.username || `user-${userIndex}`} to={`/user/${user.username}`} className="block">
+                <article className="admin-user-card rounded-[24px] p-6 hover:bg-white/[0.02] transition-colors h-full border border-transparent hover:border-white/5">
+                  <div className="flex items-start gap-4">
+                  <img
+                    src={user.avatar || FALLBACK_AVATAR}
+                    alt={user.username}
+                    className="w-16 h-16 rounded-2xl object-cover border border-white/10"
+                    onError={(event) => {
+                      event.currentTarget.src = FALLBACK_AVATAR;
+                    }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-2xl font-semibold text-white truncate">{user.username}</h2>
+                      <span className="text-xs uppercase tracking-[0.2em] text-[#8f44f0]">
+                        {user.collectionCount || 0} collections
                       </span>
-                    ))
-                  ) : (
-                    <span className="text-sm text-[#9f9f9f]">No collections</span>
-                  )}
+                    </div>
+                    <p className="text-sm text-[#d0d0d0] mt-2">{user.fullName || 'No name saved'}</p>
+                    <p className="text-sm text-[#a6a6a6] mt-1">{user.email || 'No email saved'}</p>
+                    <p className="text-sm text-[#d0d0d0] mt-3">{user.bio || 'No bio available.'}</p>
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
-        </section>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+                  <DetailStat label="Watched" value={String(user.watchedCount || 0)} />
+                  <DetailStat label="Watchlist" value={String(user.watchlistCount || 0)} />
+                  <DetailStat label="Total Saved" value={String(user.totalSavedItems || 0)} />
+                  <DetailStat label="Joined" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Unknown'} />
+                  <DetailStat label="Followers" value={String(user.followersCount || 0)} />
+                  <DetailStat label="Following" value={String(user.followingCount || 0)} />
+                </div>
+
+                <div className="mt-6">
+                  <p className="text-xs uppercase tracking-[0.2em] text-[#8f44f0] mb-3">Collections</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(user.collections || []).length ? (
+                      user.collections.map((collection, collectionIndex) => (
+                        <span
+                          key={`${user.id || user._id || user.username || userIndex}-${collection.name || 'collection'}-${collectionIndex}`}
+                          className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#e2e2e2]"
+                        >
+                          {collection.name} ({Array.isArray(collection.movies) ? collection.movies.length : 0})
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-[#9f9f9f]">No collections</span>
+                    )}
+                  </div>
+                </div>
+              </article>
+              </Link>
+            ))}
+          </section>
+        )
+      )}
+
+      {activeTab === 'traffic' && (
+        <TrafficPanel />
       )}
     </div>
   );

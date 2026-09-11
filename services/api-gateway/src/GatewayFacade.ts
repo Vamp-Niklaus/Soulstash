@@ -24,6 +24,51 @@ export class GatewayFacade {
     this.app.use(cors({ origin: '*' }));
     this.app.use(express.json({ limit: '10mb' }));
     
+    // Add traffic logger middleware
+    let logBuffer: any[] = [];
+    const TRAFFIC_URL = process.env.USER_SERVICE_URL ? `${process.env.USER_SERVICE_URL}/admin/trafficLogs` : 'http://127.0.0.1:3001/admin/trafficLogs';
+    
+    this.app.use((req: Request, res: Response, next: NextFunction) => {
+      const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+      const userAgent = req.headers['user-agent'] || '';
+      
+      let username = 'anonymous';
+      if (req.headers['x-user-name']) {
+        username = req.headers['x-user-name'] as string;
+      } else if (req.headers.authorization) {
+        try {
+          const token = req.headers.authorization.split(' ')[1];
+          // simple base64 decode of jwt payload, no verification
+          const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+          if (payload.username) username = payload.username;
+        } catch (e) {}
+      }
+
+      logBuffer.push({
+        ip: Array.isArray(ip) ? ip[0] : (typeof ip === 'string' ? ip.split(',')[0] : ip),
+        path: req.path,
+        method: req.method,
+        username,
+        userAgent
+      });
+      next();
+    });
+
+    setInterval(() => {
+      if (logBuffer.length > 0) {
+        const batch = [...logBuffer];
+        logBuffer = [];
+        const fetch = global.fetch || require('node-fetch');
+        fetch(TRAFFIC_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(batch)
+        }).catch((err: any) => {
+          logger.error(`Failed to flush traffic logs: ${err}`);
+        });
+      }
+    }, 5000);
+    
     // Serve transitional static assets for the legacy frontend UI
     const rootDir = path.resolve(__dirname, '../../..');
     this.app.use('/images', express.static(path.join(rootDir, 'assets', 'images')));

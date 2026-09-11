@@ -173,4 +173,106 @@ export class AdminController {
       res.status(500).json({ error: 'Internal Server Error' });
     }
   }
+
+  public async postTrafficLogs(req: Request, res: Response) {
+    try {
+      const logs = req.body;
+      if (!Array.isArray(logs) || logs.length === 0) {
+        return res.json({ success: true });
+      }
+
+      const coll = await this.userRepository.connect();
+      const dbName = config.get('mongoDbName') || 'test';
+      const db = (this.userRepository as any).client.db(dbName);
+      const trafficColl = db.collection('TrafficLogs');
+
+      // Ensure TTL index
+      await trafficColl.createIndex({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
+      const geoip = require('geoip-lite');
+      const docs = logs.map((log: any) => {
+        const geo = geoip.lookup(log.ip);
+        return {
+          ...log,
+          country: geo ? geo.country : 'Unknown',
+          city: geo ? geo.city : 'Unknown',
+          ll: geo ? geo.ll : null,
+          createdAt: new Date()
+        };
+      });
+
+      if (docs.length > 0) {
+        await trafficColl.insertMany(docs);
+      }
+      res.json({ success: true, count: docs.length });
+    } catch (err: any) {
+      logger.error(`[AdminController] postTrafficLogs error: ${err.message}`);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  public async getTrafficStats(req: Request, res: Response) {
+    try {
+      const auth = await this.checkAdmin(req, res);
+      if (!auth) return;
+      const { db } = auth;
+      const trafficColl = db.collection('TrafficLogs');
+
+      const totalRequests = await trafficColl.countDocuments();
+      const methods = await trafficColl.aggregate([
+        { $group: { _id: "$method", count: { $sum: 1 } } }
+      ]).toArray();
+      const topPaths = await trafficColl.aggregate([
+        { $group: { _id: "$path", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]).toArray();
+      const topLocations = await trafficColl.aggregate([
+        { $group: { _id: "$country", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 }
+      ]).toArray();
+
+      res.json({
+        totalRequests,
+        methods,
+        topPaths,
+        topLocations
+      });
+    } catch (err: any) {
+      logger.error(`[AdminController] getTrafficStats error: ${err.message}`);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  public async updateAvatar(req: Request, res: Response) {
+    try {
+      const auth = await this.checkAdmin(req, res);
+      if (!auth) return;
+      const { coll } = auth;
+      
+      const { username } = req.params;
+      const targetUser = await coll.findOne({ username });
+      if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+      let avatar = targetUser.avatar;
+      const file = (req as any).file;
+      if (file?.buffer) {
+        const mimeType = file.mimetype || 'image/png';
+        avatar = `data:${mimeType};base64,${file.buffer.toString('base64')}`;
+      } else if (req.body.avatarUrl) {
+        avatar = req.body.avatarUrl;
+      }
+
+      await coll.updateOne(
+        { username },
+        { $set: { avatar, updatedAt: new Date() } }
+      );
+
+      res.json({ success: true, avatar });
+    } catch (err: any) {
+      logger.error(`[AdminController] updateAvatar error: ${err.message}`);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
 }

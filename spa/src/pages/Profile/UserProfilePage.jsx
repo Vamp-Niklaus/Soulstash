@@ -15,6 +15,7 @@ import { CollectionVisibilityBadge } from '../../components/ui/Misc/CollectionVi
 
 import { ActionButton } from '../../components/ui/ActionButton.jsx';
 import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
+import { AvatarSearchModal } from '../../components/ui/Modals/AvatarSearchModal.jsx';
 
 export function UserProfilePage() {
   const { username = '' } = useParams();
@@ -23,6 +24,7 @@ export function UserProfilePage() {
   const queryClient = useQueryClient();
   const [favoriteRemoveTarget, setFavoriteRemoveTarget] = useState(null);
   const [avatarViewerOpen, setAvatarViewerOpen] = useState(false);
+  const [avatarSearchOpen, setAvatarSearchOpen] = useState(false);
 
   useEffect(() => {
     document.title = username ? `${username} - Soulstash` : 'Profile - Soulstash';
@@ -90,6 +92,18 @@ export function UserProfilePage() {
     onError: (err) => toast(err.message, 'error')
   });
 
+  const adminAvatarMutation = useMutation({
+    mutationFn: (avatarUrl) => apiFetch(`/api/admin/users/${encodeURIComponent(username)}/avatar`, {
+      method: 'POST',
+      body: JSON.stringify({ avatarUrl })
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile', username] });
+      toast('User avatar updated');
+    },
+    onError: (err) => toast(err.message, 'error')
+  });
+
   // When viewing your own profile, sync avatar into localStorage so the navbar updates
   const profileUser = profilePayload?.user;
   const isOwner = profilePayload?.isOwner && auth.username === username;
@@ -135,8 +149,14 @@ export function UserProfilePage() {
             <div className="flex flex-col items-start gap-2">
               <button 
                 type="button"
-                onClick={() => setAvatarViewerOpen(true)}
-                className="h-[96px] w-[96px] shrink-0 overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA]"
+                onClick={() => {
+                  if (auth.user?.admin === true && !isOwner) {
+                    setAvatarSearchOpen(true);
+                  } else {
+                    setAvatarViewerOpen(true);
+                  }
+                }}
+                className="group relative h-[96px] w-[96px] shrink-0 overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA]"
               >
                 <img
                   src={user.avatar || FALLBACK_AVATAR}
@@ -146,6 +166,13 @@ export function UserProfilePage() {
                     event.currentTarget.src = FALLBACK_AVATAR;
                   }}
                 />
+                {auth.user?.admin === true && !isOwner && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-white">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                )}
               </button>
               <div className="flex items-center gap-3 text-xs text-[#9f9f9f]">
                 <button
@@ -385,6 +412,15 @@ export function UserProfilePage() {
           />
         </div>
       )}
+
+      <AvatarSearchModal 
+        open={avatarSearchOpen} 
+        onClose={() => setAvatarSearchOpen(false)} 
+        onSelect={(url) => {
+          adminAvatarMutation.mutate(url);
+          setAvatarSearchOpen(false);
+        }}
+      />
     </div>
   );
 }
