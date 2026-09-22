@@ -1005,7 +1005,24 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
         return;
       }
       logger.info(`[ContentController] Proxying TMDB endpoint: ${endpoint}`);
-      const data = await this.provider.getRawTMDB(endpoint);
+      let data = await this.provider.getRawTMDB(endpoint);
+      const adminMode = await this.getAdminMode(req);
+
+      if (adminMode === 0 || adminMode === 2) {
+        if (data?.similar?.results) {
+          data.similar.results = data.similar.results.filter((item: any) => {
+            if (adminMode === 2) return item?.adult === true;
+            return item?.adult !== true && Number(item?.vote_count || 0) >= 300;
+          });
+        }
+        if (data?.recommendations?.results) {
+          data.recommendations.results = data.recommendations.results.filter((item: any) => {
+            if (adminMode === 2) return item?.adult === true;
+            return item?.adult !== true && Number(item?.vote_count || 0) >= 300;
+          });
+        }
+      }
+
       res.json(data);
     } catch (error: any) {
       logger.error(`[ContentController] Error proxying TMDB: ${error.message}`);
