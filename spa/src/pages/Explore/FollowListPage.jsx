@@ -1,9 +1,9 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
-import { cachedApiFetch, getToken, apiFetch, clearClientDataCaches } from '../../api/client.js';
+import { getToken, apiFetch } from '../../api/client.js';
 import { toast } from '../../utils/toast.js';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { CastCard } from '../../components/ui/Cards/CastCard.jsx';
@@ -14,69 +14,56 @@ import { SearchResultSkeletonGrid, CastRowSkeleton } from '../../components/ui/S
 export function FollowListPage({ listType }) {
   const { username = '' } = useParams();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [users, setUsers] = useState([]);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     document.title = `${listType === 'followers' ? 'Followers' : 'Following'} | Soulstash`;
   }, [listType]);
 
-  useEffect(() => {
-    let ignore = false;
-    setLoading(true);
-    setError('');
-    cachedApiFetch(`/api/user/${encodeURIComponent(username)}/${listType}`)
-      .then((payload) => {
-        if (!ignore) {
-          setUsers(Array.isArray(payload?.users) ? payload.users : []);
-        }
-      })
-      .catch((err) => {
-        if (!ignore) setError(err.message || 'Unable to load users.');
-      })
-      .finally(() => {
-        if (!ignore) setLoading(false);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [listType, username]);
+  const { data: usersData, isLoading: loading, isError, error } = useQuery({
+    queryKey: ['user', username, listType],
+    queryFn: () => apiFetch(`/api/user/${encodeURIComponent(username)}/${listType}`)
+  });
+
+  const users = Array.isArray(usersData?.users) ? usersData.users : [];
+  const errorMessage = isError ? (error.message || 'Unable to load users.') : '';
+
+  const followMutation = useMutation({
+    mutationFn: ({ targetUsername, isFollowing }) => {
+      if (isFollowing) {
+        return apiFetch('/api/user/unfollow', {
+          method: 'POST',
+          body: JSON.stringify({ username: targetUsername })
+        });
+      } else {
+        return apiFetch('/api/user/follow', {
+          method: 'POST',
+          body: JSON.stringify({ username: targetUsername })
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', username, listType] });
+    },
+    onError: (err) => {
+      toast(err.message, 'error');
+    }
+  });
 
   async function toggleFollow(targetUsername, isFollowing) {
     if (!getToken()) {
       navigate('/login');
       return;
     }
-    try {
-      if (isFollowing) {
-        await apiFetch('/api/user/unfollow', {
-          method: 'POST',
-          body: JSON.stringify({ username: targetUsername })
-        });
-      } else {
-        await apiFetch('/api/user/follow', {
-          method: 'POST',
-          body: JSON.stringify({ username: targetUsername })
-        });
-      }
-      setUsers((current) =>
-        current.map((user) =>
-          user.username === targetUsername ? { ...user, isFollowing: !isFollowing } : user
-        )
-      );
-      clearClientDataCaches();
-    } catch (err) {
-      toast(err.message, 'error');
-    }
+    followMutation.mutate({ targetUsername, isFollowing });
   }
 
   if (loading) {
     return <div className="app-loading">Loading {listType}...</div>;
   }
 
-  if (error) {
-    return <div className="app-error">{error}</div>;
+  if (isError) {
+    return <div className="app-error">{errorMessage}</div>;
   }
 
   return (

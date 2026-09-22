@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "build": "vite build --configLoader native",
+    "lint": "eslint spa/src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "dev": "concurrently \"npm run dev:microservices\" \"npm run dev:client\"",
     "dev:client": "vite --configLoader native",
     "dev:live": "vite --mode live --configLoader native",
@@ -18,6 +19,8 @@
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/screen-orientation": "^8.0.1",
+    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-query-devtools": "^5.102.8",
     "@videojs/react": "^10.0.0-beta.5",
     "acorn": "^8.16.0",
     "bcryptjs": "^3.0.3",
@@ -27,6 +30,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "fetch": "^1.1.0",
+    "geoip-lite": "^1.4.10",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.1.0",
@@ -38,19 +42,24 @@
     "react-dom": "^19.2.4",
     "react-masonry-css": "^1.0.16",
     "react-router-dom": "^7.14.0",
+    "recharts": "^3.10.1",
     "yt-search": "^2.13.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/geoip-lite": "^1.4.4",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.0.0",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^8.2.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vite": "^8.0.7"
-  },  
+  },
   "engines": {
     "node": "20.x"
   }

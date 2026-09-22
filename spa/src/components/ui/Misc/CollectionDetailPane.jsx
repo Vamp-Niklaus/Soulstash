@@ -1,35 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from '../../../utils/toast.js';
 import { FALLBACK_AVATAR, PUBLISH_MIN_COLLECTION_TITLES } from '../../../utils/constants.js';
-import {
-  collectionItemCount, filteredCollectionMovies, refreshCollectionsView,
-  broadcastCollections, getCachedUserCollections, normalizeCollections,
-  lastKnownCollectionVersion
-} from '../../../utils/helpers.js';
-import { contentIdFromItem, mediaTypeFromItem, hasStoredRating, hasActiveCollectionContentFilters, normalizeMediaType } from '../../../utils/formatters.js';
-import { useGridKeyNav } from '../../../hooks/index.js';
+import { broadcastCollections, collectionItemCount, normalizeCollections, getCachedUserCollections } from '../../../utils/collectionsCache.js';
+import { filteredCollectionMovies } from '../../../utils/formatters.js';
+import { hasActiveCollectionContentFilters } from '../../../utils/formatters.js';
 import { apiFetch } from '../../../api/client.js';
 import { CollectionVisibilityBadge } from './CollectionVisibilityBadge.jsx';
 import { CollectionFilterControls } from './CollectionFilterControls.jsx';
 import { ContentCard } from '../Cards/ContentCard.jsx';
 import { ConfirmModal } from '../Modals/ConfirmModal.jsx';
-
-// Re-export normalizeCollection locally since it's used internally
-function normalizeCollectionItem(collection) {
-  const movies = Array.isArray(collection?.movies) ? collection.movies : [];
-  const isPublic = collection?.isPublic === true || collection?.isPublished === true;
-  return {
-    ...collection,
-    _id: collection?._id || collection?.name,
-    name: collection?.name || '',
-    movies,
-    movieCount: movies.length,
-    isPublic,
-    isPublished: collection?.isPublished === true
-  };
-}
+import { EditCollectionPosterModal } from '../Modals/EditCollectionPosterModal.jsx';
 
 export function CollectionDetailPane({
   username,
@@ -46,25 +29,24 @@ export function CollectionDetailPane({
   showPublishControls = false
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const movies = useMemo(() => filteredCollectionMovies(collection, filters, watchedIds), [collection, filters, watchedIds]);
   const showFilteredResultsCount = hasActiveCollectionContentFilters(filters);
-  const [publishLoading, setPublishLoading] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [isDesktopFilters, setIsDesktopFilters] = useState(() => window.innerWidth >= 768);
   const [mobileFilterMenuStyle, setMobileFilterMenuStyle] = useState({ top: 0, left: 0 });
   const mobileFilterMenuRef = useRef(null);
   const mobileFilterTriggerRef = useRef(null);
-  const attemptedRatingBackfillRef = useRef('');
   const isDefaultCollection = ['Watched', 'Watchlist'].includes(collection?.name);
   const canPublish = isOwner && !isDefaultCollection && (collectionItemCount(collection) >= PUBLISH_MIN_COLLECTION_TITLES);
   const isPublished = collection?.isPublished === true;
   const canShowPublishControls = showPublishControls && !isDefaultCollection && canPublish;
   const isLongCollectionName = (collection?.name || '').length > 20;
+  const [posterEditOpen, setPosterEditOpen] = useState(false);
+  const hasMovies = (collection?.movies || []).length > 0;
 
   const detailGridRef = useRef(null);
-  useGridKeyNav(detailGridRef, 'button[data-card]');
-
   function buildMobileFilterMenuPosition(trigger) {
     const rect = trigger.getBoundingClientRect();
     const viewportPadding = 16;
@@ -97,47 +79,50 @@ export function CollectionDetailPane({
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [mobileFiltersOpen]);
 
-
-  async function applyPublishChange(nextPublished) {
-    try {
-      setPublishLoading(true);
-      const currentCollections = normalizeCollections(getCachedUserCollections());
-      if (currentCollections.length) {
-        const optimistic = currentCollections.map((c) =>
-          String(c._id || c.name) === String(collection._id || collection.name)
-            ? { ...c, isPublished: nextPublished, isPublic: nextPublished ? true : false }
-            : c
-        );
-        broadcastCollections(optimistic);
+  const publishMutation = useMutation({
+    mutationFn: (nextPublished) => apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/publish`, {
+      method: 'POST',
+      body: JSON.stringify({ publish: nextPublished })
+    }),
+    onMutate: async (nextPublished) => {
+      // Optimistic update
+      await queryClient.cancelQueries({ queryKey: ['collections'] });
+      const previousCollections = queryClient.getQueryData(['collections']);
+      
+      if (previousCollections) {
+        queryClient.setQueryData(['collections'], (old) => {
+          if (!old) return old;
+          return normalizeCollections(old).map(c => 
+            String(c._id || c.name) === String(collection._id || collection.name)
+              ? { ...c, isPublished: nextPublished, isPublic: nextPublished ? true : false }
+              : c
+          );
+        });
       }
-      const response = await apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/publish`, {
-        method: 'POST',
-        body: JSON.stringify({ publish: nextPublished })
-      });
-      if (response?.snapshot?.collections) {
-        broadcastCollections(normalizeCollections(response.snapshot.collections), response?.snapshot?.collectionVersion);
-      } else {
-        if (window.CollectionStore?.invalidate) window.CollectionStore.invalidate();
-        if (window.CollectionStore?.getCollections) {
-          const latest = await window.CollectionStore.getCollections();
-          broadcastCollections(normalizeCollections(latest), lastKnownCollectionVersion);
-        } else {
-          const latest = await refreshCollectionsView();
-          broadcastCollections(latest, lastKnownCollectionVersion);
-        }
+      return { previousCollections };
+    },
+    onError: (err, nextPublished, context) => {
+      toast(err.message, 'error');
+      if (context?.previousCollections) {
+        queryClient.setQueryData(['collections'], context.previousCollections);
       }
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+    },
+    onSuccess: (response, nextPublished) => {
+      // This page is rendered from useLiveCollections, so update its shared
+      // cache from the authoritative response instead of only invalidating an
+      // unrelated React Query entry.
+      if (Array.isArray(response?.collections)) {
+        broadcastCollections(response.collections, response.collectionVersion);
+      }
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
       if (onPublishChange) onPublishChange();
       toast(nextPublished ? 'Collection published' : 'Collection unpublished');
-    } catch (error) {
-      await refreshCollectionsView();
-      toast(error.message, 'error');
-    } finally {
-      setPublishLoading(false);
     }
-  }
+  });
 
   async function togglePublish() {
-    if (!isOwner || publishLoading || !collection?._id || isDefaultCollection) return;
+    if (!isOwner || publishMutation.isPending || !collection?._id || isDefaultCollection) return;
     if (!canPublish) {
       toast(`Add at least ${PUBLISH_MIN_COLLECTION_TITLES} titles to publish this collection`, 'info');
       return;
@@ -147,7 +132,7 @@ export function CollectionDetailPane({
       setPublishConfirmOpen(true);
       return;
     }
-    await applyPublishChange(nextPublished);
+    publishMutation.mutate(nextPublished);
   }
 
   if (!collection?.name) {
@@ -287,6 +272,17 @@ export function CollectionDetailPane({
             <i className="fas fa-arrow-left text-white"></i>
           </button>
 
+          {isOwner && hasMovies && (
+            <button type="button"
+              className="hidden md:flex absolute top-4 right-4 bg-black/60 p-2 rounded-full text-white/80 hover:text-white hover:bg-black/80 transition-all z-10 focus:outline-none focus:ring-2 focus:ring-white"
+              onClick={() => setPosterEditOpen(true)}
+              title="Change banner">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+          )}
+
           <div className="absolute bottom-4 left-4 z-10 md:hidden pr-[140px]">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-semibold text-white break-words leading-tight">{collection.name}</h1>
@@ -297,6 +293,16 @@ export function CollectionDetailPane({
           <div className="absolute top-4 right-4 z-20 md:hidden">
             {isOwner ? (
               <div className="flex items-center gap-2">
+                {hasMovies && (
+                  <button type="button"
+                    className="flex items-center justify-center w-9 h-9 rounded-full bg-[#2a2a2a] hover:bg-[#343434] text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
+                    onClick={() => setPosterEditOpen(true)}
+                    title="Change banner">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                )}
                 {canShowPublishControls ? (
                   <button type="button"
                     className="flex items-center gap-1.5 text-xs h-9 px-3 rounded-2xl transition-colors bg-[#2a2a2a] text-white hover:bg-[#343434] focus:outline-none focus:ring-2 focus:ring-white"
@@ -412,9 +418,67 @@ export function CollectionDetailPane({
         confirmLabel="Make Public & Publish"
         onConfirm={async () => {
           setPublishConfirmOpen(false);
-          await applyPublishChange(true);
+          publishMutation.mutate(true);
         }}
         onClose={() => setPublishConfirmOpen(false)}
+      />
+
+      <EditCollectionPosterModal
+        open={posterEditOpen}
+        onClose={() => setPosterEditOpen(false)}
+        collection={collection}
+        onSave={async (url, updatedMovies) => {
+          setPosterEditOpen(false);
+
+          // Optimistic UI for useLiveCollections (which powers UserCollectionDetailPage)
+          const currentCollections = getCachedUserCollections();
+          if (currentCollections) {
+            const updatedCollections = currentCollections.map(c => 
+              (c.name === collection.name || c._id === collection._id)
+                ? { ...c, banner: url, movies: updatedMovies || c.movies }
+                : c
+            );
+            broadcastCollections(updatedCollections);
+          }
+
+          // Optimistic UI for React Query (other components)
+          const previousCollections = queryClient.getQueryData(['collections']);
+          if (previousCollections) {
+            queryClient.setQueryData(['collections'], old => {
+              if (!old) return old;
+              return old.map(c => 
+                (c.name === collection.name || c._id === collection._id)
+                  ? { ...c, banner: url, movies: updatedMovies || c.movies }
+                  : c
+              );
+            });
+          }
+
+          try {
+            const collectionId = collection._id || collection.name;
+            const payload = { banner: url };
+            if (updatedMovies) {
+              payload.movies = updatedMovies;
+            }
+            const response = await apiFetch(`/api/user/collections/${encodeURIComponent(collectionId)}`, {
+              method: 'PUT',
+              body: JSON.stringify(payload)
+            });
+            if (Array.isArray(response?.collections)) {
+              broadcastCollections(response.collections, response.collectionVersion);
+            }
+            queryClient.invalidateQueries({ queryKey: ['collections'] });
+            toast('Banner updated!');
+          } catch (err) {
+            if (currentCollections) {
+              broadcastCollections(currentCollections);
+            }
+            if (previousCollections) {
+              queryClient.setQueryData(['collections'], previousCollections);
+            }
+            toast('Failed to update banner', 'error');
+          }
+        }}
       />
     </div>
   );

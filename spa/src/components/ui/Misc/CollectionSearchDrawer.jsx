@@ -4,7 +4,7 @@ import { toast } from '../../../utils/toast.js';
 import { streamApiFetch } from '../../../api/client.js';
 import { HoverMarqueeTitle } from './Typography.jsx';
 import { SearchResultSkeletonGrid } from '../Skeletons/index.js';
-import { mergeSearchResults } from '../../../utils/helpers.js';
+import { mergeSearchResults } from '../../../utils/formatters.js';
 import { yearFrom, imageUrl } from '../../../utils/formatters.js';
 import { FALLBACK_AVATAR } from '../../../utils/constants.js';
 

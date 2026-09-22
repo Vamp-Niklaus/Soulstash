@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { getCachedUserCollections, loadRatingsTable, loadUserCollections, normalizeCollections, hasCollectionCache } from '../utils/helpers.js';
+import { getCachedUserCollections, normalizeCollections, hasCollectionCache } from '../utils/collectionsCache.js';
+import { loadRatingsTable } from '../utils/ratingsCache.js';
+import { loadUserCollections } from '../utils/collectionsApi.js';
 import { getToken } from '../api/client.js';
 
 export function useLiveCollections() {
@@ -41,11 +43,24 @@ export function useLiveCollections() {
       applyCollections(getCachedUserCollections());
     }
 
+    function handleAuthChanged() {
+      if (getToken()) {
+        setLoading(true);
+        loadUserCollections()
+          .then(applyCollections)
+          .catch(() => setLoading(false));
+      } else {
+        applyCollections([]);
+      }
+    }
+
     window.addEventListener(updateEventName, handleCollectionsUpdated);
     window.addEventListener('storage', handleStorage);
+    window.addEventListener('soulstash:auth-changed', handleAuthChanged);
     return () => {
       window.removeEventListener(updateEventName, handleCollectionsUpdated);
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('soulstash:auth-changed', handleAuthChanged);
     };
   }, []);
 

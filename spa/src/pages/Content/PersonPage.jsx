@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useParams, useLocation, NavLink, Link } from 'react-router-dom';
-import { cachedApiFetch, apiFetch, streamApiFetch, getToken, getCurrentUsername } from '../../api/client.js';
-import { formatRuntime, getLanguageName, imageUrl, normalizeStoredCollectionItem, yearFrom, getPreferredRating, creditItemKey, creditMatchesCollectionItem, filterCreditsByCollectionItems, isContentInCollection, mediaRoute, getDirectorLabel, getDirectorPeople, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters } from '../../utils/formatters.js';
-import { broadcastCollections, loadUserCollections, normalizeCollections, getCollectionStatus, getCachedUserCollections, refreshCollectionsView, normalizeCredit, mergeImdbRatings } from '../../utils/helpers.js';
+import { useParams, useLocation } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch, streamApiFetch, getToken } from '../../api/client.js';
+import { creditItemKey, filterCreditsByCollectionItems, yearFrom, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters, normalizeCredit } from '../../utils/formatters.js';
+import { normalizeCollections, getCachedUserCollections } from '../../utils/collectionsCache.js';
+import { loadUserCollections } from '../../utils/collectionsApi.js';
+import { mergeImdbRatings } from '../../utils/ratingsCache.js';
 
-import { useAuthSession, useLiveCollections, useSessionState, useDropdownKeyNav } from '../../hooks/index.js';
-import { FALLBACK_AVATAR, FALLBACK_POSTER, CREDIT_PAGE_SIZE, AUTO_RECOVERY_RETRIES } from '../../utils/constants.js';
+import { useLiveCollections, useSessionState } from '../../hooks/index.js';
+import { AUTO_RECOVERY_RETRIES } from '../../utils/constants.js';
 
 import { toast } from '../../utils/toast.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
-import { PersonPageSkeleton, CastRowSkeleton, DetailPageSkeleton } from '../../components/ui/Skeletons/index.js';
+import { PersonPageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
-import { AnimeFilterIcon } from '../../components/ui/Misc/AnimeFilter.jsx';
-import { CollectionFilterControls } from '../../components/ui/Misc/CollectionFilterControls.jsx';
-import { SaveToCollectionModal } from '../../components/ui/Modals/SaveToCollectionModal.jsx';
-import { CreateCollectionModal } from '../../components/ui/Modals/CreateCollectionModal.jsx';
+import { PersonProfileHero } from './PersonProfileHero.jsx';
 
 export function PersonCreditsFilterControls({
   contentType,
@@ -253,8 +253,8 @@ export function PersonCreditsFilterControls({
 export function PersonPage() {
   const { id } = useParams();
   const location = useLocation();
-  const auth = useAuthSession();
-  const [person, setPerson] = useState(null);
+  const queryClient = useQueryClient();
+
   const [credits, setCredits] = useState([]);
   const [bioExpanded, setBioExpanded] = useState(false);
   const [contentType, setContentType] = useSessionState(`person-page:${location.pathname}:contentType`, 'all');
@@ -262,11 +262,55 @@ export function PersonPage() {
   const [quickFilter, setQuickFilter] = useSessionState(`person-page:${location.pathname}:quickFilter`, 'all');
   const [collectionFilter, setCollectionFilter] = useSessionState(`person-page:${location.pathname}:collectionFilter`, '');
   const [userCollections, setUserCollections] = useState([]);
-  const [favoritePeople, setFavoritePeople] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
+  const [creditsLoading, setCreditsLoading] = useState(true);
+  const [creditsError, setCreditsError] = useState('');
   const [retryTick, setRetryTick] = useState(0);
   const [failedAttempts, setFailedAttempts] = useState(0);
+
+  const { data: person, isLoading: isPersonLoading, error: personError } = useQuery({
+    queryKey: ['person', id],
+    queryFn: () => apiFetch(`/api/person/${id}`)
+  });
+
+  const { data: favoritePeoplePayload } = useQuery({
+    queryKey: ['favorites'],
+    queryFn: () => apiFetch('/api/user/favorites'),
+    enabled: !!getToken()
+  });
+  const favoritePeople = Array.isArray(favoritePeoplePayload?.favorites) ? favoritePeoplePayload.favorites : [];
+
+  const addFavoriteMutation = useMutation({
+    mutationFn: (data) => apiFetch('/api/user/favorites/add', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      toast('Added to favorites');
+    },
+    onError: (err) => {
+      if (err.status === 409) {
+        toast('Already in favorites', 'info');
+      } else {
+        toast(err.message, 'error');
+      }
+    }
+  });
+
+  const removeFavoriteMutation = useMutation({
+    mutationFn: (personId) => apiFetch('/api/user/favorites/remove', {
+      method: 'POST',
+      body: JSON.stringify({ id: personId })
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      toast('Removed from favorites');
+    },
+    onError: (err) => {
+      toast(err.message, 'error');
+    }
+  });
+
   const { collections: liveCollections, loading: collectionsLoading } = useLiveCollections();
   const availableCollections = useMemo(
     () => normalizeCollections(liveCollections.length ? liveCollections : userCollections),
@@ -305,34 +349,17 @@ export function PersonPage() {
     const controller = new AbortController();
 
     async function load() {
-      setLoading(true);
-      setLoadError('');
+      setCreditsLoading(true);
+      setCreditsError('');
       try {
-        // Fetch person info and stream credits in parallel.
-        // The credits stream sends 3 event types:
-        //   { type: 'credits', cast, crew }  — raw credits, render the grid immediately
-        //   { type: 'ratings', items }        — one batch of resolved ratings, merge in
-        //   { type: 'done' }                  — stream finished
-        const personPromise = cachedApiFetch(`/api/person/${id}`)
-          .then((personData) => {
-            if (ignore) return null;
-            setPerson(personData);
-            document.title = `${personData.name} | Soulstash`;
-            setFailedAttempts(0);
-            setLoadError('');
-            setLoading(false);
-            return personData;
-          });
-
         let creditsResolved = false;
-        const creditsPromise = streamApiFetch(`/api/person/${id}/credits`, {
+        await streamApiFetch(`/api/person/${id}/credits`, {
           method: 'GET',
           signal: controller.signal,
           cache: 'no-store',
           onEvent(event) {
             if (ignore) return;
             if (event?.type === 'credits') {
-              // First event: raw cast + crew — stop showing skeleton immediately.
               const rawCredits = [...(event.cast || []), ...(event.crew || [])]
                 .filter((item) => item.media_type === 'movie' || item.media_type === 'tv');
               const uniqueCredits = [];
@@ -347,24 +374,21 @@ export function PersonPage() {
 
               setCredits(uniqueCredits);
               setUserCollections(normalizeCollections(getCachedUserCollections()));
-              setLoading(false);
+              setCreditsLoading(false);
               creditsResolved = true;
             } else if (event?.type === 'ratings' && Array.isArray(event.items)) {
-              // Paint rating batches onto cards as they arrive.
               setCredits((current) => mergeImdbRatings(current, event.items));
             }
           }
         });
 
-        await Promise.all([personPromise, creditsPromise]);
-
-        if (!ignore && !creditsResolved) setLoading(false);
+        if (!ignore && !creditsResolved) setCreditsLoading(false);
       } catch (error) {
         if (!ignore) {
           setFailedAttempts((current) => {
             const next = current + 1;
             if (next >= AUTO_RECOVERY_RETRIES) {
-              setLoadError(error.message || 'Unable to load this person right now.');
+              setCreditsError(error.message || 'Unable to load this person right now.');
             } else {
               retryTimeout = window.setTimeout(() => {
                 if (!ignore) setRetryTick((currentTick) => currentTick + 1);
@@ -372,43 +396,28 @@ export function PersonPage() {
             }
             return next;
           });
-          setLoading(false);
+          setCreditsLoading(false);
         }
       }
     }
 
-    load();
+    if (id) {
+      load();
+    }
     return () => {
       ignore = true;
       controller.abort();
       if (retryTimeout) window.clearTimeout(retryTimeout);
     };
-  }, [auth.user?.admin, auth.user?.showAdult, id, retryTick]);
+  }, [id, retryTick]);
+
 
 
   useEffect(() => {
     setBioExpanded(false);
   }, [id]);
 
-  useEffect(() => {
-    if (!getToken()) {
-      setFavoritePeople([]);
-      return;
-    }
-    let ignore = false;
-    cachedApiFetch('/api/user/favorites')
-      .then((payload) => {
-        if (!ignore) {
-          setFavoritePeople(Array.isArray(payload?.favorites) ? payload.favorites : []);
-        }
-      })
-      .catch(() => {
-        if (!ignore) setFavoritePeople([]);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [id]);
+
 
   useEffect(() => {
     if (!getToken()) return;
@@ -516,7 +525,7 @@ export function PersonPage() {
     });
   }, [collectionFilter, id, quickFilter, visibleCredits]);
 
-  if (loading) {
+  if (isPersonLoading) {
     return <PersonPageSkeleton />;
   }
 
@@ -526,113 +535,14 @@ export function PersonPage() {
 
   return (
     <div className="space-y-10">
-      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(15,15,15,0.98),rgba(10,10,10,0.95))] p-6 md:p-8 lg:p-10 overflow-hidden relative">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,113,86,0.18),transparent_24%),radial-gradient(circle_at_left_center,rgba(143,68,240,0.18),transparent_30%)]"></div>
-        <div className="relative z-10 space-y-6">
-          <div className="flex items-start gap-4 sm:gap-6 md:gap-8">
-            <div className="flex-shrink-0 w-[120px] sm:w-[170px] md:w-[220px] max-w-[42vw]">
-              <div className="person-avatar self-start aspect-[2/3] overflow-hidden rounded-[24px] border border-white/10">
-                <img
-                  src={imageUrl(person.profile_path, 'w500')}
-                  alt={person.name}
-                  className="w-full h-full object-cover"
-                  onError={(event) => {
-                    event.currentTarget.src = FALLBACK_AVATAR;
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="min-w-0 flex-1 self-start">
-              <div className="flex items-start gap-3">
-                <h1 className="text-2xl sm:text-3xl md:text-5xl font-semibold text-white leading-tight text-left">{person.name}</h1>
-                <button
-                  type="button"
-                  className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[#cfcfcf] transition-colors hover:text-[#f7c948]"
-                  onClick={async () => {
-                    if (!getToken()) {
-                      toast('Please login first', 'success');
-                      return;
-                    }
-                    try {
-                      if (isFavoritePerson) {
-                        await apiFetch('/api/user/favorites/remove', {
-                          method: 'POST',
-                          body: JSON.stringify({ id: person.id })
-                        });
-                        setFavoritePeople((current) => current.filter((fav) => String(fav.id) !== String(person.id)));
-                        toast('Removed from favorites');
-                      } else {
-                        const response = await apiFetch('/api/user/favorites/add', {
-                          method: 'POST',
-                          body: JSON.stringify({
-                            id: person.id,
-                            name: person.name,
-                            profile_path: person.profile_path || '',
-                            known_for_department: person.known_for_department || ''
-                          })
-                        });
-                        setFavoritePeople((current) => [
-                          ...current,
-                          response.favorite || {
-                            id: person.id,
-                            name: person.name,
-                            profile_path: person.profile_path || '',
-                            known_for_department: person.known_for_department || ''
-                          }
-                        ]);
-                        toast('Added to favorites');
-                      }
-                    } catch (err) {
-                      if (err.status === 409) {
-                        toast('Already in favorites', 'info');
-                        return;
-                      }
-                      toast(err.message, 'error');
-                    }
-                  }}
-                  aria-label={isFavoritePerson ? 'Remove from favorites' : 'Add to favorites'}
-                >
-                  <i className={`${isFavoritePerson ? 'fas' : 'far'} fa-star text-[15px] ${isFavoritePerson ? 'text-[#f7c948]' : ''}`}></i>
-                </button>
-              </div>
-              <div className="mt-4 space-y-2 text-sm md:text-base">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="text-[#9a9a9a]">Known For</span>
-                  <span className="text-[#E2E2E2] font-medium break-words">{person.known_for_department || 'Acting'}</span>
-                </div>
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="text-[#9a9a9a]">Birthday</span>
-                  <span className="text-[#E2E2E2] font-medium">{person.birthday || 'Unknown'}</span>
-                </div>
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="text-[#9a9a9a]">Popularity</span>
-                  <span className="text-[#E2E2E2] font-medium">{person.popularity ? person.popularity.toFixed(1) : 'N/A'}</span>
-                </div>
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="text-[#9a9a9a]">Place of Birth</span>
-                  <span className="text-[#E2E2E2] font-medium break-words">{person.place_of_birth || 'Unknown'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-4xl">
-            <p className={`text-[#d0d0d0] text-sm md:text-base leading-7 ${bioExpanded ? '' : 'line-clamp-3'}`}>
-              {person.biography || 'Biography not available yet.'}
-            </p>
-            {person.biography ? (
-              <button
-                type="button"
-                className="mt-3 text-sm font-medium text-white/80 transition-colors hover:text-white"
-                onClick={() => setBioExpanded((current) => !current)}
-              >
-                {bioExpanded ? 'Show less' : 'Read more'}
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </section>
+      <PersonProfileHero
+        person={person}
+        bioExpanded={bioExpanded}
+        onToggleBiography={() => setBioExpanded((current) => !current)}
+        isFavorite={isFavoritePerson}
+        onAddFavorite={addFavoriteMutation.mutate}
+        onRemoveFavorite={removeFavoriteMutation.mutate}
+      />
 
       <section className="content-section">
         <div className="mb-5 flex items-center justify-between gap-4">

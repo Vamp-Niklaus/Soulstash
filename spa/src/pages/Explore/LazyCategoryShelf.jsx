@@ -1,45 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cachedApiFetch } from '../../api/client.js';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '../../api/client.js';
 import { HOME_GRID_CLASS } from '../../utils/constants.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { HomeShelfHeader } from './HomeShelfHeader.jsx';
+import { preloadImages } from '../../utils/preload.js';
+
 export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
-  const [movies, setMovies] = useState(() => preloadedMovies || []);
-  const [loading, setLoading] = useState(!preloadedMovies || !preloadedMovies.length);
-
   const navigate = useNavigate();
+  const genreId = genre.id || genre;
+  const displayLimit = limit || 14; // Apply limit for 2 rows on desktop
 
+  const { data: fetchedMovies, isLoading } = useQuery({
+    queryKey: ['moviesByGenre', genreId],
+    queryFn: () => apiFetch(`/api/movies?genre=${genreId}&limit=20`),
+    enabled: !preloadedMovies || preloadedMovies.length === 0,
+    staleTime: 1000 * 60 * 30, // 30 minutes
+  });
+
+  const movies = preloadedMovies?.length ? preloadedMovies : (fetchedMovies?.movies || []);
+  
+  // Preload images for dynamically fetched shelves
   useEffect(() => {
-    // If we already have preloaded data, skip the network call
-    if (preloadedMovies && preloadedMovies.length) return;
-    let ignore = false;
-    const genreId = genre.id || genre;
-    cachedApiFetch(`/api/movies?genre=${genreId}&limit=20`)
-      .then((data) => {
-        if (!ignore && data.movies) {
-          setMovies(data.movies);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!ignore) setLoading(false);
-      });
-    return () => { ignore = true; };
-  }, [genre, preloadedMovies]);
+    if (!preloadedMovies?.length && fetchedMovies?.movies?.length > 0) {
+      preloadImages(fetchedMovies.movies.slice(0, displayLimit).map(item => item.poster_path));
+    }
+  }, [fetchedMovies, preloadedMovies, displayLimit]);
+
+  const loading = (!preloadedMovies || preloadedMovies.length === 0) && isLoading;
 
   if (loading || !movies.length) return null;
 
   const title = genre.name || genre;
-  const genreId = genre.id || genre;
-  // Apply limit for 2 rows on desktop
-  const displayLimit = limit || 14;
 
   return (
     <section className="content-section">
       <HomeShelfHeader 
         title={title} 
-        onViewAll={() => navigate(`/genre/${genreId}`)} 
+        onViewAll={() => navigate(`/genre/${genreId}/${encodeURIComponent(String(title))}`)}
       />
       <div className={HOME_GRID_CLASS}>
         {movies.slice(0, displayLimit).map((item) => (
@@ -49,4 +48,3 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
     </section>
   );
 }
-

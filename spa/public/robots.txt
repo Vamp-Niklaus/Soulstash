@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://vamp-niklaus.github.io/Soulstash/sitemap.xml
