@@ -490,13 +490,7 @@ export function mergeSearchResults(currentResults, incomingResults, limit = 40, 
   for (const item of [...currentResults, ...incomingResults]) {
     if (!item) continue;
     
-    // Apply adult filter only to content (Movie/Series), not people
     const isContent = ['Movie', 'Series', 'tv', 'movie'].includes(item.media_type);
-    if (isContent) {
-      if (adminMode === 2 && item.adult !== true) continue;        // adult only: skip non-adult
-      if (adminMode === 0 && item.adult === true) continue;         // filter on: skip adult
-      // adminMode === 1: allow everything
-    }
 
     if (isContent && Number(item.score || 0) <= 25) continue;
     
