@@ -21,7 +21,7 @@ export function CollectionFormModal({
   const descriptionLength = values.description.length;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100005] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose}></div>
       <div className="relative z-10 w-full max-w-[440px] rounded-[18px] border border-white/10 bg-[#111111] p-5 sm:p-5 shadow-[0_24px_64px_rgba(0,0,0,0.5)]">
         <div className="mb-5 flex items-start justify-between gap-4">
