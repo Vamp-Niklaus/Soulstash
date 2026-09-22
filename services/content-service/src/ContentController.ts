@@ -341,7 +341,7 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
       }
 
       let results = Array.isArray(data?.results) ? data.results : [];
-      if (adminMode === 0) results = results.filter((item: any) => item?.adult !== true);
+      if (adminMode === 0) results = results.filter((item: any) => item?.adult !== true && Number(item?.vote_count || 0) >= 300);
       else if (adminMode === 2) results = results.filter((item: any) => item?.adult === true);
       res.json({ ...data, results });
     } catch (err: any) {
@@ -402,7 +402,7 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
               if (mediaType === 'person') return true; // Bypass adult filter for cast/crew
               if (adminMode === 2) return item?.adult === true; // adult only
               if (adminMode === 1) return true; // show all
-              return item?.adult !== true; // mode 0: filter out adult
+              return item?.adult !== true && Number(item?.vote_count || 0) >= 300; // mode 0: strict adult filter
             })
             .map(item => {
               if (mediaType === 'person') {
@@ -541,12 +541,12 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
           ...allMovies.filter((item) => {
             if (adminMode === 2) return item?.adult === true;
             if (adminMode === 1) return true;
-            return item?.adult !== true;
+            return item?.adult !== true && Number(item?.vote_count || 0) >= 300;
           }).map((m) => normalize(m, 'movie')),
           ...allTv.filter((item) => {
             if (adminMode === 2) return item?.adult === true;
             if (adminMode === 1) return true;
-            return item?.adult !== true;
+            return item?.adult !== true && Number(item?.vote_count || 0) >= 300;
           }).map((t) => normalize(t, 'tv'))
         ]
           .map((item) => ({
