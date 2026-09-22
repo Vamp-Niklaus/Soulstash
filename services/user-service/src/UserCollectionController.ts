@@ -171,20 +171,24 @@ export class UserCollectionController {
       if (payload.banner !== undefined) updateDoc['collections.$.banner'] = payload.banner;
       if (payload.isPublic !== undefined) updateDoc['collections.$.isPublic'] = payload.isPublic;
       if (payload.isPublished !== undefined) updateDoc['collections.$.isPublished'] = payload.isPublished;
+      if (payload.movies !== undefined) updateDoc['collections.$.movies'] = payload.movies;
       updateDoc['collections.$.updatedAt'] = new Date();
 
-      const updateResult = await coll.updateOne(
+      let updateResult = await coll.updateOne(
         { username: user.username, 'collections._id': id },
         { $set: updateDoc }
       );
       
-      // Also try updating by name (for legacy 'Watched'/'Watchlist' which might lack _id)
-      const fallbackResult = await coll.updateOne(
-        { username: user.username, 'collections.name': id, 'collections._id': { $exists: false } },
-        { $set: updateDoc }
-      );
+      // If it failed by _id (which could be the case for 'Watched' which is the name and has no _id), 
+      // try matching exactly by name.
+      if ((updateResult.modifiedCount || 0) === 0) {
+        updateResult = await coll.updateOne(
+          { username: user.username, collections: { $elemMatch: { name: id } } },
+          { $set: updateDoc }
+        );
+      }
 
-      if ((updateResult.modifiedCount || 0) === 0 && (fallbackResult.modifiedCount || 0) === 0) {
+      if ((updateResult.modifiedCount || 0) === 0) {
         const existing = await coll.findOne({ username: user.username });
         if (!existing) {
           res.status(404).json({ error: 'Collection not found' });
@@ -215,17 +219,27 @@ export class UserCollectionController {
       
       const coll = await this.repository.connect();
       
-      await coll.updateOne(
+      // We do a single findOneAndUpdate so we can return the updated array.
+      // We pull if _id matches OR name matches.
+      const latest = await coll.findOneAndUpdate(
         { username: user.username },
-        { $pull: { collections: { _id: id, isDeletable: true } } } as any
+        { 
+          $pull: { 
+            collections: { 
+              $or: [ { _id: id }, { name: id } ],
+              isDeletable: { $ne: false }
+            } 
+          } as any,
+          $inc: { collectionVersion: 1 } 
+        },
+        { returnDocument: 'after' }
       );
       
-      await coll.updateOne(
-        { username: user.username },
-        { $pull: { collections: { name: id, isDeletable: true } } } as any
-      );
-      
-      res.json({ success: true });
+      res.json({ 
+        success: true,
+        collections: latest?.collections || [],
+        collectionVersion: Number(latest?.collectionVersion || 0)
+      });
     } catch (error: any) {
       logger.error(`[UserCollectionController] deleteCollection error: ${error.message}`);
       res.status(500).json({ error: 'Failed to delete collection' });
@@ -316,6 +330,7 @@ export class UserCollectionController {
       let imdb_rating: number | null = null;
       let resolvedTitle = title || `${contentType} ${contentId}`;
       let resolvedPosterPath = poster_path || '';
+      let resolvedBackdropPath = '';
       let resolvedReleaseDate = release_date || new Date().toISOString().split('T')[0];
 
       try {
@@ -333,6 +348,7 @@ export class UserCollectionController {
           imdb_id = String(details.imdb_id || details.external_ids?.imdb_id || '').trim();
           resolvedTitle = details.title || details.name || resolvedTitle;
           resolvedPosterPath = details.poster_path || resolvedPosterPath;
+          resolvedBackdropPath = details.backdrop_path || '';
           resolvedReleaseDate = details.release_date || details.first_air_date || resolvedReleaseDate;
           logger.info(`[addItem] resolved title="${resolvedTitle}" isAnime=${isAnime} vote_average=${vote_average} imdb_id="${imdb_id}"`);
 
@@ -356,8 +372,8 @@ export class UserCollectionController {
       }
 
       const contentData = contentType === 'Series'
-        ? { seriesId: contentId, movieId: null, title: resolvedTitle, poster_path: resolvedPosterPath, release_date: resolvedReleaseDate, first_air_date: resolvedReleaseDate, media_type: 'Series', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() }
-        : { movieId: contentId, seriesId: null, title: resolvedTitle, poster_path: resolvedPosterPath, release_date: resolvedReleaseDate, first_air_date: '', media_type: 'Movie', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() };
+        ? { seriesId: contentId, movieId: null, title: resolvedTitle, poster_path: resolvedPosterPath, backdrop_path: resolvedBackdropPath, release_date: resolvedReleaseDate, first_air_date: resolvedReleaseDate, media_type: 'Series', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() }
+        : { movieId: contentId, seriesId: null, title: resolvedTitle, poster_path: resolvedPosterPath, backdrop_path: resolvedBackdropPath, release_date: resolvedReleaseDate, first_air_date: '', media_type: 'Movie', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() };
 
       // $position: 0 — newest item appears first (sort by recent = insertion order descending)
       const updateResult = await coll.updateOne(

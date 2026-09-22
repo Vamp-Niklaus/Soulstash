@@ -31,7 +31,6 @@ export function LoginPage() {
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
-
     if (!username.trim() || !password) {
       setError('Please enter username and password');
       return;
@@ -39,7 +38,8 @@ export function LoginPage() {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/login', {
+      const { API_BASE_URL } = await import('../../api/client.js');
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password })
@@ -50,6 +50,24 @@ export function LoginPage() {
       }
 
       saveAuthSession(payload.token, payload.user);
+
+      // Hydrate avatar: the login response may not include it,
+      // so fetch the profile right away and patch localStorage.
+      try {
+        const { apiFetch: fetchApi } = await import('../../api/client.js');
+        const profileResponse = await fetchApi(`/api/user/profile/${encodeURIComponent(username.trim())}`);
+        // This endpoint returns { user }, unlike the self-profile endpoint.
+        // Merge the complete record immediately so the navbar never renders a
+        // stale fallback avatar after navigation.
+        const profile = profileResponse?.user || profileResponse;
+        if (profile && typeof profile === 'object') {
+          const stored = JSON.parse(localStorage.getItem('user') || '{}');
+          localStorage.setItem('user', JSON.stringify({ ...stored, ...profile }));
+          const { emitAuthChange } = await import('../../api/client.js');
+          emitAuthChange();
+        }
+      } catch {}
+
       if (window.CollectionStore?.invalidate) window.CollectionStore.invalidate();
       if (window.CollectionStore?.syncCollections) window.CollectionStore.syncCollections().catch(() => {});
       toast(payload.message || 'Login successful!', 'success');

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getHomeGridColumns } from '../utils/helpers.js';
+import { getHomeGridColumns } from '../utils/formatters.js';
 
 export function useHomeTwoRowLimit() {
   const [limit, setLimit] = useState(() => getHomeGridColumns() * 2);

@@ -1,75 +1,40 @@
-import { cachedApiFetch } from '../../api/client.js';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { apiFetch } from '../../api/client.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 
 export function TrendingPage() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [fetchingMore, setFetchingMore] = useState(false);
-  const [retryTick, setRetryTick] = useState(0);
+  const fetchTrending = async ({ pageParam = 1 }) => {
+    return apiFetch(`/api/trending?limit=36&page=${pageParam}`);
+  };
 
-  // Initial page load
+  const {
+    data,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    status,
+    refetch
+  } = useInfiniteQuery({
+    queryKey: ['trending'],
+    queryFn: fetchTrending,
+    getNextPageParam: (lastPage, pages) => {
+      const totalPages = lastPage?.pagination?.pages ?? 1;
+      if (pages.length < totalPages) {
+        return pages.length + 1;
+      }
+      return undefined;
+    },
+  });
+
   useEffect(() => {
-    let ignore = false;
-    setLoading(true);
-    setError('');
-    setItems([]);
-    setPage(1);
-    setHasMore(true);
+    document.title = 'Trending Now | Soulstash';
+  }, []);
 
-    cachedApiFetch(`/api/trending?limit=36&page=1&retry=${retryTick}`)
-      .then((data) => {
-        if (!ignore) {
-          const fetchedItems = Array.isArray(data?.movies) ? data.movies : (Array.isArray(data) ? data : []);
-          setItems(fetchedItems);
-          const totalPages = data?.pagination?.pages ?? 1;
-          setHasMore(fetchedItems.length > 0 && 1 < totalPages);
-          document.title = 'Trending Now | Soulstash';
-        }
-      })
-      .catch((requestError) => {
-        if (!ignore) setError(requestError.message || 'Unable to load trending titles.');
-      })
-      .finally(() => {
-        if (!ignore) setLoading(false);
-      });
-
-    return () => { ignore = true; };
-  }, [retryTick]);
-
-  // Fetch next page when `page` changes
-  useEffect(() => {
-    if (page === 1) return;
-    let ignore = false;
-    setFetchingMore(true);
-
-    cachedApiFetch(`/api/trending?limit=36&page=${page}`)
-      .then((data) => {
-        if (!ignore) {
-          const fetchedItems = Array.isArray(data?.movies) ? data.movies : (Array.isArray(data) ? data : []);
-          setItems((prev) => {
-            const existingIds = new Set(prev.map((i) => i.id));
-            const unique = fetchedItems.filter((i) => !existingIds.has(i.id));
-            return [...prev, ...unique];
-          });
-          const totalPages = data?.pagination?.pages ?? 1;
-          setHasMore(fetchedItems.length > 0 && page < totalPages);
-        }
-      })
-      .catch(() => {
-        if (!ignore) setHasMore(false);
-      })
-      .finally(() => {
-        if (!ignore) setFetchingMore(false);
-      });
-
-    return () => { ignore = true; };
-  }, [page]);
+  const items = data ? data.pages.flatMap((page) => Array.isArray(page?.movies) ? page.movies : (Array.isArray(page) ? page : [])) : [];
 
   // Sentinel ref — fires once when sentinel enters viewport
   const observerRef = useRef(null);
@@ -79,7 +44,7 @@ export function TrendingPage() {
       observerRef.current.disconnect();
       observerRef.current = null;
     }
-    if (!node || !hasMore || fetchingMore || loading) return;
+    if (!node || !hasNextPage || isFetchingNextPage || status === 'pending') return;
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
@@ -87,15 +52,15 @@ export function TrendingPage() {
           // Disconnect immediately — only fire once per scroll-reach
           observerRef.current?.disconnect();
           observerRef.current = null;
-          setPage((p) => p + 1);
+          fetchNextPage();
         }
       },
       { rootMargin: '300px' }
     );
     observerRef.current.observe(node);
-  }, [hasMore, fetchingMore, loading]);
+  }, [hasNextPage, isFetchingNextPage, status, fetchNextPage]);
 
-  if (loading && !error) {
+  if (status === 'pending') {
     return (
       <section className="content-section">
         <div className="mb-5 flex items-center justify-between gap-4">
@@ -109,13 +74,13 @@ export function TrendingPage() {
   return (
     <section className="content-section">
       <SectionHeader title="Trending Now" />
-      {error ? (
+      {status === 'error' ? (
         <div className="app-error">
-          <p>{error}</p>
+          <p>{error?.message || 'Unable to load trending titles.'}</p>
           <button
             type="button"
             className="mt-4 rounded-full bg-white/10 px-5 py-2 text-white transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
-            onClick={() => setRetryTick((current) => current + 1)}
+            onClick={() => refetch()}
           >
             Try again
           </button>
@@ -129,15 +94,15 @@ export function TrendingPage() {
           </div>
 
           {/* Sentinel element — observed to trigger next page */}
-          {hasMore && (
+          {hasNextPage && (
             <div ref={sentinelRef} className="mt-8 flex justify-center h-12">
-              {fetchingMore && (
+              {isFetchingNextPage && (
                 <div className="w-6 h-6 border-2 border-white/20 border-t-white/80 rounded-full animate-spin self-center" />
               )}
             </div>
           )}
 
-          {!hasMore && items.length > 0 && (
+          {!hasNextPage && items.length > 0 && (
             <p className="mt-8 text-center text-sm text-white/30">All titles loaded</p>
           )}
         </>

@@ -1,19 +1,22 @@
-import { getToken, emitAuthChange, clearClientDataCaches } from '../../api/client.js';
-import { useAuthSession } from '../../hooks/index.js';
+import { getToken, emitAuthChange, API_BASE_URL } from '../../api/client.js';
+import { useAuthSession } from '../../hooks/useAuthSession.js';
+import { useQueryClient } from '@tanstack/react-query';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '../../utils/toast.js';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { UserProfileSkeleton, EditProfileSkeleton } from '../../components/ui/Skeletons/index.js';
 import { CollectionPosterCard } from '../../components/ui/Cards/CollectionPosterCard.jsx';
-import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
+
 
 import { ActionButton } from '../../components/ui/ActionButton.jsx';
 import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
+import { AvatarSearchModal } from '../../components/ui/Modals/AvatarSearchModal.jsx';
 
 
 export function EditProfilePage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const auth = useAuthSession();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -29,7 +32,9 @@ export function EditProfilePage() {
     youtubeHandle: ''
   });
   const [avatarPreview, setAvatarPreview] = useState(FALLBACK_AVATAR);
-  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarSearchOpen, setAvatarSearchOpen] = useState(false);
+  const formRef = useRef(null);
 
   useEffect(() => {
     document.title = 'Edit Profile - Soulstash';
@@ -42,7 +47,7 @@ export function EditProfilePage() {
     }
 
     let cancelled = false;
-    fetch('/api/user/profile', {
+    fetch(`${API_BASE_URL}/api/user/profile`, {
       headers: {
         Authorization: `Bearer ${getToken()}`
       }
@@ -89,70 +94,107 @@ export function EditProfilePage() {
       Object.entries(draft).forEach(([key, value]) => {
         if (key !== 'username') formData.append(key, value || '');
       });
-      if (avatarFile) {
-        formData.append('avatar', avatarFile);
+      if (avatarUrl) {
+        formData.append('avatarUrl', avatarUrl);
       }
 
-      const response = await fetch('/api/user/update-profile', {
+      const response = await fetch(`${API_BASE_URL}/api/user/update-profile`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${getToken()}`
         },
         body: formData
       });
-      const payload = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error(payload.error || 'Failed to update profile');
+        throw new Error(data.error || 'Failed to update profile');
       }
 
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...currentUser, ...payload }));
-      clearClientDataCaches();
+      localStorage.setItem('user', JSON.stringify({ ...currentUser, ...data }));
+
+      toast('Profile updated successfully');
       emitAuthChange();
-      toast('Profile updated');
-      navigate(`/user/${payload.username || auth.username}`);
-    } catch (saveError) {
-      setError(saveError.message || 'Failed to update profile');
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      
+      // Delay navigation slightly so user sees the success toast
+      setTimeout(() => {
+        navigate(`/user/${draft.username}`);
+      }, 500);
+    } catch (err) {
+      setError(err.message || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
   }
+
+  const handleFormKeyDown = (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (!formRef.current) return;
+      const focusables = Array.from(
+        formRef.current.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled])')
+      );
+      if (!focusables.length) return;
+      
+      const currentIndex = focusables.indexOf(document.activeElement);
+      if (currentIndex === -1) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      let nextIndex;
+      if (e.key === 'ArrowDown') {
+        nextIndex = (currentIndex + 1) % focusables.length;
+      } else {
+        nextIndex = (currentIndex - 1 + focusables.length) % focusables.length;
+      }
+      
+      const nextEl = focusables[nextIndex];
+      nextEl.focus();
+      nextEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  };
 
   if (loading) {
     return <EditProfileSkeleton />;
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <section className="rounded-[28px] bg-[rgba(255,255,255,0.03)] p-5 md:p-7">
-        <h1 className="text-2xl font-semibold text-white">Edit Profile</h1>
+    <div className="min-h-screen bg-[#0A0A0A] pb-20 pt-24 md:pt-32">
+      <section className="mx-auto max-w-3xl px-6">
+        <h1 className="mb-8 text-3xl font-bold text-white">Edit Profile</h1>
         <p className="mt-2 text-sm text-[#9f9f9f]">Update your public details and social links without leaving the app.</p>
-        <form className="mt-8 space-y-7" onSubmit={handleSave}>
+        <form 
+          ref={formRef}
+          onSubmit={handleSave} 
+          className="mt-8 space-y-7" 
+          data-tv-ignore="true"
+          onKeyDown={handleFormKeyDown}
+        >
           <div className="flex flex-col sm:flex-row items-center gap-6">
-            <label className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10">
+            <button
+              type="button"
+              onClick={() => setAvatarSearchOpen(true)}
+              className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-[#64FFDA]"
+            >
               <img
                 src={avatarPreview}
                 alt="Profile avatar"
-                className="h-full w-full object-cover"
+                className="h-full w-full object-cover object-top"
                 onError={(event) => {
                   event.currentTarget.src = FALLBACK_AVATAR;
                 }}
               />
-              <input
-                type="file"
-                accept=".jpg,.jpeg,.png,.webp,.avif,.heic,.heif"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (!file) return;
-                  setAvatarFile(file);
-                  setAvatarPreview(URL.createObjectURL(file));
-                }}
-              />
-            </label>
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-white">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+            </button>
             <div>
               <h3 className="text-white font-medium">Profile photo</h3>
-              <p className="mt-1 text-sm text-[#8f8f8f]">Upload a new photo for your profile.</p>
+              <p className="mt-1 text-sm text-[#8f8f8f]">Search for a character to set as your avatar.</p>
             </div>
           </div>
 
@@ -212,6 +254,16 @@ export function EditProfilePage() {
           </div>
         </form>
       </section>
+      
+      <AvatarSearchModal 
+        open={avatarSearchOpen} 
+        onClose={() => setAvatarSearchOpen(false)} 
+        onSelect={(url) => {
+          setAvatarUrl(url);
+          setAvatarPreview(url);
+          setAvatarSearchOpen(false);
+        }}
+      />
     </div>
   );
 }

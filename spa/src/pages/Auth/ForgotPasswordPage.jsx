@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useMutation } from '@tanstack/react-query';
 import { useAuthSession } from '../../hooks/index.js';
 import { toast } from '../../utils/toast.js';
 import { AuthPageSkeleton } from '../../components/ui/Skeletons/index.js';
@@ -16,7 +17,6 @@ export function ForgotPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState('request'); // 'request' or 'verify'
   const [error, setError] = useState('');
   const otpInputsRef = useRef([]);
@@ -31,6 +31,34 @@ export function ForgotPasswordPage() {
     }
   }, [isLoggedIn, navigate]);
 
+  const sendOtpMutation = useMutation({
+    mutationFn: (emailAddress) => apiFetch('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email: emailAddress })
+    }),
+    onSuccess: (payload) => {
+      toast(payload.message || 'OTP sent to your email!');
+      setStage('verify');
+    },
+    onError: (err) => {
+      setError(err.message || err.payload?.error || 'Failed to send OTP');
+    }
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (data) => apiFetch('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+    onSuccess: (payload) => {
+      toast(payload.message || 'Password reset successfully!', 'success');
+      navigate('/login');
+    },
+    onError: (err) => {
+      setError(err.message || err.payload?.error || 'Failed to reset password');
+    }
+  });
+
   async function handleSendOtp(event) {
     event.preventDefault();
     setError('');
@@ -44,20 +72,7 @@ export function ForgotPasswordPage() {
       return;
     }
 
-    setLoading(true);
-    try {
-      const payload = await apiFetch('/api/auth/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
-      });
-      toast(payload.message || 'OTP sent to your email!');
-      setStage('verify');
-    } catch (err) {
-      setError(err.message || err.payload?.error || 'Failed to send OTP');
-    } finally {
-      setLoading(false);
-    }
+    sendOtpMutation.mutate(email.trim());
   }
 
   async function handleResetPassword(event) {
@@ -81,24 +96,11 @@ export function ForgotPasswordPage() {
       return;
     }
 
-    setLoading(true);
-    try {
-      const payload = await apiFetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          otp: fullOtp,
-          newPassword
-        })
-      });
-      toast(payload.message || 'Password reset successfully!', 'success');
-      navigate('/login');
-    } catch (err) {
-      setError(err.message || err.payload?.error || 'Failed to reset password');
-    } finally {
-      setLoading(false);
-    }
+    resetPasswordMutation.mutate({
+      email: email.trim(),
+      otp: fullOtp,
+      newPassword
+    });
   }
 
   if (!pageReady) {
@@ -129,10 +131,10 @@ export function ForgotPasswordPage() {
           {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div> : null}
           <button
             type="submit"
-            disabled={loading}
+            disabled={sendOtpMutation.isPending}
             className="inline-flex h-11 w-full items-center justify-center rounded-full bg-white text-[15px] font-semibold text-black transition-colors hover:bg-[#e5e5e5] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? 'Sending OTP...' : 'Send Reset Code'}
+            {sendOtpMutation.isPending ? 'Sending OTP...' : 'Send Reset Code'}
           </button>
         </form>
       ) : (
@@ -209,10 +211,10 @@ export function ForgotPasswordPage() {
           {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div> : null}
           <button
             type="submit"
-            disabled={loading}
+            disabled={resetPasswordMutation.isPending}
             className="inline-flex h-11 w-full items-center justify-center rounded-full bg-white text-[15px] font-semibold text-black transition-colors hover:bg-[#e5e5e5] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? 'Resetting Password...' : 'Reset Password'}
+            {resetPasswordMutation.isPending ? 'Resetting Password...' : 'Reset Password'}
           </button>
           <button
             type="button"
