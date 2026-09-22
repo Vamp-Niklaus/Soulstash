@@ -7,7 +7,7 @@ import { useAuthSession, useInfiniteScroll } from '../../hooks/index.js';
 import { apiFetch, getToken } from '../../api/client.js';
 import { preloadImages } from '../../utils/preload.js';
 
-export function SimilarSection({ similar = [], collections = [], type = 'movie' }) {
+export function SimilarSection({ similar = [], totalPages = 1, collections = [], type = 'movie' }) {
   const { id } = useParams();
   const { user } = useAuthSession();
   // adminMode: 0=filter adult (default), 1=all, 2=adult only
@@ -30,7 +30,7 @@ export function SimilarSection({ similar = [], collections = [], type = 'movie' 
       });
       setItems(initialItems);
       setPage(1);
-      setHasMore(similar.length === 20);
+      setHasMore(totalPages > 1 || similar.length === 20);
       preloadImages(initialItems.map(item => item.poster_path));
     }
   }, [similar, id, adminMode]);

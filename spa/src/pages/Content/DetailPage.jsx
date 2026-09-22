@@ -255,7 +255,8 @@ export function DetailPage({ type }) {
 
       {/* 5. Similar Content */}
       <SimilarSection 
-        similar={content.similar?.results} 
+        similar={content.similar?.results}
+        totalPages={content.similar?.total_pages} 
         collections={page.collections} 
         type={type} 
       />
