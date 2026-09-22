@@ -39,6 +39,20 @@ export class ContentController {
     private readonly ratingsRepo?: MongoRatingsRepository
   ) {}
 
+  private isAdult(item: any): boolean {
+    if (item?.adult === true) return true;
+    if (Number(item?.vote_count || 0) < 300) return true;
+    // Only check imdb_id if it's a detailed movie object that includes it
+    if ('imdb_id' in item && !item.imdb_id) return true; 
+    return false;
+  }
+
+  private shouldShow(item: any, adminMode: 0 | 1 | 2): boolean {
+    if (adminMode === 1) return true;
+    if (adminMode === 2) return this.isAdult(item);
+    return !this.isAdult(item);
+  }
+
   private async searchUsers(query: string, limit: number): Promise<any[]> {
     const mongoUri = config.get('mongoUri');
     if (!mongoUri) return [];
@@ -202,6 +216,16 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
     try {
       const cacheKey = 'home_payload';
       const cached = await this.cacheRepo.getCache(cacheKey);
+      const adminMode = await this.getAdminMode(req);
+
+      const filterPayload = (payload: any) => {
+        if (!payload || !payload.categories) return payload;
+        const filteredCategories: Record<string, any[]> = {};
+        for (const [gid, movies] of Object.entries(payload.categories)) {
+          filteredCategories[gid] = (movies as any[]).filter((m) => this.shouldShow(m, adminMode));
+        }
+        return { ...payload, categories: filteredCategories };
+      };
 
       if (cached && cached.data) {
         const ageHours = (Date.now() - new Date(cached.updatedAt).getTime()) / (1000 * 60 * 60);
@@ -213,14 +237,14 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
         } else {
           logger.info('[ContentController] Serving home_payload from cache');
         }
-        res.json(cached.data);
+        res.json(filterPayload(cached.data));
         return;
       }
 
       logger.info('[ContentController] Cache miss for home_payload. Fetching live...');
       const payload = await this.fetchHomePayload();
       await this.cacheRepo.setCache(cacheKey, payload);
-      res.json(payload);
+      res.json(filterPayload(payload));
     } catch (error: any) {
       logger.error(`[ContentController] Error fetching home payload: ${error.message} (Cause: ${error.cause})`);
       res.status(500).json({ error: 'Failed to load home data' });
@@ -231,6 +255,11 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
     try {
       const limit = parseInt(req.query.limit as string) || 12;
       const page = parseInt(req.query.page as string) || 1;
+      const adminMode = await this.getAdminMode(req);
+
+      const filterTrending = (movies: any[]) => {
+        return movies.filter((m) => this.shouldShow(m, adminMode));
+      };
 
       if (page === 1 && limit === 12) {
         const cacheKey = 'trending_page_1';
@@ -246,7 +275,7 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
           } else {
             logger.info('[ContentController] Serving trending_page_1 from cache');
           }
-          res.json(cached.data);
+          res.json({ ...cached.data, movies: filterTrending(cached.data.movies || []) });
           return;
         }
 
@@ -254,13 +283,13 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
         const trending = await this.provider.getTrending(page, limit);
         const payload = { movies: trending, pagination: { page, limit, pages: 500 } };
         await this.cacheRepo.setCache(cacheKey, payload);
-        res.json(payload);
+        res.json({ ...payload, movies: filterTrending(payload.movies) });
         return;
       }
 
       logger.info(`[ContentController] Fetching trending page=${page} limit=${limit}`);
       const trending = await this.provider.getTrending(page, limit);
-      res.json({ movies: trending, pagination: { page, limit, pages: 500 } });
+      res.json({ movies: filterTrending(trending), pagination: { page, limit, pages: 500 } });
     } catch (error: any) {
       logger.error(`[ContentController] Error fetching trending payload: ${error.message}`);
       res.status(500).json({ error: 'Failed to load trending data' });
@@ -280,9 +309,7 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
 
       const adminMode = await this.getAdminMode(req);
       const filterMovies = (movies: any[]) => {
-        if (adminMode === 0) return movies.filter((m: any) => m?.adult !== true);
-        if (adminMode === 2) return movies.filter((m: any) => m?.adult === true);
-        return movies;
+        return movies.filter((m: any) => this.shouldShow(m, adminMode));
       };
 
       if (page === 1 && limit === 36) {
@@ -323,27 +350,47 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
   public async getSimilar(req: Request, res: Response, mediaType: 'movie' | 'tv'): Promise<void> {
     try {
       const { id } = req.params;
-      const page = req.query.page || 1;
+      const initialPage = Number(req.query.page) || 1;
       const adminMode = await this.getAdminMode(req);
-      const tmdbPath = mediaType === 'movie' 
-        ? `/3/movie/${id}/similar?page=${page}` 
-        : `/3/tv/${id}/similar?page=${page}`;
       
-      let data;
-      try {
-        data = await this.provider.getRawTMDB(tmdbPath);
-      } catch (err: any) {
-        if (err.message && err.message.includes('404')) {
-          res.json({ page: Number(page), results: [], total_pages: 0, total_results: 0 });
-          return;
+      let results: any[] = [];
+      let currentPage = initialPage;
+      let totalPages = initialPage;
+      let data = null;
+
+      while (results.length < 10 && currentPage <= initialPage + 4) { // Eager fetch up to 5 pages
+        const tmdbPath = mediaType === 'movie' 
+          ? `/3/movie/${id}/similar?page=${currentPage}` 
+          : `/3/tv/${id}/similar?page=${currentPage}`;
+        
+        try {
+          const pageData = await this.provider.getRawTMDB(tmdbPath);
+          if (!data) data = pageData; // Keep first page's metadata
+          
+          const pageResults = Array.isArray(pageData?.results) ? pageData.results : [];
+          totalPages = pageData?.total_pages || currentPage;
+
+          results.push(...pageResults.filter((item: any) => this.shouldShow(item, adminMode)));
+
+          if (currentPage >= totalPages) break;
+          currentPage++;
+        } catch (err: any) {
+          if (err.message && err.message.includes('404')) {
+            if (!data) {
+              res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+              return;
+            }
+            break;
+          }
+          throw err;
         }
-        throw err;
       }
 
-      let results = Array.isArray(data?.results) ? data.results : [];
-      if (adminMode === 0) results = results.filter((item: any) => item?.adult !== true && Number(item?.vote_count || 0) >= 300);
-      else if (adminMode === 2) results = results.filter((item: any) => item?.adult === true);
-      res.json({ ...data, results });
+      if (data) {
+        res.json({ ...data, results, page: initialPage }); // return requested page number
+      } else {
+        res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+      }
     } catch (err: any) {
       logger.error(`[ContentController] getSimilar error: ${err.message}`);
       res.status(500).json({ error: 'Failed to load similar content' });
@@ -400,9 +447,7 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
             .filter(item => {
               if (!item?.id) return false;
               if (mediaType === 'person') return true; // Bypass adult filter for cast/crew
-              if (adminMode === 2) return item?.adult === true; // adult only
-              if (adminMode === 1) return true; // show all
-              return item?.adult !== true && Number(item?.vote_count || 0) >= 300; // mode 0: strict adult filter
+              return this.shouldShow(item, adminMode);
             })
             .map(item => {
               if (mediaType === 'person') {
@@ -538,16 +583,8 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
       if (type === 'content' || type === 'all') {
         const seen = new Set<string>();
         const scored = [
-          ...allMovies.filter((item) => {
-            if (adminMode === 2) return item?.adult === true;
-            if (adminMode === 1) return true;
-            return item?.adult !== true && Number(item?.vote_count || 0) >= 300;
-          }).map((m) => normalize(m, 'movie')),
-          ...allTv.filter((item) => {
-            if (adminMode === 2) return item?.adult === true;
-            if (adminMode === 1) return true;
-            return item?.adult !== true && Number(item?.vote_count || 0) >= 300;
-          }).map((t) => normalize(t, 'tv'))
+          ...allMovies.filter((item) => this.shouldShow(item, adminMode)).map((m) => normalize(m, 'movie')),
+          ...allTv.filter((item) => this.shouldShow(item, adminMode)).map((t) => normalize(t, 'tv'))
         ]
           .map((item) => ({
             ...item,
@@ -1008,19 +1045,11 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
       let data = await this.provider.getRawTMDB(endpoint);
       const adminMode = await this.getAdminMode(req);
 
-      if (adminMode === 0 || adminMode === 2) {
-        if (data?.similar?.results) {
-          data.similar.results = data.similar.results.filter((item: any) => {
-            if (adminMode === 2) return item?.adult === true;
-            return item?.adult !== true && Number(item?.vote_count || 0) >= 300;
-          });
-        }
-        if (data?.recommendations?.results) {
-          data.recommendations.results = data.recommendations.results.filter((item: any) => {
-            if (adminMode === 2) return item?.adult === true;
-            return item?.adult !== true && Number(item?.vote_count || 0) >= 300;
-          });
-        }
+      if (data?.similar?.results) {
+        data.similar.results = data.similar.results.filter((item: any) => this.shouldShow(item, adminMode));
+      }
+      if (data?.recommendations?.results) {
+        data.recommendations.results = data.recommendations.results.filter((item: any) => this.shouldShow(item, adminMode));
       }
 
       res.json(data);
