@@ -21,12 +21,9 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
   // Initialize with the first page from the props
   useEffect(() => {
     if (similar && similar.length > 0) {
-      // Apply client-side adult filter based on adminMode
       const initialItems = similar.filter(item => {
         if (!item.poster_path) return false;
-        if (adminMode === 2) return item.adult === true;
-        if (adminMode === 0) return item.adult !== true;
-        return true; // adminMode 1: show all
+        return true;
       });
       setItems(initialItems);
       setPage(1);
@@ -50,12 +47,9 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       if (data && data.results) {
-        // Also apply client-side safety filter
         const newItems = data.results.filter(newItem => {
           if (!newItem.poster_path) return false;
           if (items.some(existingItem => existingItem.id === newItem.id)) return false;
-          if (adminMode === 2) return newItem.adult === true;
-          if (adminMode === 0) return newItem.adult !== true;
           return true;
         });
         
