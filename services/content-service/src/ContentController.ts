@@ -41,7 +41,15 @@ export class ContentController {
 
   private isAdult(item: any): boolean {
     if (item?.adult === true) return true;
-    if (Number(item?.vote_count || 0) < 300) return true;
+    
+    const isIndian = 
+      item?.origin_country?.includes('IN') || 
+      ['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa'].includes(item?.original_language);
+
+    const minVotes = isIndian ? 5 : 300;
+
+    if (Number(item?.vote_count || 0) < minVotes) return true;
+    
     // Only check imdb_id if it's a detailed movie object that includes it
     if ('imdb_id' in item && !item.imdb_id) return true; 
     return false;
