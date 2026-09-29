@@ -152,7 +152,7 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
     // Only apply vote_count filter to these genres (IDs from TMDB)
     const VOTE_FILTERED_GENRE_IDS = new Set(['27', '10749', '99']); // Horror, Romance, Documentary
     const MIN_VOTE_COUNT = 1000;
-    const TARGET_COUNT = 20;   // minimum items per filtered genre in cache
+    const TARGET_COUNT = 40;   // increased minimum items per filtered genre in cache
     const MAX_PAGES = 5;       // max pages to try per filtered genre
 
     /**
@@ -176,6 +176,22 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
       return collected.slice(0, TARGET_COUNT);
     };
 
+    const fetchRawGenre = async (genreId: string): Promise<any[]> => {
+      const collected: any[] = [];
+      const TARGET_RAW = 60; // Fetch 3 pages of raw items
+      for (let page = 1; page <= 3 && collected.length < TARGET_RAW; page++) {
+        try {
+          const { movies } = await this.provider.getCategoryItems(genreId, page, 20);
+          collected.push(...movies);
+          if (movies.length === 0) break;
+        } catch (err: any) {
+          logger.warn(`[ContentController] Genre ${genreId} raw page ${page} fetch failed: ${err.message}`);
+          break;
+        }
+      }
+      return collected.slice(0, TARGET_RAW);
+    };
+
     const trendingRaw = await this.provider.getTrending();
     const genresList = await this.provider.getGenres();
 
@@ -191,9 +207,8 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
             movies = await fetchFilteredGenre(gid);
             logger.info(`[ContentController] Genre ${gid} (filtered): ${movies.length} items cached after vote_count>=${MIN_VOTE_COUNT} filter.`);
           } else {
-            const result = await this.provider.getCategoryItems(gid);
-            movies = result.movies;
-            logger.info(`[ContentController] Genre ${gid}: ${movies.length} movies.`);
+            movies = await fetchRawGenre(gid);
+            logger.info(`[ContentController] Genre ${gid}: ${movies.length} raw movies cached.`);
           }
           return { id: gid, movies };
         } catch (err: any) {
