@@ -35,13 +35,13 @@ export const ContentCard = React.forwardRef(function ContentCard({ item, status 
           }}
         />
         {status?.watched ? (
-          <span className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#10B981] text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)] z-10">
-            <i className="fas fa-eye text-[15px] text-black"></i>
+          <span className="card-status-watched absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full shadow-[0_8px_18px_rgba(0,0,0,0.28)]">
+            <i className="fas fa-eye text-[15px]"></i>
           </span>
         ) : null}
         {!status?.watched && status?.watchlist ? (
-          <span className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#F59E0B] text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)] z-10">
-            <i className="fas fa-clock text-[15px] text-black"></i>
+          <span className="card-status-watchlist absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full shadow-[0_8px_18px_rgba(0,0,0,0.28)]">
+            <i className="fas fa-clock text-[15px]"></i>
           </span>
         ) : null}
         {onRemove ? (

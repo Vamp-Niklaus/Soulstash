@@ -11,6 +11,7 @@ export const FOCUSABLE_SEL = [
 
 export const FOCUSED = 'tv-focused';
 export let lastFocused = null;
+export let lastRect = null;
 
 export function setLastFocused(el) {
   lastFocused = el;
@@ -57,15 +58,28 @@ export function score(fromR, toR, dir) {
   const horiz = dir === 'ArrowLeft' || dir === 'ArrowRight';
   const pri   = Math.abs(horiz ? dx : dy);
   const lat   = Math.abs(horiz ? dy : dx);
-  // Prioritize primary axis distance over lateral perfect alignment
-  return (pri * 3) + lat;
+  // Edge gap along the travel axis (so big neighbours aren't penalised by their size)
+  const gap = Math.max(0, dir === 'ArrowRight' ? toR.left - fromR.right
+    : dir === 'ArrowLeft' ? fromR.left - toR.right
+    : dir === 'ArrowDown' ? toR.top - fromR.bottom
+    : fromR.top - toR.bottom);
+  // Does the candidate share our row (horizontal moves) or column (vertical moves)?
+  const overlap = horiz
+    ? Math.min(fromR.bottom, toR.bottom) - Math.max(fromR.top, toR.top)
+    : Math.min(fromR.right, toR.right) - Math.max(fromR.left, toR.left);
+  const aligned = overlap > 0;
+  // Stay inside a 60deg cone unless nothing aligned exists
+  if (!aligned && lat > pri * 1.8) return 1e6 + pri + lat;
+  return (aligned ? 0 : 5000) + gap * 2 + pri + lat * 2;
 }
 
 export function applyFocus(el, scroll = true) {
-  if (!el || el === document.activeElement) return;
+  if (!el) return;
+  if (el === document.activeElement) { el.classList.add(FOCUSED); lastFocused = el; lastRect = el.getBoundingClientRect(); return; }
   if (lastFocused && lastFocused !== el) lastFocused.classList.remove(FOCUSED);
   el.focus({ preventScroll: true });
   el.classList.add(FOCUSED);
   lastFocused = el;
+  lastRect = el.getBoundingClientRect();
   if (scroll) el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
 }

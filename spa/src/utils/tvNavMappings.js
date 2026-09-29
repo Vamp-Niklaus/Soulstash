@@ -1,4 +1,4 @@
-import { getFocusable, getFocusableIn, isVisible, score, applyFocus, FOCUSABLE_SEL } from './spatialCore.js';
+import { getFocusable, getFocusableIn, isVisible, score, applyFocus, FOCUSABLE_SEL, lastFocused, lastRect } from './spatialCore.js';
 
 export function getZone(el) {
   const explicit = el.closest('[data-tv-zone]');
@@ -115,17 +115,34 @@ export function moveFocus(dir) {
   const all = getFocusable();
   if (!all.length) return false;
 
-  const active = document.activeElement;
+  let active = document.activeElement;
   const modal  = getOpenModal();
 
   const pool = modal ? all.filter(el => modal.contains(el)) : all;
+  let fromR  = null;
 
   if (!active || !pool.includes(active)) {
-    applyFocus(getPreferredModalFocus(modal) || pool[0]);
-    return true;
+    // Focused element was re-rendered/removed: resume from its last position instead of jumping to the top.
+    const prev = lastFocused && !lastFocused.isConnected ? null : lastFocused;
+    const anchorRect = (prev && pool.includes(prev)) ? prev.getBoundingClientRect() : lastRect;
+    if (!anchorRect || modal) {
+      applyFocus(getPreferredModalFocus(modal) || pool[0]);
+      return true;
+    }
+    const c = { x: anchorRect.left + anchorRect.width / 2, y: anchorRect.top + anchorRect.height / 2 };
+    let near = null, nd = Infinity;
+    for (const el of pool) {
+      const r = el.getBoundingClientRect();
+      const d = Math.hypot(r.left + r.width / 2 - c.x, r.top + r.height / 2 - c.y);
+      if (d < nd) { nd = d; near = el; }
+    }
+    if (!near) { applyFocus(pool[0]); return true; }
+    if (nd > 40) { applyFocus(near); return true; }
+    active = near;
+    near.focus({ preventScroll: true });
   }
 
-  const fromR  = active.getBoundingClientRect();
+  fromR  = active.getBoundingClientRect();
   const fromZ  = getZone(active);
   let cands    = pool.filter(el => el !== active);
 
