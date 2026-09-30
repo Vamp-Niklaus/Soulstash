@@ -295,12 +295,9 @@ textarea:focus, textarea:focus-visible, iframe:focus, iframe:focus-visible,
 .tv-focused { outline: none !important; box-shadow: none !important; }
 
 html.tv-nav-active .tv-focused {
-  outline: 2px solid var(--tv-focus-ring, rgba(233, 196, 120, 0.95)) !important;
+  outline: 2px solid var(--tv-focus-ring) !important;
   outline-offset: 3px;
-  box-shadow:
-    0 0 0 6px rgba(210, 164, 81, 0.16),
-    0 0 26px 4px rgba(210, 164, 81, 0.28),
-    0 14px 34px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: var(--tv-focus-shadow) !important;
   position: relative;
   z-index: 6;
   transition:
@@ -309,13 +306,13 @@ html.tv-nav-active .tv-focused {
   animation: tvFocusIn 260ms cubic-bezier(.2,.8,.2,1);
 }
 @keyframes tvFocusIn {
-  from { outline-offset: 8px; outline-color: rgba(233,196,120,0); }
+  from { outline-offset: 7px; outline-color: transparent; }
   to   { outline-offset: 3px; }
 }
 html.tv-nav-active.tv-nav-dim .tv-focused,
 html.tv-nav-active.tv-nav-hidden .tv-focused {
-  outline-color: rgba(233, 196, 120, 0.7) !important;
-  box-shadow: 0 0 0 5px rgba(210, 164, 81, 0.10), 0 0 18px 2px rgba(210, 164, 81, 0.16) !important;
+  outline-color: var(--tv-focus-ring) !important;
+  box-shadow: var(--tv-focus-shadow) !important;
 }
 
 /* Poster cards: lift + glow, image brightens */
@@ -338,17 +335,39 @@ html.tv-nav-active .tv-focused[data-card] img { transform: scale(1.05); filter: 
 /* Sidebars / lists: filled highlight */
 html.tv-nav-active aside .tv-focused,
 html.tv-nav-active #collectionsList .tv-focused {
-  background: rgba(210, 164, 81, 0.12) !important;
-  outline-offset: 0;
+  background: var(--tv-focus-fill) !important;
+  outline-offset: 2px;
+  border-radius: 8px !important;
+  transform: translateY(-2px);
+}
+
+/* Collection rows and filter controls need a filled, rounded state instead of a square ring. */
+html.tv-nav-active #collectionsList > div > .tv-focused,
+html.tv-nav-active aside button.tv-focused {
+  outline: 2px solid var(--tv-focus-ring) !important;
+  outline-offset: 2px;
+  box-shadow: var(--tv-focus-shadow) !important;
+  background: var(--tv-focus-fill) !important;
+  border-radius: 8px !important;
+  transform: translateY(-2px);
+}
+
+html.tv-nav-active #collectionsList > div > .tv-focused {
+  border-radius: 12px !important;
+  overflow: visible;
 }
 
 /* Text inputs: glow field instead of a floating ring */
 html.tv-nav-active input.tv-focused,
 html.tv-nav-active textarea.tv-focused,
 html.tv-nav-active select.tv-focused {
-  outline-offset: 0;
-  background-color: rgba(210, 164, 81, 0.06) !important;
+  outline-offset: 2px;
+  background-color: var(--tv-focus-fill) !important;
 }
+
+html.tv-nav-active aside:has(input.tv-focused) input.tv-focused { border-radius: 6px; }
+
+html.tv-nav-active .now-showing .tv-focused { border-radius: 5px; background: var(--cinema-surface-raised); }
 
 html.tv-nav-active .tv-focused[class*="rounded-full"] { outline-offset: 2px; }
 

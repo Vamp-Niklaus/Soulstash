@@ -7,7 +7,6 @@ export function HomeShelfHeader({ title, publisher = '', onViewAll, onPublisherC
   return (
     <div className="mb-4 flex items-end justify-between gap-4 pr-2 sm:pr-3 lg:pr-6 xl:pr-8">
       <div className="min-w-0">
-        {isTrendingTitle ? <span className="shelf-kicker">Now showing</span> : null}
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
           <h2 className={titleClassName}>
             {title}
