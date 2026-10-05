@@ -6,3 +6,10 @@ dist/
 build/
 *.log
 .DS_Store
+
+# Local LLD Documentation & Scratch Files
+*_lld.html
+*.pdf
+convo.md
+check_db.js
+
