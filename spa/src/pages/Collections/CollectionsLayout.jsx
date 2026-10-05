@@ -14,7 +14,7 @@ export function CollectionsLayout() {
   const page = useUserCollectionsPage();
   const { navigate } = page;
 
-  // Derive a backdrop image from the selected collection (banner or first movie poster)
+  // Derive a backdrop image from the selected collection (banner, backdrop, or poster)
   const bgPosterPath = useMemo(() => {
     const coll = page.selectedCollection;
     if (!coll) return null;
@@ -23,8 +23,10 @@ export function CollectionsLayout() {
     }
     const movies = coll.movies;
     if (!movies || movies.length === 0) return null;
-    const first = movies.find(m => m.poster_path || m.backdrop_path) || movies[0];
-    return first?.poster_path || first?.backdrop_path || null;
+    const firstWithBackdrop = movies.find(m => m.backdrop_path);
+    const firstWithPoster = movies.find(m => m.poster_path);
+    const item = firstWithBackdrop || firstWithPoster || movies[0];
+    return item?.backdrop_path || item?.poster_path || null;
   }, [page.selectedCollection]);
 
   // Apply body class + CSS var — mirrors exactly what DetailHero does for movie/series pages.
@@ -47,12 +49,12 @@ export function CollectionsLayout() {
     if (bgPosterPath) {
       const fullUrl = bgPosterPath.startsWith('http')
         ? bgPosterPath
-        : `https://image.tmdb.org/t/p/w780${bgPosterPath}`;
+        : `https://image.tmdb.org/t/p/w1280${bgPosterPath.startsWith('/') ? '' : '/'}${bgPosterPath}`;
       const thumbUrl = bgPosterPath.startsWith('http')
         ? bgPosterPath
-        : `https://image.tmdb.org/t/p/w92${bgPosterPath}`;
+        : `https://image.tmdb.org/t/p/w92${bgPosterPath.startsWith('/') ? '' : '/'}${bgPosterPath}`;
 
-      document.body.style.setProperty('--collection-artwork-image', `url('${fullUrl}')`);
+      document.body.style.setProperty('--collection-artwork-image', `url("${fullUrl}")`);
 
       // Sample dominant colour from thumbnail (same algorithm as DetailHero)
       const img = new Image();

@@ -76,8 +76,10 @@ export function UserCollectionDetailPage() {
     }
     const movieItems = collection.movies;
     if (!movieItems || movieItems.length === 0) return null;
-    const first = movieItems.find(m => m.poster_path || m.backdrop_path) || movieItems[0];
-    return first?.poster_path || first?.backdrop_path || null;
+    const firstWithBackdrop = movieItems.find(m => m.backdrop_path);
+    const firstWithPoster = movieItems.find(m => m.poster_path);
+    const item = firstWithBackdrop || firstWithPoster || movieItems[0];
+    return item?.backdrop_path || item?.poster_path || null;
   }, [collection]);
 
   useEffect(() => {
@@ -99,12 +101,12 @@ export function UserCollectionDetailPage() {
     if (singleCollectionBg) {
       const fullUrl = singleCollectionBg.startsWith('http')
         ? singleCollectionBg
-        : `https://image.tmdb.org/t/p/w780${singleCollectionBg}`;
+        : `https://image.tmdb.org/t/p/w1280${singleCollectionBg.startsWith('/') ? '' : '/'}${singleCollectionBg}`;
       const thumbUrl = singleCollectionBg.startsWith('http')
         ? singleCollectionBg
-        : `https://image.tmdb.org/t/p/w92${singleCollectionBg}`;
+        : `https://image.tmdb.org/t/p/w92${singleCollectionBg.startsWith('/') ? '' : '/'}${singleCollectionBg}`;
 
-      document.body.style.setProperty('--collection-artwork-image', `url('${fullUrl}')`);
+      document.body.style.setProperty('--collection-artwork-image', `url("${fullUrl}")`);
 
       // Sample dominant colour (same algorithm as DetailHero)
       const img = new Image();
