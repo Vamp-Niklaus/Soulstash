@@ -7,9 +7,14 @@ build/
 *.log
 .DS_Store
 
+# Local Backup & Scratch Folders
+backup/
+
 # Local LLD Documentation & Scratch Files
 *_lld.html
+*.html
 *.pdf
 convo.md
 check_db.js
+
 
