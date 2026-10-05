@@ -12,6 +12,7 @@ app.use(express.json({ limit: '10mb' }));
 import { MongoRatingsRepository } from './repositories/MongoRatingsRepository';
 import { PlayerSourcesController } from './PlayerSourcesController';
 const { initDb } = require('./utils/dbProvider');
+
 // Bootstrapping dependencies
 const tmdbAdapter = new TMDBAdapter();
 const cachingProvider = new CachingDecorator(tmdbAdapter);
@@ -43,16 +44,18 @@ app.get('/person/:id/credits', contentController.getPersonCredits.bind(contentCo
 app.get('/ratings', contentController.getRatings.bind(contentController));
 app.get('/ratings/:mediaType/:tmdbID', contentController.getRating.bind(contentController));
 app.post('/ratings/imdb/enrich', contentController.enrichRatings.bind(contentController));
+
+const playerSourcesController = new PlayerSourcesController();
+app.get('/player/sources', playerSourcesController.getPlayerSources.bind(playerSourcesController));
+
+// Start HTTP server immediately so Render health checks pass without waiting on MongoDB
+app.listen(PORT, '0.0.0.0', () => {
+  logger.info(`Content Service listening on port ${PORT}`);
+});
+
+// Initialize MongoDB asynchronously in the background
 initDb().then(() => {
   logger.info('Database initialized for player sources.');
-
-  const playerSourcesController = new PlayerSourcesController();
-  app.get('/player/sources', playerSourcesController.getPlayerSources.bind(playerSourcesController));
-
-  app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Content Service listening on port ${PORT}`);
-  });
 }).catch((err: any) => {
-  logger.error(`Failed to initialize database: ${err}`);
-  process.exit(1);
+  logger.warn(`Database initialization notice: ${err}`);
 });

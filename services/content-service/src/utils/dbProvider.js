@@ -5,15 +5,25 @@ let dbInstance = null;
 
 async function initDb() {
   if (!dbInstance) {
-    const client = new MongoClient(config.get('mongoUri'));
-    await client.connect();
-    dbInstance = client.db(config.get('mongoDbName') || 'test');
+    const uri = config.get('mongoUri');
+    if (!uri) {
+      console.warn('[dbProvider] Warning: MONGODB_URI is not set in environment.');
+      return null;
+    }
+    try {
+      const client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
+      await client.connect();
+      dbInstance = client.db(config.get('mongoDbName') || 'tmdb');
+      console.log('[dbProvider] Connected successfully to MongoDB');
+    } catch (err) {
+      console.error('[dbProvider] Warning: Could not connect to MongoDB:', err.message);
+      return null;
+    }
   }
   return dbInstance;
 }
 
 function getDb() {
-  if (!dbInstance) throw new Error('Database not initialized. Call initDb() first.');
   return dbInstance;
 }
 

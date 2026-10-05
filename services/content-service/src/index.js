@@ -43,15 +43,16 @@ app.get('/person/:id/credits', contentController.getPersonCredits.bind(contentCo
 app.get('/ratings', contentController.getRatings.bind(contentController));
 app.get('/ratings/:mediaType/:tmdbID', contentController.getRating.bind(contentController));
 app.post('/ratings/imdb/enrich', contentController.enrichRatings.bind(contentController));
+
+const playerSourcesController = new PlayerSourcesController_1.PlayerSourcesController();
+app.get('/player/sources', playerSourcesController.getPlayerSources.bind(playerSourcesController));
+
+app.listen(PORT, '0.0.0.0', () => {
+    Logger_1.logger.info(`Content Service listening on port ${PORT}`);
+});
+
 initDb().then(() => {
     Logger_1.logger.info('Database initialized for player sources.');
-    const playerSourcesController = new PlayerSourcesController_1.PlayerSourcesController();
-    app.get('/player/sources', playerSourcesController.getPlayerSources.bind(playerSourcesController));
-    app.listen(PORT, '0.0.0.0', () => {
-        Logger_1.logger.info(`Content Service listening on port ${PORT}`);
-    });
 }).catch((err) => {
-    Logger_1.logger.error(`Failed to initialize database: ${err}`);
-    process.exit(1);
+    Logger_1.logger.warn(`Database initialization notice: ${err}`);
 });
-//# sourceMappingURL=index.js.map
