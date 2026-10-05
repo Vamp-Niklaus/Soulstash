@@ -56,8 +56,8 @@ export function TMDBCollectionSection({ collection, collections = [], type = 'mo
                       decoding="async"
                       onError={(e) => { e.currentTarget.src = FALLBACK_POSTER; }}
                     />
-                    {/* Minimal "Now Viewing" badge — top-left corner, no overlay */}
-                    <span className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-widest text-white/90">
+                    {/* Minimal "Now Viewing" badge — top-right corner, no overlay */}
+                    <span className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-widest text-white/90">
                       <i className="fas fa-play text-[7px]" />
                       Now Viewing
                     </span>
