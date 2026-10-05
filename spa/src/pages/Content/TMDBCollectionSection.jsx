@@ -32,7 +32,7 @@ export function TMDBCollectionSection({ collection, collections = [], type = 'mo
           return (
             <ContentCard 
               key={item.id} 
-              content={contentItem} 
+              item={contentItem} 
               status={status}
             />
           );

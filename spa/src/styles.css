@@ -171,9 +171,9 @@ body.collection-artwork-theme .collection-react-shell::before {
   background-image: url('/images/dark-bg.png');
   background-repeat: repeat;
   background-size: auto;
-  background-blend-mode: overlay;
+  background-blend-mode: luminosity;
   background-color: rgb(20 16 12);
-  opacity: 0.65;
+  opacity: 0.35;
 }
 
 
@@ -1006,7 +1006,7 @@ body.detail-artwork-theme .app-shell--textured {
 }
 
 body.detail-artwork-theme .app-shell--textured::before {
-  opacity: 0.6;
+  opacity: 0.35;
   background-blend-mode: luminosity;
 }
 
