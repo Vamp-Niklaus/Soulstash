@@ -1,9 +1,10 @@
 import React from 'react';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
-import { getCollectionStatus, imageUrl, yearFrom, getPreferredRating } from '../../utils/formatters.js';
+import { getCollectionStatus, yearFrom, getPreferredRating } from '../../utils/formatters.js';
 import { useAuthSession } from '../../hooks/index.js';
 import { FALLBACK_POSTER } from '../../utils/constants.js';
+import { imageUrl } from '../../utils/formatters.js';
 
 export function TMDBCollectionSection({ collection, collections = [], type = 'movie', currentId }) {
   const { user } = useAuthSession();
@@ -35,19 +36,17 @@ export function TMDBCollectionSection({ collection, collections = [], type = 'mo
           const status = user ? getCollectionStatus(collections, contentItem.id) : null;
 
           if (isCurrent) {
-            // Render the currently open movie as a non-clickable card with distinct styling
             const title = item.title || item.name || 'Unknown';
             const rating = getPreferredRating(item);
             const year = yearFrom(item);
             return (
               <div
                 key={item.id}
-                className="relative group"
+                className="relative"
                 aria-current="true"
-                title={`Currently viewing: ${title}`}
               >
-                {/* Card shell — same proportions as ContentCard but non-interactive */}
-                <div className="card relative cursor-default select-none opacity-60 ring-2 ring-white/30 ring-offset-1 ring-offset-black/40 rounded-[var(--card-radius,10px)] overflow-hidden">
+                {/* Same layout as ContentCard but pointer-events disabled */}
+                <div className="card cursor-default" style={{ pointerEvents: 'none' }}>
                   <div className="cardImageWrap relative">
                     <img
                       src={imageUrl(item.poster_path, 'w500')}
@@ -57,15 +56,11 @@ export function TMDBCollectionSection({ collection, collections = [], type = 'mo
                       decoding="async"
                       onError={(e) => { e.currentTarget.src = FALLBACK_POSTER; }}
                     />
-                    {/* "Now Viewing" overlay badge */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[1px]">
-                      <div className="flex flex-col items-center gap-1 px-2 text-center">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-white/20 border border-white/30 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-widest text-white/90 backdrop-blur-sm">
-                          <i className="fas fa-play text-[7px]" />
-                          Now Viewing
-                        </span>
-                      </div>
-                    </div>
+                    {/* Minimal "Now Viewing" badge — top-left corner, no overlay */}
+                    <span className="absolute top-2 left-2 z-10 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-widest text-white/90">
+                      <i className="fas fa-play text-[7px]" />
+                      Now Viewing
+                    </span>
                   </div>
                   <div className="cardMeta">
                     <div className="cardTitleWrap">
