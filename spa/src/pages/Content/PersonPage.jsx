@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import { useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, streamApiFetch, getToken } from '../../api/client.js';
-import { creditItemKey, filterCreditsByCollectionItems, yearFrom, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters, normalizeCredit } from '../../utils/formatters.js';
+import { creditItemKey, filterCreditsByCollectionItems, yearFrom, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters, normalizeCredit, imageUrl } from '../../utils/formatters.js';
 import { normalizeCollections, getCachedUserCollections } from '../../utils/collectionsCache.js';
 import { loadUserCollections } from '../../utils/collectionsApi.js';
 import { mergeImdbRatings } from '../../utils/ratingsCache.js';
 
 import { useLiveCollections, useSessionState } from '../../hooks/index.js';
-import { AUTO_RECOVERY_RETRIES } from '../../utils/constants.js';
+import { AUTO_RECOVERY_RETRIES, FALLBACK_AVATAR } from '../../utils/constants.js';
 
 import { toast } from '../../utils/toast.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
@@ -267,10 +267,42 @@ export function PersonPage() {
   const [retryTick, setRetryTick] = useState(0);
   const [failedAttempts, setFailedAttempts] = useState(0);
 
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
   const { data: person, isLoading: isPersonLoading, error: personError } = useQuery({
     queryKey: ['person', id],
     queryFn: () => apiFetch(`/api/person/${id}`)
   });
+
+  const { data: personImagesData } = useQuery({
+    queryKey: ['person-images', id],
+    queryFn: () => apiFetch(`/api/person/${id}/images`),
+    enabled: !!id
+  });
+
+  const personImages = useMemo(() => {
+    const profiles = personImagesData?.profiles || [];
+    if (profiles.length > 0) {
+      return profiles.map((p) => p.file_path).filter(Boolean);
+    }
+    return person?.profile_path ? [person.profile_path] : [];
+  }, [personImagesData, person?.profile_path]);
+
+  useEffect(() => {
+    if (!viewerOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setViewerOpen(false);
+      } else if (e.key === 'ArrowLeft' && personImages.length > 1) {
+        setCurrentImageIndex((prev) => (prev - 1 + personImages.length) % personImages.length);
+      } else if (e.key === 'ArrowRight' && personImages.length > 1) {
+        setCurrentImageIndex((prev) => (prev + 1) % personImages.length);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewerOpen, personImages.length]);
 
   const { data: favoritePeoplePayload } = useQuery({
     queryKey: ['favorites'],
@@ -542,6 +574,12 @@ export function PersonPage() {
         isFavorite={isFavoritePerson}
         onAddFavorite={addFavoriteMutation.mutate}
         onRemoveFavorite={removeFavoriteMutation.mutate}
+        onImageClick={() => {
+          if (personImages.length > 0) {
+            setCurrentImageIndex(0);
+            setViewerOpen(true);
+          }
+        }}
       />
 
       <section className="content-section">
@@ -595,6 +633,72 @@ export function PersonPage() {
           <div className="empty-state">No credits available.</div>
         )}
       </section>
+
+      {viewerOpen && personImages.length > 0 && (
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center animate-in fade-in duration-200"
+          style={{ background: 'radial-gradient(circle at center, rgba(30, 30, 30, 0.8) 0%, rgba(0, 0, 0, 0.2) 60%, transparent 100%)' }}
+          onClick={() => setViewerOpen(false)}
+        >
+          {personImages.length > 1 && (
+            <button
+              type="button"
+              className="absolute left-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 md:left-10"
+              onClick={(e) => {
+                e.stopPropagation();
+                setCurrentImageIndex((prev) => (prev - 1 + personImages.length) % personImages.length);
+              }}
+              aria-label="Previous image"
+            >
+              <i className="fas fa-chevron-left" />
+            </button>
+          )}
+
+          <img 
+            key={personImages[currentImageIndex]}
+            src={imageUrl(personImages[currentImageIndex], 'original')}
+            alt={person?.name || 'Person profile'}
+            className="relative z-10 max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_80px_rgba(0,0,0,0.8)] animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+            onError={(event) => {
+              event.currentTarget.src = FALLBACK_AVATAR;
+            }}
+          />
+
+          {personImages.length > 1 && (
+            <button
+              type="button"
+              className="absolute right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 md:right-10"
+              onClick={(e) => {
+                e.stopPropagation();
+                setCurrentImageIndex((prev) => (prev + 1) % personImages.length);
+              }}
+              aria-label="Next image"
+            >
+              <i className="fas fa-chevron-right" />
+            </button>
+          )}
+          
+          {personImages.length > 1 && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-4 py-1 text-sm font-medium text-white select-none">
+              {currentImageIndex + 1} / {personImages.length}
+            </div>
+          )}
+
+          {/* Preload adjacent images */}
+          {personImages.length > 1 && [-2, -1, 1, 2].map(offset => {
+            const index = (currentImageIndex + offset + personImages.length) % personImages.length;
+            return (
+              <img 
+                key={`preload-${index}`} 
+                src={imageUrl(personImages[index], 'original')} 
+                alt="" 
+                className="hidden" 
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
