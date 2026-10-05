@@ -1,11 +1,4 @@
-/**
- * UserCollectionsPage.jsx
- *
- * Orchestrator component for the User Collections view.
- * All state and complex logic live in useUserCollectionsPage.js.
- * All JSX is composed from focused subcomponents.
- */
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate, Outlet } from 'react-router-dom';
 import { useUserCollectionsPage } from '../../hooks/useUserCollectionsPage.js';
 import { createEmptyCollectionDraft } from '../../utils/formatters.js';
@@ -20,6 +13,32 @@ import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
 export function CollectionsLayout() {
   const page = useUserCollectionsPage();
   const { navigate } = page;
+
+  // Derive a backdrop image from the first movie poster in the selected collection
+  const bgPosterPath = useMemo(() => {
+    const movies = page.selectedCollection?.movies;
+    if (!movies || movies.length === 0) return null;
+    const first = movies.find(m => m.poster_path) || movies[0];
+    return first?.poster_path || null;
+  }, [page.selectedCollection]);
+
+  // Apply body class + CSS var so the collection shell can use the poster as background
+  useEffect(() => {
+    if (bgPosterPath) {
+      const url = bgPosterPath.startsWith('http')
+        ? bgPosterPath
+        : `https://image.tmdb.org/t/p/w780${bgPosterPath}`;
+      document.body.style.setProperty('--collection-artwork-image', `url('${url}')`);
+      document.body.classList.add('collection-artwork-theme');
+    } else {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.classList.remove('collection-artwork-theme');
+    }
+    return () => {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.classList.remove('collection-artwork-theme');
+    };
+  }, [bgPosterPath]);
 
   return (
     <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">

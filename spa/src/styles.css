@@ -134,6 +134,49 @@
   min-height: 100vh;
 }
 
+/* ── Collection Artwork Background Theme ────────────────────────────────────
+   When a collection with movies is selected, body gains .collection-artwork-theme
+   + --collection-artwork-image CSS var pointing to the first movie's poster.
+   Layer order (bottom → top):
+     1. Body bg: poster image, darkened with gradient overlay
+     2. ::before: dark-bg texture (luminosity blend) at 0.55 opacity — adds
+        grain texture while slightly brightening the dimmed poster beneath
+   ──────────────────────────────────────────────────────────────────────── */
+body.collection-artwork-theme {
+  background-color: rgb(9 10 12) !important;
+  background-image:
+    linear-gradient(to bottom, rgb(12 13 16 / 0.78), rgb(9 10 12 / 0.96) 85%),
+    linear-gradient(rgb(18 20 24 / 0.18), rgb(18 20 24 / 0.18)),
+    var(--collection-artwork-image, none),
+    url('/images/dark-bg.png') !important;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat !important;
+  background-position: center top, center top, center top, center !important;
+  background-size: 100% 100%, 100% 100%, min(100vw, 900px) auto, auto !important;
+  background-attachment: fixed !important;
+  transition: background-image 500ms ease, background-color 400ms ease;
+}
+
+body.collection-artwork-theme .collection-react-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Texture grain layer — sits above poster, adds film grain + slight brightness */
+body.collection-artwork-theme .collection-react-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url('/images/dark-bg.png');
+  background-repeat: repeat;
+  background-size: auto;
+  background-blend-mode: luminosity;
+  background-color: rgb(32 28 22);
+  opacity: 0.55;
+}
+
+
 .collection-detail-header-fixed {
   top: calc(64px + env(safe-area-inset-top, 0px));
 }
