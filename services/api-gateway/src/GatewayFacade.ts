@@ -298,6 +298,7 @@ export class GatewayFacade {
     });
 
     this.app.get('/api/movies/:id', (req, res) => proxyTMDB(req, res, `/3/movie/${req.params.id}?append_to_response=videos,similar,images`));
+    this.app.get('/api/tmdb-collection/:id', (req, res) => proxyTMDB(req, res, `/3/collection/${req.params.id}`));
     this.app.get('/api/movies/:id/similar', async (req: Request, res: Response) => {
       try {
         const fetch = global.fetch || require('node-fetch');

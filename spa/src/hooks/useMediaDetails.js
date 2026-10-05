@@ -46,6 +46,19 @@ export function useMediaDetails(id, type) {
     retryDelay: 2500,
   });
 
+  const {
+    data: tmdbCollectionData
+  } = useQuery({
+    queryKey: ['tmdb_collection', contentData?.belongs_to_collection?.id],
+    queryFn: async () => {
+      const res = await apiFetch(`/api/tmdb-collection/${contentData.belongs_to_collection.id}`);
+      return res;
+    },
+    enabled: !!contentData?.belongs_to_collection?.id,
+    retry: 2,
+    retryDelay: 2000,
+  });
+
   const content = contentData || null;
   const loadError = loadErrorObj ? loadErrorObj.message || 'Unable to load this page.' : '';
 
@@ -55,5 +68,5 @@ export function useMediaDetails(id, type) {
     }
   }, [content]);
 
-  return { content, loading, loadError };
+  return { content, tmdbCollection: tmdbCollectionData || null, loading, loadError };
 }

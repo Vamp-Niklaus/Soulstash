@@ -1,0 +1,518 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+// @ts-nocheck
+const express_1 = __importDefault(require("express"));
+const pingTemplate_1 = require("../../shared/src/utils/pingTemplate");
+const AuthController_1 = require("./AuthController");
+const UserService_1 = require("./UserService");
+const AdminController_1 = require("./AdminController");
+const MongoUserRepository_1 = require("./repositories/MongoUserRepository");
+const Logger_1 = require("../../shared/src/utils/Logger");
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+const app = (0, express_1.default)();
+app.use(express_1.default.json({ limit: '10mb' }));
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const ConfigManager_1 = require("../../shared/src/utils/ConfigManager");
+const UserCollectionController_1 = require("./UserCollectionController");
+// Bootstrapping dependencies
+const userRepository = new MongoUserRepository_1.MongoUserRepository();
+// userRepository.connect() is handled lazily inside the repo calls
+const userService = new UserService_1.UserService(userRepository);
+const authController = new AuthController_1.AuthController(userService);
+const collectionController = new UserCollectionController_1.UserCollectionController(userRepository);
+const adminController = new AdminController_1.AdminController(userRepository);
+// Routing
+app.post('/register', (req, res) => authController.register(req, res));
+app.post('/login', (req, res) => authController.login(req, res));
+app.post('/send-otp', (req, res) => authController.sendOtp(req, res));
+app.post('/verify-otp-and-register', (req, res) => authController.verifyOtpAndRegister(req, res));
+app.get('/check-username', (req, res) => authController.checkUsername(req, res));
+app.get('/me', (req, res) => authController.me(req, res));
+app.post('/forgot-password', (req, res) => authController.forgotPassword(req, res));
+app.post('/reset-password', (req, res) => authController.resetPassword(req, res));
+// Authentication Middleware
+const extractUser = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (token) {
+        try {
+            const secret = ConfigManager_1.config.get('jwtSecret') || 'fallback_secret';
+            req.user = jsonwebtoken_1.default.verify(token, secret);
+        }
+        catch (e) { }
+    }
+    next();
+};
+// Admin Routing (Proxied from Gateway)
+app.use('/admin', extractUser);
+app.get('/admin/me', (req, res) => adminController.getMe(req, res));
+app.get('/admin/users', (req, res) => adminController.getUsers(req, res));
+app.post('/admin/preferences', (req, res) => adminController.updatePreferences(req, res));
+app.post('/admin/multimovies', (req, res) => adminController.updateMultimovies(req, res));
+app.post('/admin/trafficLogs', (req, res) => adminController.postTrafficLogs(req, res));
+app.get('/admin/trafficLogs/stats', (req, res) => adminController.getTrafficStats(req, res));
+app.get('/admin/users/:username/profile', extractUser, (req, res) => adminController.getUserProfile(req, res));
+app.post('/admin/users/:username/avatar', extractUser, upload.single('avatar'), (req, res) => adminController.updateAvatar(req, res));
+// User Collections (Proxied from Gateway)
+// Profile API
+app.get('/profile/:username', extractUser, async (req, res) => {
+    try {
+        const coll = await userRepository.connect();
+        const profileUser = await coll.findOne({ username: req.params.username }, { projection: { password: 0 } });
+        if (!profileUser)
+            return res.status(404).json({ error: 'User not found' });
+        const loggedInUser = req.user ? await coll.findOne({ username: req.user.username }, { projection: { password: 0 } }) : null;
+        const isOwner = loggedInUser?.username === profileUser.username;
+        const followers = Array.isArray(profileUser.followers) ? profileUser.followers : [];
+        const following = Array.isArray(profileUser.following) ? profileUser.following : [];
+        const loggedInFollowing = Array.isArray(loggedInUser?.following) ? loggedInUser.following : [];
+        const loggedInFollowers = Array.isArray(loggedInUser?.followers) ? loggedInUser.followers : [];
+        const isFollowing = !!loggedInUser && loggedInFollowing.includes(profileUser.username);
+        const isFollowedBy = !!loggedInUser && loggedInFollowers.includes(profileUser.username);
+        const favoritesArePublic = profileUser.favoritePeoplePublic === true;
+        const userData = isOwner ? profileUser : {
+            _id: profileUser._id, username: profileUser.username,
+            firstName: profileUser.firstName, lastName: profileUser.lastName,
+            bio: profileUser.bio, avatar: profileUser.avatar, createdAt: profileUser.createdAt,
+            followersCount: followers.length,
+            followingCount: following.length,
+            collections: (profileUser.collections || []).filter((c) => c.isPublic === true || c.isPublished === true),
+            ...(favoritesArePublic ? { favoritePeople: Array.isArray(profileUser.favoritePeople) ? profileUser.favoritePeople : [] } : {})
+        };
+        if (isOwner) {
+            userData.followersCount = followers.length;
+            userData.followingCount = following.length;
+            userData.favoritePeoplePublic = favoritesArePublic;
+        }
+        res.json({ user: userData, isOwner, accessLevel: isOwner ? 'owner' : 'public', isFollowing, isFollowedBy });
+    }
+    catch (err) {
+        Logger_1.logger.error('Profile API error:', err);
+        res.status(500).json({ error: 'Failed to fetch profile data' });
+    }
+});
+app.get('/profile', extractUser, async (req, res) => {
+    try {
+        const username = req.user?.username;
+        if (!username)
+            return res.status(401).json({ error: 'Unauthorized' });
+        const coll = await userRepository.connect();
+        const profileUser = await coll.findOne({ username }, { projection: { password: 0 } });
+        if (!profileUser)
+            return res.status(404).json({ error: 'User not found' });
+        res.json({
+            ...profileUser,
+            fullName: profileUser.fullName || [profileUser.firstName, profileUser.lastName].filter(Boolean).join(' ').trim() || profileUser.username,
+            avatar: profileUser.avatar || null
+        });
+    }
+    catch (err) {
+        Logger_1.logger.error('Profile self API error:', err);
+        res.status(500).json({ error: 'Failed to fetch profile data' });
+    }
+});
+app.post('/update-profile', extractUser, upload.single('avatar'), async (req, res) => {
+    try {
+        const username = req.user?.username;
+        if (!username)
+            return res.status(401).json({ error: 'Unauthorized' });
+        const coll = await userRepository.connect();
+        const existing = await coll.findOne({ username }, { projection: { password: 0 } });
+        if (!existing)
+            return res.status(404).json({ error: 'User not found' });
+        const nextFirstName = typeof req.body?.firstName === 'string' ? req.body.firstName : existing.firstName || '';
+        const nextLastName = typeof req.body?.lastName === 'string' ? req.body.lastName : existing.lastName || '';
+        const nextBio = typeof req.body?.bio === 'string' ? req.body.bio : existing.bio || '';
+        const nextDateOfBirth = typeof req.body?.dateOfBirth === 'string' ? req.body.dateOfBirth : existing.dateOfBirth || '';
+        const nextInstagram = typeof req.body?.instagramHandle === 'string' ? req.body.instagramHandle : existing.instagramHandle || '';
+        const nextX = typeof req.body?.xHandle === 'string' ? req.body.xHandle : existing.xHandle || '';
+        const nextYouTube = typeof req.body?.youtubeHandle === 'string' ? req.body.youtubeHandle : existing.youtubeHandle || '';
+        const updates = {
+            firstName: nextFirstName,
+            lastName: nextLastName,
+            dateOfBirth: nextDateOfBirth,
+            bio: nextBio,
+            instagramHandle: nextInstagram,
+            xHandle: nextX,
+            youtubeHandle: nextYouTube
+        };
+        updates.fullName = [updates.firstName, updates.lastName].filter(Boolean).join(' ').trim() || existing.fullName || username;
+        if (req.file?.buffer) {
+            // Keep it simple for now: store avatar as a data URL so the UI can render it immediately.
+            const mimeType = req.file.mimetype || 'image/png';
+            updates.avatar = `data:${mimeType};base64,${req.file.buffer.toString('base64')}`;
+        }
+        else if (req.body.avatarUrl) {
+            updates.avatar = req.body.avatarUrl;
+        }
+        const result = await coll.findOneAndUpdate({ username }, { $set: updates }, { returnDocument: 'after', projection: { password: 0 } });
+        const user = result?.value || await coll.findOne({ username }, { projection: { password: 0 } });
+        if (!user)
+            return res.status(404).json({ error: 'User not found' });
+        res.json({
+            ...user,
+            fullName: user.fullName || [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.username,
+            avatar: user.avatar || null
+        });
+    }
+    catch (err) {
+        Logger_1.logger.error('Update profile API error:', err);
+        res.status(500).json({ error: 'Failed to update profile' });
+    }
+});
+app.use('/collections', extractUser);
+app.get('/collections', (req, res) => collectionController.getCollections(req, res));
+app.post('/collections', (req, res) => collectionController.createCollection(req, res));
+app.put('/collections/:id', (req, res) => collectionController.updateCollection(req, res));
+app.delete('/collections/:id', (req, res) => collectionController.deleteCollection(req, res));
+app.post('/collections/reorder', (req, res) => collectionController.reorder(req, res));
+app.post('/collections/:id/add', (req, res) => collectionController.addItem(req, res));
+app.post('/collections/:id/remove', (req, res) => collectionController.removeItem(req, res));
+app.get('/favorites', extractUser, async (req, res) => {
+    try {
+        const username = req.user?.username;
+        if (!username)
+            return res.status(401).json({ error: 'Unauthorized' });
+        const coll = await userRepository.connect();
+        const user = await coll.findOne({ username }, { projection: { favoritePeople: 1 } });
+        if (!user)
+            return res.status(404).json({ error: 'User not found' });
+        const favorites = Array.isArray(user.favoritePeople) ? user.favoritePeople : [];
+        res.json({ favorites });
+    }
+    catch (err) {
+        Logger_1.logger.error('Favorites fetch error:', err);
+        res.status(500).json({ error: 'Failed to fetch favorites' });
+    }
+});
+app.post('/favorites/add', extractUser, async (req, res) => {
+    try {
+        const username = req.user?.username;
+        if (!username)
+            return res.status(401).json({ error: 'Unauthorized' });
+        const person = req.body;
+        if (!person || person.id == null) {
+            return res.status(400).json({ error: 'Person id is required' });
+        }
+        const coll = await userRepository.connect();
+        const user = await coll.findOne({ username }, { projection: { favoritePeople: 1 } });
+        if (!user)
+            return res.status(404).json({ error: 'User not found' });
+        const existing = Array.isArray(user.favoritePeople)
+            ? user.favoritePeople.some((fav) => String(fav.id) === String(person.id))
+            : false;
+        if (existing) {
+            return res.status(409).json({ error: 'Already in favorites' });
+        }
+        const favoritePerson = {
+            id: person.id,
+            name: person.name || '',
+            profile_path: person.profile_path || '',
+            known_for_department: person.known_for_department || ''
+        };
+        await coll.updateOne({ username }, {
+            $push: { favoritePeople: favoritePerson },
+            $set: { updatedAt: new Date() }
+        });
+        res.json({ success: true, favorite: favoritePerson });
+    }
+    catch (err) {
+        Logger_1.logger.error('Favorites add error:', err);
+        res.status(500).json({ error: 'Failed to add favorite' });
+    }
+});
+app.post('/favorites/remove', extractUser, async (req, res) => {
+    try {
+        const username = req.user?.username;
+        if (!username)
+            return res.status(401).json({ error: 'Unauthorized' });
+        const personId = req.body?.id;
+        if (personId == null) {
+            return res.status(400).json({ error: 'Person id is required' });
+        }
+        const coll = await userRepository.connect();
+        await coll.updateOne({ username }, { $pull: { favoritePeople: { id: personId } }, $set: { updatedAt: new Date() } });
+        res.json({ success: true });
+    }
+    catch (err) {
+        Logger_1.logger.error('Favorites remove error:', err);
+        res.status(500).json({ error: 'Failed to remove favorite' });
+    }
+});
+app.post('/favorites/privacy', extractUser, async (req, res) => {
+    try {
+        const username = req.user?.username;
+        if (!username)
+            return res.status(401).json({ error: 'Unauthorized' });
+        const isPublic = req.body?.isPublic === true;
+        const coll = await userRepository.connect();
+        const result = await coll.updateOne({ username }, { $set: { favoritePeoplePublic: isPublic, updatedAt: new Date() } });
+        if (!result.matchedCount)
+            return res.status(404).json({ error: 'User not found' });
+        res.json({ success: true, favoritePeoplePublic: isPublic });
+    }
+    catch (err) {
+        Logger_1.logger.error('Favorites privacy update error:', err);
+        res.status(500).json({ error: 'Failed to update favorites privacy' });
+    }
+});
+app.post('/collections/:id/publish', async (req, res) => {
+    try {
+        const user = req.user;
+        const collectionId = req.params.id;
+        const publish = req.body?.publish === true;
+        if (!user)
+            return res.status(401).json({ error: 'Unauthorized' });
+        const coll = await userRepository.connect();
+        const doc = await coll.findOne({ username: user.username });
+        if (!doc)
+            return res.status(404).json({ error: 'User not found' });
+        const idx = Array.isArray(doc.collections) ? doc.collections.findIndex((c) => String(c._id || c.name) === String(collectionId)) : -1;
+        if (idx === -1)
+            return res.status(404).json({ error: 'Collection not found' });
+        const current = doc.collections[idx];
+        if (['Watched', 'Watchlist'].includes(current.name)) {
+            return res.status(400).json({ error: 'Default collections cannot be published' });
+        }
+        const movieCount = Array.isArray(current.movies) ? current.movies.length : 0;
+        if (publish && movieCount < 6) {
+            return res.status(400).json({ error: 'At least 6 titles are required to publish this collection' });
+        }
+        let updateResult = await coll.updateOne({ username: user.username, 'collections._id': collectionId }, { $set: { 'collections.$.isPublished': publish, 'collections.$.isPublic': publish ? true : false, 'collections.$.updatedAt': new Date(), updatedAt: new Date() } });
+        if ((updateResult.modifiedCount || 0) === 0) {
+            await coll.updateOne({ username: user.username, collections: { $elemMatch: { name: collectionId } } }, { $set: { 'collections.$.isPublished': publish, 'collections.$.isPublic': publish ? true : false, 'collections.$.updatedAt': new Date(), updatedAt: new Date() } });
+        }
+        const latest = await coll.findOne({ username: user.username }, { projection: { password: 0 } });
+        res.json({
+            message: publish ? 'Collection published' : 'Collection unpublished',
+            collections: latest?.collections || [],
+            collectionVersion: Number(latest?.collectionVersion || 0)
+        });
+    }
+    catch (err) {
+        Logger_1.logger.error(`[UserService] publish collection error: ${err.message}`);
+        res.status(500).json({ error: 'Failed to publish collection' });
+    }
+});
+app.post('/collections/reorder', extractUser, async (req, res) => {
+    try {
+        const user = req.user;
+        const order = Array.isArray(req.body?.order) ? req.body.order : [];
+        if (!user)
+            return res.status(401).json({ error: 'Unauthorized' });
+        if (!order.length)
+            return res.status(400).json({ error: 'Collection order is required' });
+        const coll = await userRepository.connect();
+        const doc = await coll.findOne({ username: user.username });
+        if (!doc)
+            return res.status(404).json({ error: 'User not found' });
+        const current = Array.isArray(doc.collections) ? doc.collections : [];
+        const defaults = current.filter((c) => ['Watched', 'Watchlist'].includes(c.name));
+        const others = current.filter((c) => !['Watched', 'Watchlist'].includes(c.name));
+        const byKey = new Map();
+        current.forEach((collection) => {
+            byKey.set(String(collection._id || collection.name), collection);
+            byKey.set(String(collection.name), collection);
+        });
+        const reordered = [];
+        for (const id of order) {
+            const found = byKey.get(String(id));
+            if (found && !['Watched', 'Watchlist'].includes(found.name) && !reordered.find((c) => c.name === found.name)) {
+                reordered.push(found);
+            }
+        }
+        others.forEach((collection) => {
+            if (!reordered.find((c) => c.name === collection.name)) {
+                reordered.push(collection);
+            }
+        });
+        const finalCollections = [
+            ...defaults.filter((c) => c.name === 'Watched'),
+            ...defaults.filter((c) => c.name === 'Watchlist'),
+            ...reordered
+        ];
+        await coll.updateOne({ username: user.username }, { $set: { collections: finalCollections, updatedAt: new Date() }, $inc: { collectionVersion: 1 } });
+        const latest = await coll.findOne({ username: user.username }, { projection: { password: 0 } });
+        res.json({
+            success: true,
+            collections: latest?.collections || finalCollections,
+            collectionVersion: Number(latest?.collectionVersion || 0)
+        });
+    }
+    catch (err) {
+        Logger_1.logger.error(`[UserService] reorder collections error: ${err.message}`);
+        res.status(500).json({ error: 'Failed to reorder collections' });
+    }
+});
+app.post('/collections/:id/enrich-metadata', async (req, res) => {
+    try {
+        const user = req.user;
+        if (!user)
+            return res.status(401).json({ error: 'Unauthorized' });
+        const collectionId = req.params.id;
+        const items = Array.isArray(req.body?.items) ? req.body.items : [];
+        const coll = await userRepository.connect();
+        const doc = await coll.findOne({ username: user.username }, { projection: { password: 0 } });
+        if (!doc)
+            return res.status(404).json({ error: 'User not found' });
+        // Key resolved items by mediaType:contentId so each stored movie/series
+        // entry in the target collection can be matched and updated in place.
+        const resolvedByKey = new Map(items.map((item) => [`${String(item.mediaType)}:${Number(item.contentId)}`, item]));
+        let modified = false;
+        const updatedCollections = (doc.collections || []).map((c) => {
+            if (String(c._id) !== String(collectionId) && c.name !== collectionId)
+                return c;
+            const movies = (c.movies || []).map((m) => {
+                const mediaType = m.media_type === 'Series' || m.seriesId ? 'Series' : 'Movie';
+                const contentId = Number(m.movieId || m.seriesId || m.id || 0);
+                const resolved = resolvedByKey.get(`${mediaType}:${contentId}`);
+                if (!resolved)
+                    return m;
+                modified = true;
+                return {
+                    ...m,
+                    imdb_rating: resolved.imdb_rating ?? null,
+                    vote_average: resolved.vote_average ?? m.vote_average ?? null,
+                    imdb_id: resolved.imdb_id || m.imdb_id || '',
+                    // Persist the attempt flag even on a failed lookup so this item
+                    // isn't re-queued for enrichment on every future page load.
+                    rating_lookup_attempted: resolved.rating_lookup_attempted === true
+                };
+            });
+            return { ...c, movies, updatedAt: new Date() };
+        });
+        if (!modified) {
+            return res.json({
+                message: 'Nothing to update',
+                collections: doc.collections || [],
+                collectionVersion: Number(doc.collectionVersion || 0)
+            });
+        }
+        const latest = await coll.findOneAndUpdate({ username: user.username }, { $set: { collections: updatedCollections }, $inc: { collectionVersion: 1 } }, { returnDocument: 'after' });
+        res.json({
+            message: 'Collection metadata updated',
+            collections: latest?.collections || updatedCollections,
+            collectionVersion: Number(latest?.collectionVersion || 0)
+        });
+    }
+    catch (err) {
+        Logger_1.logger.error(`[UserService] enrich metadata error: ${err.message}`);
+        res.status(500).json({ error: 'Failed to enrich collection metadata' });
+    }
+});
+// Social API
+app.get('/:username/followers', extractUser, async (req, res) => {
+    try {
+        const coll = await userRepository.connect();
+        const targetUser = await coll.findOne({ username: req.params.username });
+        if (!targetUser)
+            return res.status(404).json({ error: 'User not found' });
+        const loggedInUser = req.user ? await coll.findOne({ username: req.user.username }) : null;
+        const loggedInFollowing = Array.isArray(loggedInUser?.following) ? loggedInUser.following : [];
+        const followerUsernames = Array.isArray(targetUser.followers) ? targetUser.followers : [];
+        if (!followerUsernames.length)
+            return res.json({ users: [] });
+        const followerDocs = await coll.find({ username: { $in: followerUsernames } }).toArray();
+        const users = followerDocs.map((u) => ({
+            username: u.username,
+            avatar: u.avatar || null,
+            fullName: u.fullName || [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.username,
+            bio: u.bio || '',
+            isFollowing: !!loggedInUser && loggedInFollowing.includes(u.username)
+        }));
+        res.json({ users });
+    }
+    catch (err) {
+        Logger_1.logger.error('Followers fetch error:', err);
+        res.status(500).json({ error: 'Failed to fetch followers' });
+    }
+});
+app.get('/:username/following', extractUser, async (req, res) => {
+    try {
+        const coll = await userRepository.connect();
+        const targetUser = await coll.findOne({ username: req.params.username });
+        if (!targetUser)
+            return res.status(404).json({ error: 'User not found' });
+        const loggedInUser = req.user ? await coll.findOne({ username: req.user.username }) : null;
+        const loggedInFollowing = Array.isArray(loggedInUser?.following) ? loggedInUser.following : [];
+        const followingUsernames = Array.isArray(targetUser.following) ? targetUser.following : [];
+        if (!followingUsernames.length)
+            return res.json({ users: [] });
+        const followingDocs = await coll.find({ username: { $in: followingUsernames } }).toArray();
+        const users = followingDocs.map((u) => ({
+            username: u.username,
+            avatar: u.avatar || null,
+            fullName: u.fullName || [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.username,
+            bio: u.bio || '',
+            isFollowing: !!loggedInUser && loggedInFollowing.includes(u.username)
+        }));
+        res.json({ users });
+    }
+    catch (err) {
+        Logger_1.logger.error('Following fetch error:', err);
+        res.status(500).json({ error: 'Failed to fetch following' });
+    }
+});
+app.post('/follow', extractUser, async (req, res) => {
+    try {
+        const username = req.user?.username;
+        const targetUsername = req.body?.username;
+        if (!username)
+            return res.status(401).json({ error: 'Unauthorized' });
+        if (!targetUsername || username === targetUsername)
+            return res.status(400).json({ error: 'Invalid target' });
+        const coll = await userRepository.connect();
+        const target = await coll.findOne({ username: targetUsername });
+        if (!target)
+            return res.status(404).json({ error: 'User not found' });
+        await coll.updateOne({ username }, { $addToSet: { following: targetUsername } });
+        await coll.updateOne({ username: targetUsername }, { $addToSet: { followers: username } });
+        res.json({ success: true, message: `Followed ${targetUsername}` });
+    }
+    catch (err) {
+        Logger_1.logger.error('Follow error:', err);
+        res.status(500).json({ error: 'Failed to follow user' });
+    }
+});
+app.post('/unfollow', extractUser, async (req, res) => {
+    try {
+        const username = req.user?.username;
+        const targetUsername = req.body?.username;
+        if (!username)
+            return res.status(401).json({ error: 'Unauthorized' });
+        if (!targetUsername)
+            return res.status(400).json({ error: 'Invalid target' });
+        const coll = await userRepository.connect();
+        await coll.updateOne({ username }, { $pull: { following: targetUsername } });
+        await coll.updateOne({ username: targetUsername }, { $pull: { followers: username } });
+        res.json({ success: true, message: `Unfollowed ${targetUsername}` });
+    }
+    catch (err) {
+        Logger_1.logger.error('Unfollow error:', err);
+        res.status(500).json({ error: 'Failed to unfollow user' });
+    }
+});
+// Public Collection
+app.get('/public-collection/:username/:collectionName', (req, res) => collectionController.getPublicCollection(req, res));
+app.get('/health', (req, res) => { res.status(200).json({ status: 'User Service is healthy' }); });
+app.get('/ping', (req, res) => {
+    res.send((0, pingTemplate_1.generatePingHtml)({
+        serviceName: 'User Service',
+        role: 'Handles authentication, user profiles, and private collections.',
+        parents: ['API Gateway'],
+        children: ['MongoDB'],
+        endpoints: [
+            '/login', '/register', '/me', '/profile',
+            '/collections', '/collections/:id', '/check-username', '/forgot-password'
+        ]
+    }));
+});
+app.listen(PORT, '0.0.0.0', () => {
+    Logger_1.logger.info(`User Service listening on port ${PORT}`);
+});
+//# sourceMappingURL=index.js.map

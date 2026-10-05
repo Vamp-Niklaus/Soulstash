@@ -1074,6 +1074,9 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
       if (data?.recommendations?.results) {
         data.recommendations.results = data.recommendations.results.filter((item: any) => this.shouldShow(item, adminMode));
       }
+      if (data?.parts) {
+        data.parts = data.parts.filter((item: any) => this.shouldShow(item, adminMode));
+      }
 
       res.json(data);
     } catch (error: any) {

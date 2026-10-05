@@ -1,0 +1,1 @@
+{"version":3,"file":"MongoCollectionRepository.d.ts","sourceRoot":"","sources":["MongoCollectionRepository.ts"],"names":[],"mappings":"AAIA;;;GAGG;AACH,qBAAa,yBAAyB;IACpC,OAAO,CAAC,MAAM,CAAc;IAC5B,OAAO,CAAC,UAAU,CAAgC;;YAQpC,OAAO;IAUR,uBAAuB,IAAI,OAAO,CAAC,GAAG,EAAE,CAAC;CAsCvD"}
