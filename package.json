@@ -1,0 +1,12 @@
+{
+  "name": "soulstash",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Soulstash - Movie & TV Show Discovery Platform",
+  "scripts": {
+    "dev": "npm --prefix spa run dev",
+    "build": "cd spa && npm install && npm run build",
+    "render-build": "cd spa && npm install && npm run build",
+    "preview": "npm --prefix spa run preview"
+  }
+}
