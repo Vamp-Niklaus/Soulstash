@@ -81,21 +81,33 @@ export function UserCollectionDetailPage() {
   }, [collection]);
 
   useEffect(() => {
+    // Always activate the texture theme when a collection is loaded, even when it has no movies.
+    // The image var is optional — the texture & tint still render without it.
+    const hasCollection = !!collection?.name;
+    if (!hasCollection) {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.classList.remove('collection-artwork-theme');
+      return () => {
+        document.body.style.removeProperty('--collection-artwork-image');
+        document.body.classList.remove('collection-artwork-theme');
+      };
+    }
+
     if (singleCollectionBg) {
       const url = singleCollectionBg.startsWith('http')
         ? singleCollectionBg
         : `https://image.tmdb.org/t/p/w780${singleCollectionBg}`;
       document.body.style.setProperty('--collection-artwork-image', `url('${url}')`);
-      document.body.classList.add('collection-artwork-theme');
     } else {
       document.body.style.removeProperty('--collection-artwork-image');
-      document.body.classList.remove('collection-artwork-theme');
     }
+    document.body.classList.add('collection-artwork-theme');
+
     return () => {
       document.body.style.removeProperty('--collection-artwork-image');
       document.body.classList.remove('collection-artwork-theme');
     };
-  }, [singleCollectionBg]);
+  }, [singleCollectionBg, collection?.name]);
 
   useEffect(() => {
     console.log('[Soulstash][React] UserCollectionDetailPage mounted', {

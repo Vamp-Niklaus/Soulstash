@@ -27,23 +27,36 @@ export function CollectionsLayout() {
     return first?.poster_path || null;
   }, [page.selectedCollection]);
 
-  // Apply body class + CSS var so the collection shell can use the poster/banner as background with colored texture
+  // Apply body class + CSS var so the collection shell can use the poster/banner as background with colored texture.
+  // We keep the theme active whenever ANY collection is selected — even empty ones — so the
+  // texture grain is always visible. The CSS gracefully handles a missing image var.
   useEffect(() => {
+    const hasCollection = !!page.selectedCollection;
+    if (!hasCollection) {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.classList.remove('collection-artwork-theme');
+      return () => {
+        document.body.style.removeProperty('--collection-artwork-image');
+        document.body.classList.remove('collection-artwork-theme');
+      };
+    }
+
     if (bgPosterPath) {
       const url = bgPosterPath.startsWith('http')
         ? bgPosterPath
         : `https://image.tmdb.org/t/p/w780${bgPosterPath}`;
       document.body.style.setProperty('--collection-artwork-image', `url('${url}')`);
-      document.body.classList.add('collection-artwork-theme');
     } else {
+      // No image but still activate the texture/tint theme
       document.body.style.removeProperty('--collection-artwork-image');
-      document.body.classList.remove('collection-artwork-theme');
     }
+    document.body.classList.add('collection-artwork-theme');
+
     return () => {
       document.body.style.removeProperty('--collection-artwork-image');
       document.body.classList.remove('collection-artwork-theme');
     };
-  }, [bgPosterPath]);
+  }, [bgPosterPath, page.selectedCollection]);
 
   return (
     <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">
