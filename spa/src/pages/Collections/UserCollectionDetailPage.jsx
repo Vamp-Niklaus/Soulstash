@@ -68,6 +68,35 @@ export function UserCollectionDetailPage() {
     document.title = `${decodedCollectionName} | Soulstash`;
   }, [decodedCollectionName]);
 
+  // Derive background artwork for single collection page
+  const singleCollectionBg = useMemo(() => {
+    if (!collection) return null;
+    if (collection.banner && typeof collection.banner === 'string' && collection.banner.trim() && !collection.banner.includes('b23d0bfcaa8b')) {
+      return collection.banner;
+    }
+    const movieItems = collection.movies;
+    if (!movieItems || movieItems.length === 0) return null;
+    const first = movieItems.find(m => m.poster_path) || movieItems[0];
+    return first?.poster_path || null;
+  }, [collection]);
+
+  useEffect(() => {
+    if (singleCollectionBg) {
+      const url = singleCollectionBg.startsWith('http')
+        ? singleCollectionBg
+        : `https://image.tmdb.org/t/p/w780${singleCollectionBg}`;
+      document.body.style.setProperty('--collection-artwork-image', `url('${url}')`);
+      document.body.classList.add('collection-artwork-theme');
+    } else {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.classList.remove('collection-artwork-theme');
+    }
+    return () => {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.classList.remove('collection-artwork-theme');
+    };
+  }, [singleCollectionBg]);
+
   useEffect(() => {
     console.log('[Soulstash][React] UserCollectionDetailPage mounted', {
       route: window.location.pathname,

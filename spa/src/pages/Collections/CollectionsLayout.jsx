@@ -14,15 +14,20 @@ export function CollectionsLayout() {
   const page = useUserCollectionsPage();
   const { navigate } = page;
 
-  // Derive a backdrop image from the first movie poster in the selected collection
+  // Derive a backdrop image from the selected collection (banner or first movie poster)
   const bgPosterPath = useMemo(() => {
-    const movies = page.selectedCollection?.movies;
+    const coll = page.selectedCollection;
+    if (!coll) return null;
+    if (coll.banner && typeof coll.banner === 'string' && coll.banner.trim() && !coll.banner.includes('b23d0bfcaa8b')) {
+      return coll.banner;
+    }
+    const movies = coll.movies;
     if (!movies || movies.length === 0) return null;
     const first = movies.find(m => m.poster_path) || movies[0];
     return first?.poster_path || null;
   }, [page.selectedCollection]);
 
-  // Apply body class + CSS var so the collection shell can use the poster as background
+  // Apply body class + CSS var so the collection shell can use the poster/banner as background with colored texture
   useEffect(() => {
     if (bgPosterPath) {
       const url = bgPosterPath.startsWith('http')
