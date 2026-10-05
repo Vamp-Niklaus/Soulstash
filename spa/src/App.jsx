@@ -35,6 +35,14 @@ import { PersonPage } from './pages/Content/PersonPage.jsx';
 
 
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname]);
+  return null;
+}
+
 export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -99,6 +107,7 @@ export function AppShell() {
 
   return (
     <div className={`app-shell ${isCollectionRoute ? 'collection-react-shell' : 'app-shell--textured'}`}>
+      <ScrollToTop />
       <ReactNavbar />
       <main className={`app-main ${isAuthRoute ? 'app-main--auth' : ''}`}>
         <div className={`app-container ${isCollectionRoute ? 'app-container--collections' : ''}`}>

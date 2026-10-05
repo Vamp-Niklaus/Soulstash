@@ -168,11 +168,6 @@ export function UserProfilePage() {
                     event.currentTarget.src = FALLBACK_AVATAR;
                   }}
                 />
-                {(isOwner || isAdminView) && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                    <i className="fas fa-pencil-alt text-white/80"></i>
-                  </div>
-                )}
               </button>
               <div className="flex items-center gap-3 text-xs text-[#9f9f9f]">
                 <button

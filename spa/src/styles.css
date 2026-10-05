@@ -171,9 +171,9 @@ body.collection-artwork-theme .collection-react-shell::before {
   background-image: url('/images/dark-bg.png');
   background-repeat: repeat;
   background-size: auto;
-  background-blend-mode: luminosity;
-  background-color: rgb(32 28 22);
-  opacity: 0.55;
+  background-blend-mode: overlay;
+  background-color: rgb(20 16 12);
+  opacity: 0.65;
 }
 
 
@@ -238,6 +238,26 @@ body.collection-artwork-theme .collection-react-shell::before {
   to { transform: translateY(0); }
 }
 
+/* ── Skeleton shimmer wave ───────────────────────────────────────────── */
+@keyframes skeletonShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.card.animate-pulse .cardImageWrap,
+.card.animate-pulse .cardMeta > div {
+  animation: skeletonShimmer 1.6s ease-in-out infinite !important;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.10) 40%,
+    rgba(255,255,255,0.16) 50%,
+    rgba(255,255,255,0.10) 60%,
+    rgba(255,255,255,0.04) 100%
+  ) !important;
+  background-size: 200% 100% !important;
+}
+
 .auth-poster-column--up {
   animation: soulstashMoveUp 90s linear infinite;
   will-change: transform;
@@ -264,6 +284,23 @@ body.collection-artwork-theme .collection-react-shell::before {
   left: 0;
   z-index: 9999;
   border-bottom: 1px solid var(--cinema-border);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* Texture grain overlay on navbar */
+.modern-navbar-react::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: url('/images/dark-bg.png');
+  background-repeat: repeat;
+  background-size: auto;
+  background-blend-mode: luminosity;
+  background-color: rgb(22 18 14);
+  opacity: 0.38;
 }
 
 .modern-navbar-react .navbar-container {
@@ -1104,41 +1141,44 @@ body.detail-artwork-theme .app-shell--textured::before {
 
 .action-button--watched {
   border-color: var(--action-watched);
-  background: color-mix(in srgb, var(--action-watched) 28%, var(--cinema-surface));
+  background: color-mix(in srgb, var(--action-watched) 45%, var(--cinema-surface));
   color: var(--cinema-text);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 8px 22px rgba(121, 184, 198, 0.2);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 8px 22px rgba(121, 184, 198, 0.28);
 }
 .action-button--watched.is-active {
   border-color: var(--action-watched);
   background: var(--action-watched);
-  color: var(--cinema-bg);
-  box-shadow: 0 8px 24px rgba(121, 184, 198, 0.28);
+  color: #09090c;
+  font-weight: 700;
+  box-shadow: 0 8px 28px rgba(121, 184, 198, 0.45);
 }
 
 .action-button--watchlist {
   border-color: var(--action-watchlist);
-  background: color-mix(in srgb, var(--action-watchlist) 28%, var(--cinema-surface));
+  background: color-mix(in srgb, var(--action-watchlist) 45%, var(--cinema-surface));
   color: var(--cinema-text);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 8px 22px rgba(212, 154, 138, 0.2);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 8px 22px rgba(212, 154, 138, 0.28);
 }
 .action-button--watchlist.is-active {
   border-color: var(--action-watchlist);
   background: var(--action-watchlist);
-  color: var(--cinema-bg);
-  box-shadow: 0 8px 24px rgba(212, 154, 138, 0.28);
+  color: #09090c;
+  font-weight: 700;
+  box-shadow: 0 8px 28px rgba(212, 154, 138, 0.45);
 }
 
 .action-button--collection {
   border-color: var(--action-collection);
-  background: color-mix(in srgb, var(--action-collection) 30%, var(--cinema-surface));
+  background: color-mix(in srgb, var(--action-collection) 45%, var(--cinema-surface));
   color: var(--cinema-text);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(210, 164, 81, 0.22);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(210, 164, 81, 0.30);
 }
 
 .action-button--collection.is-active {
   background: var(--action-collection);
-  color: var(--cinema-bg);
-  box-shadow: 0 8px 26px rgba(210, 164, 81, 0.32);
+  color: #09090c;
+  font-weight: 700;
+  box-shadow: 0 8px 30px rgba(210, 164, 81, 0.45);
   text-shadow: none;
 }
 
