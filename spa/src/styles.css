@@ -135,34 +135,41 @@
 }
 
 /* ── Collection Artwork Background Theme ────────────────────────────────────
-   When a collection with movies is selected, body gains .collection-artwork-theme
-   + --collection-artwork-image CSS var pointing to the first movie's poster.
+   Mirrors exactly what detail-artwork-theme does for movie/series pages.
+   The poster image is visible as a blurred/darkened background tinted by
+   the dominant colour sampled from the image (--collection-tint).
    Layer order (bottom → top):
-     1. Body bg: poster image, darkened with gradient overlay
-     2. ::before: dark-bg texture (luminosity blend) at 0.55 opacity — adds
-        grain texture while slightly brightening the dimmed poster beneath
+     1. dark-bg.png texture (base)
+     2. poster/banner image, fixed, darkened by gradients above
+     3. tint-coloured gradient (top → opaque dark at bottom)
+     4. subtle flat tint overlay
    ──────────────────────────────────────────────────────────────────────── */
 body.collection-artwork-theme {
+  --collection-tint: 18 20 24;
   background-color: rgb(9 10 12) !important;
   background-image:
-    radial-gradient(100% 65% at 12% 0%, rgb(var(--collection-tint, 130 98 62) / 0.35), transparent 62%),
-    linear-gradient(to bottom, rgb(12 13 16 / 0.74), rgb(9 10 12 / 0.94) 85%),
-    linear-gradient(rgb(18 20 24 / 0.16), rgb(18 20 24 / 0.16)),
+    linear-gradient(to bottom, rgb(var(--collection-tint) / 0.66), rgb(9 10 12 / 0.94) 82%),
+    linear-gradient(rgb(var(--collection-tint) / 0.16), rgb(var(--collection-tint) / 0.16)),
     var(--collection-artwork-image, none),
     url('/images/dark-bg.png') !important;
-  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat !important;
-  background-position: center top, center top, center top, center top, center !important;
-  background-size: 100% 100%, 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat !important;
+  background-position: center top, center top, center top, center !important;
+  background-size: 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
   background-attachment: fixed !important;
-  transition: background-image 500ms ease, background-color 400ms ease;
+  transition: background-color 600ms ease;
 }
 
 body.collection-artwork-theme .collection-react-shell {
+  --page-texture-tint: var(--collection-tint);
   position: relative;
   isolation: isolate;
+  background-image:
+    linear-gradient(rgb(var(--collection-tint) / 0.12), rgb(9 10 12 / 0.54));
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
 }
 
-/* Texture grain layer — sits above poster, adds film grain + rich warm colored texture */
+/* Texture grain layer — matches detail-artwork-theme treatment */
 body.collection-artwork-theme .collection-react-shell::before {
   content: '';
   position: fixed;
@@ -173,8 +180,8 @@ body.collection-artwork-theme .collection-react-shell::before {
   background-repeat: repeat;
   background-size: auto;
   background-blend-mode: luminosity;
-  background-color: rgb(var(--collection-tint, 92 74 52));
-  opacity: 0.48;
+  background-color: rgb(var(--collection-tint, 18 20 24));
+  opacity: 0.35;
 }
 
 
