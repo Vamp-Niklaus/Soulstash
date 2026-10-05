@@ -249,6 +249,10 @@ function handleKeyDown(e) {
 
 function handleFocusIn(e) {
   const modal = getOpenModal();
+  if (_navActive && e.target instanceof Element && isVisible(e.target)) {
+    if (lastFocused && lastFocused !== e.target) lastFocused.classList.remove(FOCUSED);
+    applyFocus(e.target, false);
+  }
   if (!modal || modal.contains(e.target)) return;
   const preferred = getPreferredModalFocus(modal);
   if (!preferred) return;
@@ -367,7 +371,41 @@ html.tv-nav-active select.tv-focused {
 
 html.tv-nav-active aside:has(input.tv-focused) input.tv-focused { border-radius: 6px; }
 
-html.tv-nav-active .now-showing .tv-focused { border-radius: 5px; background: var(--cinema-surface-raised); }
+/* Navigation lives on fixed bars: draw the focus surface inside the button, never as a full-height square. */
+html.tv-nav-active .modern-navbar-react .nav-link.tv-focused,
+html.tv-nav-active .mobile-bottom-nav-react__item.tv-focused {
+  outline: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+  background: transparent !important;
+  opacity: 1;
+  isolation: isolate;
+  animation: none;
+}
+html.tv-nav-active .modern-navbar-react .nav-link.tv-focused::before,
+html.tv-nav-active .mobile-bottom-nav-react__item.tv-focused::before {
+  content: '';
+  position: absolute;
+  inset: 8px 2px;
+  z-index: -1;
+  border: 2px solid var(--tv-focus-ring);
+  border-radius: 12px;
+  background: var(--tv-focus-fill);
+  box-shadow: var(--tv-focus-shadow);
+  pointer-events: none;
+  animation: tvNavFocusIn 240ms cubic-bezier(.2,.8,.2,1) both;
+}
+html.tv-nav-active .mobile-bottom-nav-react__item.tv-focused::before { inset: 5px 4px; border-radius: 10px; }
+html.tv-nav-active .modern-navbar-react .nav-link.tv-focused .nav-link-icon,
+html.tv-nav-active .mobile-bottom-nav-react__item.tv-focused svg {
+  color: var(--tv-focus-ring);
+  transform: translateY(-2px);
+  transition: transform 240ms ease, color 240ms ease;
+}
+@keyframes tvNavFocusIn {
+  from { opacity: .4; transform: scale(.92); }
+  to { opacity: 1; transform: scale(1); }
+}
 
 html.tv-nav-active .tv-focused[class*="rounded-full"] { outline-offset: 2px; }
 
@@ -379,6 +417,8 @@ html.tv-nav-active [data-player-modal] .tv-focused {
 
 @media (prefers-reduced-motion: reduce) {
   html.tv-nav-active .tv-focused { animation: none; transition: none; }
+  html.tv-nav-active .nav-link.tv-focused::before,
+  html.tv-nav-active .mobile-bottom-nav-react__item.tv-focused::before { animation: none; }
 }
 
 html:not(.tv-nav-active) [class*="focus:ring"],

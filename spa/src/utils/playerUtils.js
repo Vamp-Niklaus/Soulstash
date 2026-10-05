@@ -5,7 +5,6 @@ export const PLAYER_SOURCE_SLOTS = [
   { id: 'h4', key: 'strmp2', label: 'H4' },
   { id: 'h5', key: 'flls', label: 'H5' },
   { id: 'vidnest', match: (source) => sourceKeyText(source).includes('vidnest'), label: 'VidNest' },
-  { id: 'cinesu', match: (source) => sourceKeyText(source).includes('cinesu') || sourceKeyText(source).includes('cine.su'), label: 'Cine.su' },
   { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
   { id: 'vidsrc-pm', match: (source) => sourceKeyText(source).includes('vidsrc-pm'), label: 'VidSrc PM' },
   { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
@@ -33,7 +32,10 @@ export function firstPlayableUrl(source) {
 }
 
 export function buildPlayerSourceSlots(incomingSources = [], fallbackSources = [], isLoading = false) {
-  const pool = [...incomingSources, ...fallbackSources].filter(Boolean);
+  // Cine.su is temporarily hidden and disabled.
+  const pool = [...incomingSources, ...fallbackSources]
+    .filter(Boolean)
+    .filter((source) => !/cine\.?su/.test(sourceKeyText(source)));
   const used = new Set();
 
   return PLAYER_SOURCE_SLOTS.map((slot) => {

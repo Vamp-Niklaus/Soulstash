@@ -8,7 +8,6 @@ export function SectionHeader({ title, subtitle, large = false }) {
   return (
     <div className="flex items-end justify-between mb-4 gap-4">
       <div>
-        {isLargeTitle ? <span className="shelf-kicker">Browse the catalog</span> : null}
         <h2 className={titleClassName}>
           {title}
         </h2>

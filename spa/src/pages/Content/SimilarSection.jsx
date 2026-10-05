@@ -99,8 +99,13 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
       </div>
 
       {hasMore && (
-        <div ref={sentinelRef} className="mt-8 flex justify-center h-10">
-          {loading && <div className="app-loading">Loading more...</div>}
+        <div ref={sentinelRef} className="load-more-zone">
+          {loading && (
+            <div className="load-more-indicator" role="status" aria-live="polite">
+              <span className="load-more-indicator__spinner" aria-hidden="true" />
+              <span>Loading more</span>
+            </div>
+          )}
         </div>
       )}
     </section>

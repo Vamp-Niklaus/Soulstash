@@ -40,7 +40,8 @@ export function AppShell() {
   const navigate = useNavigate();
   
   const isCollectionRoute = 
-    matchPath('/user/:username/collections', location.pathname) || 
+    matchPath('/user/:username/collections/*', location.pathname) || 
+    matchPath('/user/:username/collections', location.pathname) ||
     matchPath('/user/:username/collection/:collectionName', location.pathname);
     
   const isAuthRoute = ['/login', '/register', '/forgot-password'].includes(location.pathname);
@@ -97,7 +98,7 @@ export function AppShell() {
   );
 
   return (
-    <div className={`app-shell ${isCollectionRoute ? 'collection-react-shell' : ''}`}>
+    <div className={`app-shell ${isCollectionRoute ? 'collection-react-shell' : 'app-shell--textured'}`}>
       <ReactNavbar />
       <main className={`app-main ${isAuthRoute ? 'app-main--auth' : ''}`}>
         <div className={`app-container ${isCollectionRoute ? 'app-container--collections' : ''}`}>

@@ -11,7 +11,6 @@ import { HOME_GRID_CLASS, HOME_TRENDING_TTL } from '../../utils/constants.js';
 import { HomePageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { HomeShelfHeader } from './HomeShelfHeader.jsx';
-import { NowShowingSlider } from './NowShowingSlider.jsx';
 import { LazyCategoryShelf } from './LazyCategoryShelf.jsx';
 import { preloadImages } from '../../utils/preload.js';
 
@@ -77,7 +76,6 @@ export function HomePage() {
 
   return (
     <div className="space-y-8">
-      {!error && trending.length > 0 ? <NowShowingSlider items={trending} /> : null}
       <section className="content-section">
         <HomeShelfHeader title="Trending Now" onViewAll={() => navigate('/trending')} />
         {error ? (

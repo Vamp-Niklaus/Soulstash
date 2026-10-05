@@ -246,60 +246,43 @@ export function VideoPlayerModal({ request, onClose }) {
           SESSION_SCRAPED.add(sessionKey);
         }
 
-        setActiveUrl((current) => {
-          if (current && resolvedSources.some((s) => s.url === current)) {
-            return current;
-          }
-
-          const playable = resolvedSources.filter(s => s.url);
-          if (!playable.length) return '';
-
-          const vidnest = playable.find(s => {
-            const l = s.label?.toLowerCase() || '';
-            return l.includes('vidnest') || s.id?.toLowerCase().includes('vidnest');
-          });
-          if (vidnest) return vidnest.url;
-
-          const videasy = playable.find(s => {
-            const l = s.label?.toLowerCase() || '';
-            return l.includes('videasy') || l.includes('vid-easy') || s.id?.includes('videasy');
-          });
-          if (videasy) return videasy.url;
-
-          const youtube = playable.find(s => {
-            const l = s.label?.toLowerCase() || '';
-            return l.includes('youtube') || s.id?.includes('youtube');
-          });
-          if (youtube) return youtube.url;
-
-          return playable[0].url;
-        });
       }
     }
   }, [sourcePayload, fallbackSources, request, sourceSignature]);
 
   const sources = useMemo(() => buildPlayerSourceSlots(hindiSources, fallbackSources, isFetching), [hindiSources, fallbackSources, isFetching]);
 
+  // Race every available stream once; the first host that answers wins.
+  // After a stream is chosen we keep it (no flicker) unless it disappears.
+  const raceTokenRef = useRef(0);
+  const playableKey = sources.filter((s) => s.url).map((s) => s.url).join('|');
   useEffect(() => {
-    setActiveUrl((current) => {
-      if (current && sources.some((s) => s.url === current)) return current;
-      const playable = sources.filter((s) => s.url);
-      if (!playable.length) return current;
-      const vidnest = playable.find((s) =>
-        s.id?.toLowerCase().includes('vidnest') || s.label?.toLowerCase().includes('vidnest')
-      );
-      if (vidnest) return vidnest.url;
-      const videasy = playable.find((s) =>
-        s.id?.toLowerCase().includes('videasy') || s.label?.toLowerCase().includes('videasy')
-      );
-      if (videasy) return videasy.url;
-      const youtube = playable.find((s) =>
-        s.id?.toLowerCase().includes('youtube') || s.label?.toLowerCase().includes('youtube')
-      );
-      if (youtube) return youtube.url;
-      return playable[0].url;
+    const playable = sources.filter((s) => s.url);
+    if (!playable.length) return undefined;
+    if (activeUrl && playable.some((s) => s.url === activeUrl)) return undefined;
+    const token = ++raceTokenRef.current;
+    const controllers = [];
+    let settled = false;
+    const pick = (url) => {
+      if (settled || raceTokenRef.current !== token) return;
+      settled = true;
+      controllers.forEach((c) => c.abort());
+      setActiveUrl((current) => (current && playable.some((s) => s.url === current) ? current : url));
+    };
+    playable.forEach((s) => {
+      const c = new AbortController();
+      controllers.push(c);
+      fetch(s.url, { mode: 'no-cors', signal: c.signal, cache: 'no-store' })
+        .then(() => pick(s.url))
+        .catch(() => {});
     });
-  }, [sources]);
+    const timer = window.setTimeout(() => pick(playable[0].url), 4000);
+    return () => {
+      window.clearTimeout(timer);
+      controllers.forEach((c) => c.abort());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playableKey]);
 
   const defaultSource = sources.find((source) => source.id === 'vidnest' && source.url) || sources.find((source) => source.url) || sources[0];
   const activeSource = sources.find((source) => source.url === activeUrl) || defaultSource;
@@ -640,7 +623,7 @@ export function VideoPlayerModal({ request, onClose }) {
               <div className={`relative h-full w-full ${activeSource?.id?.includes('cinesu') ? 'cine-crop-wrapper' : ''}`}>
                 <iframe
                   ref={iframeRef}
-                  key={`${sourceSignature}:${activeUrl}:${iframeReloadKey}`}
+                  key={`${activeUrl}:${iframeReloadKey}`}
                   src={activeUrl}
                   tabIndex={0}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
