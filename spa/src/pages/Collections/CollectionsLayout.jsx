@@ -23,8 +23,8 @@ export function CollectionsLayout() {
     }
     const movies = coll.movies;
     if (!movies || movies.length === 0) return null;
-    const first = movies.find(m => m.poster_path) || movies[0];
-    return first?.poster_path || null;
+    const first = movies.find(m => m.poster_path || m.backdrop_path) || movies[0];
+    return first?.poster_path || first?.backdrop_path || null;
   }, [page.selectedCollection]);
 
   // Apply body class + CSS var — mirrors exactly what DetailHero does for movie/series pages.

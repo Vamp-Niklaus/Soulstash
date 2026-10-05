@@ -76,8 +76,8 @@ export function UserCollectionDetailPage() {
     }
     const movieItems = collection.movies;
     if (!movieItems || movieItems.length === 0) return null;
-    const first = movieItems.find(m => m.poster_path) || movieItems[0];
-    return first?.poster_path || null;
+    const first = movieItems.find(m => m.poster_path || m.backdrop_path) || movieItems[0];
+    return first?.poster_path || first?.backdrop_path || null;
   }, [collection]);
 
   useEffect(() => {
