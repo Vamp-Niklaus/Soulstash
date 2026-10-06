@@ -15,4 +15,4 @@
 - [x] Make texture visible on home/auth pages, color it per movie or series, and strengthen all detail action colors.
 - [x] Match Collection and Collections backgrounds to the movie/series artwork and colored texture, using the active collection image.
 - [x] Fade the movie/series background artwork smoothly into the background color at its bottom edge.
-- [x] Verify profile ownership with the signed-in profile service, isolate visitor caches, and prevent stale profile requests from restoring logged-out state.
+- [ ] Verify profile ownership with the signed-in profile service, isolate visitor caches, and prevent stale profile requests from restoring logged-out state.

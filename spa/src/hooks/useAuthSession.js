@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { apiFetch, getToken, getCurrentUsername, clearAuthSession } from '../api/client.js';
+import { apiFetch, getToken, getCurrentUsername } from '../api/client.js';
 
 export function useAuthSession() {
   const [session, setSession] = useState(() => {
@@ -40,13 +40,8 @@ export function useAuthSession() {
       // profile here so every layout (including the navbar and admin page) has
       // the same user data without requiring a visit to the profile route.
       if (token && username) {
-        apiFetch(`/api/user/profile/${encodeURIComponent(username)}`)
+        apiFetch('/api/user/profile')
           .then((profileResponse) => {
-            // If the backend reports the token is expired/invalid, clear the stale session
-            if (profileResponse?.tokenExpired) {
-              clearAuthSession();
-              return;
-            }
             const profile = profileResponse?.user || profileResponse;
             if (disposed || !profile || getToken() !== token || getCurrentUsername() !== username) return;
             const current = (() => {

@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import { useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, streamApiFetch, getToken } from '../../api/client.js';
-import { creditItemKey, filterCreditsByCollectionItems, yearFrom, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters, normalizeCredit, imageUrl } from '../../utils/formatters.js';
+import { creditItemKey, filterCreditsByCollectionItems, yearFrom, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters, normalizeCredit } from '../../utils/formatters.js';
 import { normalizeCollections, getCachedUserCollections } from '../../utils/collectionsCache.js';
 import { loadUserCollections } from '../../utils/collectionsApi.js';
 import { mergeImdbRatings } from '../../utils/ratingsCache.js';
 
 import { useLiveCollections, useSessionState } from '../../hooks/index.js';
-import { AUTO_RECOVERY_RETRIES, FALLBACK_AVATAR } from '../../utils/constants.js';
+import { AUTO_RECOVERY_RETRIES } from '../../utils/constants.js';
 
 import { toast } from '../../utils/toast.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
@@ -684,19 +684,6 @@ export function PersonPage() {
               {currentImageIndex + 1} / {personImages.length}
             </div>
           )}
-
-          {/* Preload adjacent images */}
-          {personImages.length > 1 && [-2, -1, 1, 2].map(offset => {
-            const index = (currentImageIndex + offset + personImages.length) % personImages.length;
-            return (
-              <img 
-                key={`preload-${index}`} 
-                src={imageUrl(personImages[index], 'original')} 
-                alt="" 
-                className="hidden" 
-              />
-            );
-          })}
         </div>
       )}
     </div>

@@ -13,6 +13,7 @@ import { CollectionFilterControls } from './CollectionFilterControls.jsx';
 import { ContentCard } from '../Cards/ContentCard.jsx';
 import { ConfirmModal } from '../Modals/ConfirmModal.jsx';
 import { EditCollectionPosterModal } from '../Modals/EditCollectionPosterModal.jsx';
+import { useArtworkAtmosphere } from '../../../hooks/useArtworkAtmosphere.js';
 
 export function CollectionDetailPane({
   username,
@@ -45,6 +46,7 @@ export function CollectionDetailPane({
   const isLongCollectionName = (collection?.name || '').length > 20;
   const [posterEditOpen, setPosterEditOpen] = useState(false);
   const hasMovies = (collection?.movies || []).length > 0;
+  useArtworkAtmosphere(collection?.name ? collection.banner || FALLBACK_AVATAR : '');
 
   const detailGridRef = useRef(null);
   function buildMobileFilterMenuPosition(trigger) {
@@ -153,7 +155,6 @@ export function CollectionDetailPane({
 
   return (
     <div className="relative isolate">
-
       {useBannerAsBackdrop ? (
         <>
           <div className="fixed left-1/2 collection-detail-header-fixed z-[220] w-[min(100vw-20px,1480px)] -translate-x-1/2 sm:w-[min(100vw-32px,1480px)]">

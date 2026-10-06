@@ -94,7 +94,7 @@ export function DetailHero({
   return (
     <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
       {/* ── Backdrop image + play button ── */}
-      <div className="relative aspect-[1.6/1] sm:aspect-[2.1/1] lg:aspect-[2.68/1] w-full overflow-hidden bg-black">
+      <div className="detail-backdrop-artwork relative aspect-[1.6/1] sm:aspect-[2.1/1] lg:aspect-[2.68/1] w-full overflow-hidden bg-black">
         {hasBackdrops ? (
           backdrops.map((backdrop, index) => (
             <img
@@ -127,7 +127,7 @@ export function DetailHero({
           <i className="fas fa-play translate-x-[1px] text-sm lg:text-base" />
         </button>
 
-        <div className="absolute inset-x-0 bottom-0 h-[48%] bg-gradient-to-t from-[#080808] via-[#080808]/78 to-transparent z-10" />
+        <div className="detail-backdrop-fade absolute inset-x-0 bottom-0 h-[48%] z-10" aria-hidden="true" />
       </div>
 
       {/* ── Poster + metadata (below backdrop) ── */}

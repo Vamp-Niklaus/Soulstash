@@ -161,17 +161,14 @@ export function EditProfilePage() {
   }
 
   return (
-    <div className="min-h-screen pb-20 pt-24 md:pt-32"
-         style={{
-           background: 'linear-gradient(to bottom, rgba(12,13,17,0.92), rgba(9,10,12,0.98))'
-         }}>
+    <div className="min-h-screen bg-[#0A0A0A] pb-20 pt-24 md:pt-32">
       <section className="mx-auto max-w-3xl px-6">
         <h1 className="mb-8 text-3xl font-bold text-white">Edit Profile</h1>
         <p className="mt-2 text-sm text-[#9f9f9f]">Update your public details and social links without leaving the app.</p>
         <form 
           ref={formRef}
           onSubmit={handleSave} 
-          className="mt-8 space-y-7 rounded-3xl border border-white/[0.07] bg-white/[0.03] backdrop-blur-md px-6 py-8 shadow-[0_24px_60px_rgba(0,0,0,0.4)]" 
+          className="mt-8 space-y-7" 
           data-tv-ignore="true"
           onKeyDown={handleFormKeyDown}
         >
@@ -190,7 +187,9 @@ export function EditProfilePage() {
                 }}
               />
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <i className="fas fa-pencil-alt text-white text-lg"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-white">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
             </button>
             <div>
@@ -212,11 +211,7 @@ export function EditProfilePage() {
                   value={draft[key]}
                   disabled={disabled}
                   onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-                  className={`h-11 w-full rounded-2xl px-4 text-white outline-none focus:ring-1 focus:ring-white/20 transition-all ${
-                    disabled
-                      ? 'bg-white/[0.03] text-white/40 border border-white/[0.06] cursor-not-allowed'
-                      : 'bg-white/[0.06] border border-white/[0.10] hover:border-white/[0.18] focus:border-white/[0.25]'
-                  } backdrop-blur-sm`}
+                  className={`h-11 w-full rounded-2xl px-4 text-white outline-none ${disabled ? 'bg-[#252525] text-white/60' : 'bg-[#1F1F1F]'} border border-[#252833]`}
                 />
               </div>
             ))}
@@ -228,7 +223,7 @@ export function EditProfilePage() {
               rows={4}
               value={draft.bio}
               onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))}
-              className="w-full rounded-2xl border border-white/[0.10] bg-white/[0.06] backdrop-blur-sm px-4 py-3 text-white outline-none hover:border-white/[0.18] focus:border-white/[0.25] focus:ring-1 focus:ring-white/20 transition-all"
+              className="w-full rounded-2xl border border-[#252833] bg-[#1F1F1F] px-4 py-3 text-white outline-none"
               placeholder="Tell us about yourself"
             />
           </div>
@@ -244,7 +239,7 @@ export function EditProfilePage() {
                 <input
                   value={draft[key]}
                   onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-                  className="h-11 w-full rounded-2xl border border-white/[0.10] bg-white/[0.06] backdrop-blur-sm px-4 text-white outline-none hover:border-white/[0.18] focus:border-white/[0.25] focus:ring-1 focus:ring-white/20 transition-all"
+                  className="h-11 w-full rounded-2xl border border-[#252833] bg-[#1F1F1F] px-4 text-white outline-none"
                 />
               </div>
             ))}

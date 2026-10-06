@@ -11,7 +11,7 @@ export function useDetailPage(id, type, auth) {
   const navigate = useNavigate();
 
   // Content
-  const { content, tmdbCollection, loading, loadError } = useMediaDetails(id, type);
+  const { content, loading, loadError } = useMediaDetails(id, type);
 
   // Credits
   const { credits, creditsCrew, creditsLoading, creditsError } = useMediaCredits(id, type);
@@ -46,7 +46,6 @@ export function useDetailPage(id, type, auth) {
 
   return {
     content,
-    tmdbCollection,
     loading,
     loadError,
     credits,

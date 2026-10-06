@@ -20,15 +20,10 @@ if (!_appRoot) {
   _appRoot = createRoot(document.getElementById('app'));
   window.__soulstashRoot = _appRoot;
 }
-let routerBasename = import.meta.env.BASE_URL || '/';
-if (routerBasename === './' || routerBasename === '.') {
-  routerBasename = window.location.pathname.startsWith('/Soulstash') ? '/Soulstash/' : '/';
-}
-
 _appRoot.render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename={routerBasename}>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AppShell />
       </BrowserRouter>
       <ReactQueryDevtools initialIsOpen={false} position="bottom" />

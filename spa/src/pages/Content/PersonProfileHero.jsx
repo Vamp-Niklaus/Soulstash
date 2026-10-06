@@ -24,19 +24,12 @@ export function PersonProfileHero({ person, bioExpanded, onToggleBiography, isFa
       <div className="relative z-10 space-y-6">
         <div className="flex items-start gap-4 sm:gap-6 md:gap-8">
           <div className="flex-shrink-0 w-[120px] sm:w-[170px] md:w-[220px] max-w-[42vw]">
-            <button
-              type="button"
+            <div 
+              className={`person-avatar self-start aspect-[2/3] overflow-hidden rounded-[24px] border border-white/10 ${onImageClick ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
               onClick={onImageClick}
-              className="person-avatar block w-full self-start aspect-[2/3] overflow-hidden rounded-[24px] border border-white/10 ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] group relative"
-              aria-label={`View images of ${person.name}`}
             >
-              <img
-                src={imageUrl(person.profile_path, 'w500')}
-                alt={person.name}
-                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                onError={(event) => { event.currentTarget.src = FALLBACK_AVATAR; }}
-              />
-            </button>
+              <img src={imageUrl(person.profile_path, 'w500')} alt={person.name} className="w-full h-full object-cover" onError={(event) => { event.currentTarget.src = FALLBACK_AVATAR; }} />
+            </div>
           </div>
           <div className="min-w-0 flex-1 self-start">
             <div className="flex items-start gap-3">
