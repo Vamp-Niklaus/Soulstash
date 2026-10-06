@@ -7,6 +7,9 @@ import {
   PREFERRED_SERVER_ORDER
 } from '../utils/playerSourcesHelpers';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { getDb } = require('../utils/dbProvider');
+
 /**
  * PlayerSourcesRepository
  * Single place for all PlayerSources MongoDB reads and writes.
@@ -14,19 +17,24 @@ import {
  * both go through here — never talk to the collection directly.
  */
 export class PlayerSourcesRepository {
-  private readonly collection: any;
+  private get collection(): any {
+    const db = getDb();
+    return db ? db.collection('PlayerSources') : null;
+  }
 
-  constructor(db: any) {
-    this.collection = db.collection('PlayerSources');
+  constructor(db?: any) {
+    // db parameter kept for optional injection / backwards compatibility
   }
 
   // ─── Reads ────────────────────────────────────────────────────────────────
 
   async findByTmdbId(tmdbId: number, mediaType: string): Promise<any | null> {
+    if (!this.collection) return null;
     return this.collection.findOne({ tmdbId, mediaType });
   }
 
   async findBySearchKey(searchKey: string): Promise<any | null> {
+    if (!this.collection) return null;
     return this.collection.findOne({ searchKey });
   }
 
@@ -37,7 +45,7 @@ export class PlayerSourcesRepository {
    * Called by onSource callbacks as the scraper finds sources one-by-one.
    */
   async mergeSources(identity: IPlayerIdentity, incomingSources: IPlayerSource[]): Promise<void> {
-    if (!incomingSources.length) return;
+    if (!this.collection || !incomingSources.length) return;
     const searchKey = buildSearchKey({ ...identity });
     const updateFilter = { tmdbId: identity.tmdbId, mediaType: identity.mediaType };
     const epKey = identity.mediaType === 'series'
@@ -92,6 +100,7 @@ export class PlayerSourcesRepository {
    * Final upsert after scrape completes — writes merged sources + all identity fields.
    */
   async saveFinalResult(identity: IPlayerIdentity, result: IPlayerSourceResult): Promise<void> {
+    if (!this.collection) return;
     const updateFilter = { tmdbId: identity.tmdbId, mediaType: identity.mediaType };
     const epKey = identity.mediaType === 'series'
       ? `s${identity.seasonNumber}e${identity.episodeNumber}` : null;
@@ -139,6 +148,7 @@ export class PlayerSourcesRepository {
    * Stamps lastScrapeAttempt (and optionally notAvailable) after a failed scrape.
    */
   async stampFailure(identity: IPlayerIdentity, notAvailable = false): Promise<void> {
+    if (!this.collection) return;
     const updateFilter = { tmdbId: identity.tmdbId, mediaType: identity.mediaType };
     const epKey = identity.mediaType === 'series'
       ? `s${identity.seasonNumber}e${identity.episodeNumber}` : null;

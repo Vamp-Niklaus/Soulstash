@@ -12,7 +12,7 @@ export class PlayerSourcesController {
   private repo: PlayerSourcesRepository;
 
   constructor() {
-    this.repo = new PlayerSourcesRepository(getDb());
+    this.repo = new PlayerSourcesRepository();
     this.service = new PlayerSourcesService(this.repo);
   }
 
