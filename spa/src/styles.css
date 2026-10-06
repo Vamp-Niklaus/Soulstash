@@ -135,26 +135,19 @@
 }
 
 /* ── Collection Artwork Background Theme ────────────────────────────────────
-   Mirrors exactly what detail-artwork-theme does for movie/series pages.
-   The poster image is visible as a blurred/darkened background tinted by
-   the dominant colour sampled from the image (--collection-tint).
-   Layer order (bottom → top):
-     1. dark-bg.png texture (base)
-     2. poster/banner image, fixed, darkened by gradients above
-     3. tint-coloured gradient (top → opaque dark at bottom)
-     4. subtle flat tint overlay
+   EXACT mirror of detail-artwork-theme used for movie/series pages.
    ──────────────────────────────────────────────────────────────────────── */
 body.collection-artwork-theme {
   --collection-tint: 130 98 62;
   background-color: rgb(9 10 12) !important;
   background-image:
-    linear-gradient(to bottom, rgb(var(--collection-tint) / 0.20) 0%, rgb(9 10 12 / 0.85) 550px, rgb(9 10 12 / 0.96) 100%),
-    linear-gradient(rgb(var(--collection-tint) / 0.10), rgb(var(--collection-tint) / 0.10)),
+    linear-gradient(to bottom, rgb(var(--collection-tint) / 0.66), rgb(9 10 12 / 0.94) 82%),
+    linear-gradient(rgb(var(--collection-tint) / 0.16), rgb(var(--collection-tint) / 0.16)),
     var(--collection-artwork-image, none),
     url('/images/dark-bg.png') !important;
   background-repeat: no-repeat, no-repeat, no-repeat, repeat !important;
   background-position: center top, center top, center top, center !important;
-  background-size: 100% 100%, 100% 100%, cover, auto !important;
+  background-size: 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
   background-attachment: fixed !important;
   transition: background-color 600ms ease;
 }
@@ -163,20 +156,25 @@ body.collection-artwork-theme .collection-react-shell {
   --page-texture-tint: var(--collection-tint);
   position: relative;
   isolation: isolate;
-  background-image: none !important;
+  background-image:
+    linear-gradient(rgb(var(--collection-tint) / 0.12), rgb(9 10 12 / 0.54));
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
 }
 
-/* Texture grain layer — matches detail-artwork-theme treatment */
+/* Texture grain layer — exact mirror of detail-artwork-theme treatment */
 body.collection-artwork-theme .collection-react-shell::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
+  background-color: rgb(var(--collection-tint, 130 98 62));
   background-image: url('/images/dark-bg.png');
   background-repeat: repeat;
   background-size: auto;
-  opacity: 0.20;
+  background-blend-mode: luminosity;
+  opacity: 0.48;
 }
 
 

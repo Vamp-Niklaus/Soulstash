@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { useNavigate, Outlet } from 'react-router-dom';
 import { useUserCollectionsPage } from '../../hooks/useUserCollectionsPage.js';
-import { createEmptyCollectionDraft } from '../../utils/formatters.js';
+import { createEmptyCollectionDraft, imageUrl } from '../../utils/formatters.js';
 
 import { CollectionsSidebar } from './CollectionsSidebar.jsx';
 import { CollectionDetailPane } from '../../components/ui/Misc/CollectionDetailPane.jsx';
@@ -14,7 +14,7 @@ export function CollectionsLayout() {
   const page = useUserCollectionsPage();
   const { navigate } = page;
 
-  // Derive a backdrop image from the selected collection (banner, backdrop, or poster)
+  // Derive a poster path from the selected collection (banner or first movie poster)
   const bgPosterPath = useMemo(() => {
     const coll = page.selectedCollection;
     if (!coll) return null;
@@ -23,14 +23,12 @@ export function CollectionsLayout() {
     }
     const movies = coll.movies;
     if (!movies || movies.length === 0) return null;
-    const firstWithBackdrop = movies.find(m => m.backdrop_path);
     const firstWithPoster = movies.find(m => m.poster_path);
-    const item = firstWithBackdrop || firstWithPoster || movies[0];
-    return item?.backdrop_path || item?.poster_path || null;
+    const item = firstWithPoster || movies[0];
+    return item?.poster_path || null;
   }, [page.selectedCollection]);
 
-  // Apply body class + CSS var — mirrors exactly what DetailHero does for movie/series pages.
-  // We also sample the dominant colour from the image so --collection-tint is real, not a fallback.
+  // Apply body class + CSS vars — EXACTLY like DetailHero does for movie/series pages.
   useEffect(() => {
     const hasCollection = !!page.selectedCollection;
     if (!hasCollection) {
@@ -47,14 +45,8 @@ export function CollectionsLayout() {
     let cancelled = false;
 
     if (bgPosterPath) {
-      const fullUrl = bgPosterPath.startsWith('http')
-        ? bgPosterPath
-        : `https://image.tmdb.org/t/p/w1280${bgPosterPath.startsWith('/') ? '' : '/'}${bgPosterPath}`;
-      const thumbUrl = bgPosterPath.startsWith('http')
-        ? bgPosterPath
-        : `https://image.tmdb.org/t/p/w92${bgPosterPath.startsWith('/') ? '' : '/'}${bgPosterPath}`;
-
-      document.body.style.setProperty('--collection-artwork-image', `url("${fullUrl}")`);
+      // Use imageUrl exactly like DetailHero — w500 poster for the background image
+      document.body.style.setProperty('--collection-artwork-image', `url("${imageUrl(bgPosterPath, 'w500')}")`);
 
       // Sample dominant colour from thumbnail (same algorithm as DetailHero)
       const img = new Image();
@@ -81,7 +73,7 @@ export function CollectionsLayout() {
           document.body.style.setProperty('--collection-tint', `${tint[0]} ${tint[1]} ${tint[2]}`);
         } catch { /* keep dark fallback */ }
       };
-      img.src = thumbUrl;
+      img.src = imageUrl(bgPosterPath, 'w92');
     } else {
       document.body.style.removeProperty('--collection-artwork-image');
       document.body.style.removeProperty('--collection-tint');

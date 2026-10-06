@@ -18,3 +18,9 @@ convo.md
 check_db.js
 
 
+zzzzz.txt
+%USERPROFILE%
+.npm-cache/
+.npm/
+MCP/
+**/%USERPROFILE%/
