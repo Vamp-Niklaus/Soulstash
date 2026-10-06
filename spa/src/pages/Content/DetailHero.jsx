@@ -28,6 +28,7 @@ import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { imageUrl } from '../../utils/formatters.js';
 import { ActionButton } from '../../components/ui/ActionButton.jsx';
 import { DetailStat } from '../../components/ui/Cards/DetailStat.jsx';
+import { useArtworkAtmosphere } from '../../hooks/useArtworkAtmosphere.js';
 
 export function DetailHero({
   content,
@@ -85,48 +86,10 @@ export function DetailHero({
     ? posters[currentPosterIndex].file_path
     : content.poster_path;
 
-  useEffect(() => {
-    const posterPath = content?.poster_path;
-    if (!posterPath) return undefined;
-    document.body.style.setProperty('--detail-artwork-image', `url("${imageUrl(posterPath, 'w500')}")`);
-    document.body.classList.add('detail-artwork-theme');
-
-    // Sample the poster's dominant colour (TMDB images allow CORS).
-    let cancelled = false;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      if (cancelled) return;
-      try {
-        const c = document.createElement('canvas');
-        c.width = 24; c.height = 36;
-        const ctx = c.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, 24, 36);
-        const d = ctx.getImageData(0, 0, 24, 36).data;
-        let r = 0, g = 0, b = 0, w = 0;
-        for (let i = 0; i < d.length; i += 4) {
-          const max = Math.max(d[i], d[i + 1], d[i + 2]);
-          const min = Math.min(d[i], d[i + 1], d[i + 2]);
-          const weight = 1 + (max - min) / 32; // favour colourful pixels
-          r += d[i] * weight; g += d[i + 1] * weight; b += d[i + 2] * weight; w += weight;
-        }
-        r /= w; g /= w; b /= w;
-        // Keep the tint dark and readable: scale so brightest channel ~ 110.
-        const peak = Math.max(r, g, b, 1);
-        const k = Math.min(110 / peak, 1.6);
-        const tint = [r, g, b].map((v) => Math.round(Math.min(v * k, 130)));
-        document.body.style.setProperty('--detail-tint', `${tint[0]} ${tint[1]} ${tint[2]}`);
-      } catch { /* keep dark fallback */ }
-    };
-    img.src = imageUrl(posterPath, 'w92');
-
-    return () => {
-      document.body.classList.remove('detail-artwork-theme');
-      cancelled = true;
-      document.body.style.removeProperty('--detail-artwork-image');
-      document.body.style.removeProperty('--detail-tint');
-    };
-  }, [content?.poster_path]);
+  useArtworkAtmosphere(
+    content?.poster_path ? imageUrl(content.poster_path, 'w500') : '',
+    content?.poster_path ? imageUrl(content.poster_path, 'w92') : ''
+  );
 
   return (
     <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">

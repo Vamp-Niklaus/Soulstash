@@ -44,7 +44,10 @@ const extractUser = (req, res, next) => {
             const secret = ConfigManager_1.config.get('jwtSecret') || 'fallback_secret';
             req.user = jsonwebtoken_1.default.verify(token, secret);
         }
-        catch (e) { }
+        catch (e) {
+            req.tokenExpired = true;
+            Logger_1.logger.warn(`Token verification failed: ${e.name || 'unknown'}`);
+        }
     }
     next();
 };
@@ -89,7 +92,9 @@ app.get('/profile/:username', extractUser, async (req, res) => {
             userData.followingCount = following.length;
             userData.favoritePeoplePublic = favoritesArePublic;
         }
-        res.json({ user: userData, isOwner, accessLevel: isOwner ? 'owner' : 'public', isFollowing, isFollowedBy });
+        const response = { user: userData, isOwner, accessLevel: isOwner ? 'owner' : 'public', isFollowing, isFollowedBy };
+        if (req.tokenExpired) response.tokenExpired = true;
+        res.json(response);
     }
     catch (err) {
         Logger_1.logger.error('Profile API error:', err);

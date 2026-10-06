@@ -1,26 +1,45 @@
+# Environment & Secrets
 .env
 .env.*
 !.env.example
+
+# Dependencies
 node_modules/
+**/node_modules/
+
+# Build outputs & caches
 dist/
+**/dist/
 build/
-*.log
-.DS_Store
-
-# Local Backup & Scratch Folders
-backup/
-
-# Local LLD Documentation & Scratch Files
-*_lld.html
-*.html
-*.pdf
-convo.md
-check_db.js
-
-
-zzzzz.txt
-%USERPROFILE%
+**/build/
+.cache/
+.vite/
 .npm-cache/
 .npm/
-MCP/
+
+# Platform & Tool Metadata
+.lovable/
+**/.lovable/
+.lovable
+**/.lovable
+.DS_Store
+Thumbs.db
+%USERPROFILE%/
 **/%USERPROFILE%/
+MCP/
+
+# Logs & Diagnostics
+*.log
+tsc.log
+error.log
+network-requests.log
+logs/
+
+# Local Scratch, Backups & LLD Files
+backup/
+**/backup/
+*_lld.html
+convo.md
+walkthrough.md
+check_db.js
+zzzz*.txt

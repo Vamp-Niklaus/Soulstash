@@ -33,8 +33,16 @@ export function UserProfilePage() {
   }, [username]);
 
   const { data: profilePayload, isLoading: loading, isError, error } = useQuery({
-    queryKey: ['profile', username, isAdminView],
+    queryKey: ['profile', username, isAdminView, auth.isLoggedIn ? auth.username : null],
     queryFn: () => apiFetch(isAdminView ? `/api/admin/users/${encodeURIComponent(username)}/profile` : `/api/user/profile/${encodeURIComponent(username)}`)
+  });
+
+  // The authenticated endpoint verifies identity when the public profile omits isOwner.
+  const { data: verifiedProfile } = useQuery({
+    queryKey: ['profile-session', auth.username],
+    queryFn: () => apiFetch('/api/user/profile'),
+    enabled: auth.isLoggedIn && auth.username === username && !isAdminView,
+    staleTime: 0
   });
 
   const followMutation = useMutation({
@@ -85,7 +93,7 @@ export function UserProfilePage() {
       body: JSON.stringify({ isPublic })
     }),
     onSuccess: (response) => {
-      queryClient.setQueryData(['profile', username, isAdminView], (current) => current ? {
+      queryClient.setQueryData(['profile', username, isAdminView, auth.isLoggedIn ? auth.username : null], (current) => current ? {
         ...current,
         user: { ...current.user, favoritePeoplePublic: response.favoritePeoplePublic === true }
       } : current);
@@ -108,7 +116,18 @@ export function UserProfilePage() {
 
   // When viewing your own profile, sync avatar into localStorage so the navbar updates
   const profileUser = profilePayload?.user;
-  const isOwner = profilePayload?.isOwner && auth.username === username;
+  const verifiedUser = verifiedProfile?.user || verifiedProfile;
+  const isOwner = auth.isLoggedIn && auth.username === username && (
+    profilePayload?.isOwner === true || verifiedUser?.username === username
+  );
+
+  // If the backend reports the token is expired, clear the stale session
+  useEffect(() => {
+    if (profilePayload?.tokenExpired && auth.isLoggedIn) {
+      clearAuthSession();
+    }
+  }, [profilePayload?.tokenExpired, auth.isLoggedIn]);
+
   useEffect(() => {
     if (!isOwner || !profileUser) return;
     try {
@@ -141,7 +160,7 @@ export function UserProfilePage() {
   const watched = collections.find((collection) => collection.name === 'Watched');
   const watchlist = collections.find((collection) => collection.name === 'Watchlist');
   const customCollections = collections.filter((collection) => !['Watched', 'Watchlist'].includes(collection.name));
-  const showFavorites = profilePayload?.isOwner || favoritePeople.length;
+  const showFavorites = isOwner || favoritePeople.length;
 
   return (
     <div className="space-y-7">
@@ -168,6 +187,11 @@ export function UserProfilePage() {
                     event.currentTarget.src = FALLBACK_AVATAR;
                   }}
                 />
+                {(isOwner || isAdminView) && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                    <i className="fas fa-pencil-alt text-white/80"></i>
+                  </div>
+                )}
               </button>
               <div className="flex items-center gap-3 text-xs text-[#9f9f9f]">
                 <button

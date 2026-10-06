@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { apiFetch, getToken, getCurrentUsername } from '../api/client.js';
+import { apiFetch, getToken, getCurrentUsername, clearAuthSession } from '../api/client.js';
 
 export function useAuthSession() {
   const [session, setSession] = useState(() => {
@@ -42,8 +42,13 @@ export function useAuthSession() {
       if (token && username) {
         apiFetch(`/api/user/profile/${encodeURIComponent(username)}`)
           .then((profileResponse) => {
+            // If the backend reports the token is expired/invalid, clear the stale session
+            if (profileResponse?.tokenExpired) {
+              clearAuthSession();
+              return;
+            }
             const profile = profileResponse?.user || profileResponse;
-            if (disposed || !profile) return;
+            if (disposed || !profile || getToken() !== token || getCurrentUsername() !== username) return;
             const current = (() => {
               try { return JSON.parse(localStorage.getItem('user') || '{}'); } catch { return {}; }
             })();

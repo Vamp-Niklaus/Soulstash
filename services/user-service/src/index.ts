@@ -44,7 +44,13 @@ const extractUser = (req: any, res: any, next: any) => {
     try {
       const secret = config.get('jwtSecret') || 'fallback_secret';
       req.user = jwt.verify(token, secret);
-    } catch (e) {}
+    } catch (e: any) {
+      // Token was provided but is invalid/expired — flag it so downstream
+      // handlers can inform the client (e.g. profile endpoint returns
+      // tokenExpired: true so the SPA can clear the stale session).
+      req.tokenExpired = true;
+      logger.warn(`Token verification failed: ${e.name || 'unknown'}`);
+    }
   }
   next();
 };
@@ -98,7 +104,9 @@ app.get('/profile/:username', extractUser, async (req: any, res: any) => {
       userData.favoritePeoplePublic = favoritesArePublic;
     }
     
-    res.json({ user: userData, isOwner, accessLevel: isOwner ? 'owner' : 'public', isFollowing, isFollowedBy });
+    const response: any = { user: userData, isOwner, accessLevel: isOwner ? 'owner' : 'public', isFollowing, isFollowedBy };
+    if (req.tokenExpired) response.tokenExpired = true;
+    res.json(response);
   } catch (err) {
     logger.error('Profile API error:', err);
     res.status(500).json({ error: 'Failed to fetch profile data' });
