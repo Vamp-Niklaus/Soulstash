@@ -3,13 +3,13 @@ import { createPortal } from 'react-dom';
 import { useParams, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, streamApiFetch, getToken } from '../../api/client.js';
-import { creditItemKey, filterCreditsByCollectionItems, yearFrom, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters, normalizeCredit } from '../../utils/formatters.js';
+import { creditItemKey, filterCreditsByCollectionItems, yearFrom, contentIdFromItem, mediaTypeFromItem, compareRatingsForSort, hasActivePersonFilters, normalizeCredit, imageUrl } from '../../utils/formatters.js';
 import { normalizeCollections, getCachedUserCollections } from '../../utils/collectionsCache.js';
 import { loadUserCollections } from '../../utils/collectionsApi.js';
 import { mergeImdbRatings } from '../../utils/ratingsCache.js';
 
 import { useLiveCollections, useSessionState } from '../../hooks/index.js';
-import { AUTO_RECOVERY_RETRIES } from '../../utils/constants.js';
+import { AUTO_RECOVERY_RETRIES, FALLBACK_AVATAR } from '../../utils/constants.js';
 
 import { toast } from '../../utils/toast.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
