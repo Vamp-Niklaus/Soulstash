@@ -161,7 +161,7 @@ export function EditProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] pb-20 pt-24 md:pt-32">
+    <div className="min-h-screen bg-transparent pb-20 pt-24 md:pt-32">
       <section className="mx-auto max-w-3xl px-6">
         <h1 className="mb-8 text-3xl font-bold text-white">Edit Profile</h1>
         <p className="mt-2 text-sm text-[#9f9f9f]">Update your public details and social links without leaving the app.</p>
