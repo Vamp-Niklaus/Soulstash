@@ -161,9 +161,9 @@ export function EditProfilePage() {
   }
 
   return (
-    <div className="pb-20 pt-8">
-      <section className="mx-auto max-w-3xl px-4 sm:px-6">
-        <h1 className="text-3xl font-bold text-white">Edit Profile</h1>
+    <div className="min-h-screen bg-[#0A0A0A] pb-20 pt-24 md:pt-32">
+      <section className="mx-auto max-w-3xl px-6">
+        <h1 className="mb-8 text-3xl font-bold text-white">Edit Profile</h1>
         <p className="mt-2 text-sm text-[#9f9f9f]">Update your public details and social links without leaving the app.</p>
         <form 
           ref={formRef}
@@ -211,7 +211,7 @@ export function EditProfilePage() {
                   value={draft[key]}
                   disabled={disabled}
                   onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-                  className={`h-11 w-full rounded-2xl px-4 text-white outline-none border border-white/10 transition-colors ${disabled ? 'bg-white/[0.02] text-white/40' : 'bg-white/[0.05] focus:bg-white/[0.08] focus:border-white/20'}`}
+                  className={`h-11 w-full rounded-2xl px-4 text-white outline-none ${disabled ? 'bg-[#252525] text-white/60' : 'bg-[#1F1F1F]'} border border-[#252833]`}
                 />
               </div>
             ))}
@@ -223,7 +223,7 @@ export function EditProfilePage() {
               rows={4}
               value={draft.bio}
               onChange={(event) => setDraft((current) => ({ ...current, bio: event.target.value }))}
-              className="w-full rounded-2xl border border-white/10 bg-white/[0.05] focus:bg-white/[0.08] focus:border-white/20 px-4 py-3 text-white outline-none transition-colors"
+              className="w-full rounded-2xl border border-[#252833] bg-[#1F1F1F] px-4 py-3 text-white outline-none"
               placeholder="Tell us about yourself"
             />
           </div>
@@ -239,7 +239,7 @@ export function EditProfilePage() {
                 <input
                   value={draft[key]}
                   onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
-                  className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.05] focus:bg-white/[0.08] focus:border-white/20 px-4 text-white outline-none transition-colors"
+                  className="h-11 w-full rounded-2xl border border-[#252833] bg-[#1F1F1F] px-4 text-white outline-none"
                 />
               </div>
             ))}

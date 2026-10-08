@@ -49,6 +49,11 @@ export function AppShell() {
   //  TV / remote D-pad navigation 
   useTvFocus(location);
 
+  // Automatically reset scroll position on route change
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
 
 
   const routeTree = (
