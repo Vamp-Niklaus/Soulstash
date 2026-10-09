@@ -1,14 +1,7 @@
-/**
- * UserCollectionsPage.jsx
- *
- * Orchestrator component for the User Collections view.
- * All state and complex logic live in useUserCollectionsPage.js.
- * All JSX is composed from focused subcomponents.
- */
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate, Outlet } from 'react-router-dom';
 import { useUserCollectionsPage } from '../../hooks/useUserCollectionsPage.js';
-import { createEmptyCollectionDraft } from '../../utils/formatters.js';
+import { createEmptyCollectionDraft, imageUrl } from '../../utils/formatters.js';
 
 import { CollectionsSidebar } from './CollectionsSidebar.jsx';
 import { CollectionDetailPane } from '../../components/ui/Misc/CollectionDetailPane.jsx';
@@ -20,6 +13,81 @@ import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
 export function CollectionsLayout() {
   const page = useUserCollectionsPage();
   const { navigate } = page;
+
+  // Derive a poster path from the selected collection (banner or first movie poster)
+  const bgPosterPath = useMemo(() => {
+    const coll = page.selectedCollection;
+    if (!coll) return null;
+    if (coll.banner && typeof coll.banner === 'string' && coll.banner.trim() && !coll.banner.includes('b23d0bfcaa8b')) {
+      return coll.banner;
+    }
+    const movies = coll.movies;
+    if (!movies || movies.length === 0) return null;
+    const firstWithPoster = movies.find(m => m.poster_path);
+    const item = firstWithPoster || movies[0];
+    return item?.poster_path || null;
+  }, [page.selectedCollection]);
+
+  // Apply body class + CSS vars — EXACTLY like DetailHero does for movie/series pages.
+  useEffect(() => {
+    const hasCollection = !!page.selectedCollection;
+    if (!hasCollection) {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.style.removeProperty('--collection-tint');
+      document.body.classList.remove('collection-artwork-theme');
+      return () => {
+        document.body.style.removeProperty('--collection-artwork-image');
+        document.body.style.removeProperty('--collection-tint');
+        document.body.classList.remove('collection-artwork-theme');
+      };
+    }
+
+    let cancelled = false;
+
+    if (bgPosterPath) {
+      // Use imageUrl exactly like DetailHero — w500 poster for the background image
+      document.body.style.setProperty('--collection-artwork-image', `url("${imageUrl(bgPosterPath, 'w500')}")`);
+
+      // Sample dominant colour from thumbnail (same algorithm as DetailHero)
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (cancelled) return;
+        try {
+          const c = document.createElement('canvas');
+          c.width = 24; c.height = 36;
+          const ctx = c.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, 24, 36);
+          const d = ctx.getImageData(0, 0, 24, 36).data;
+          let r = 0, g = 0, b = 0, w = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            const max = Math.max(d[i], d[i + 1], d[i + 2]);
+            const min = Math.min(d[i], d[i + 1], d[i + 2]);
+            const weight = 1 + (max - min) / 32;
+            r += d[i] * weight; g += d[i + 1] * weight; b += d[i + 2] * weight; w += weight;
+          }
+          r /= w; g /= w; b /= w;
+          const peak = Math.max(r, g, b, 1);
+          const k = Math.min(110 / peak, 1.6);
+          const tint = [r, g, b].map(v => Math.round(Math.min(v * k, 130)));
+          document.body.style.setProperty('--collection-tint', `${tint[0]} ${tint[1]} ${tint[2]}`);
+        } catch { /* keep dark fallback */ }
+      };
+      img.src = imageUrl(bgPosterPath, 'w92');
+    } else {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.style.removeProperty('--collection-tint');
+    }
+
+    document.body.classList.add('collection-artwork-theme');
+
+    return () => {
+      cancelled = true;
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.style.removeProperty('--collection-tint');
+      document.body.classList.remove('collection-artwork-theme');
+    };
+  }, [bgPosterPath, page.selectedCollection]);
 
   return (
     <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">

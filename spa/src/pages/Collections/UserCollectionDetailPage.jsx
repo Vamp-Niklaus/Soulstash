@@ -68,6 +68,87 @@ export function UserCollectionDetailPage() {
     document.title = `${decodedCollectionName} | Soulstash`;
   }, [decodedCollectionName]);
 
+  // Derive background artwork for single collection page
+  const singleCollectionBg = useMemo(() => {
+    if (!collection) return null;
+    if (collection.banner && typeof collection.banner === 'string' && collection.banner.trim() && !collection.banner.includes('b23d0bfcaa8b')) {
+      return collection.banner;
+    }
+    const movieItems = collection.movies;
+    if (!movieItems || movieItems.length === 0) return null;
+    const firstWithBackdrop = movieItems.find(m => m.backdrop_path);
+    const firstWithPoster = movieItems.find(m => m.poster_path);
+    const item = firstWithBackdrop || firstWithPoster || movieItems[0];
+    return item?.backdrop_path || item?.poster_path || null;
+  }, [collection]);
+
+  useEffect(() => {
+    // Mirrors exactly what DetailHero does for movie/series pages.
+    const hasCollection = !!collection?.name;
+    if (!hasCollection) {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.style.removeProperty('--collection-tint');
+      document.body.classList.remove('collection-artwork-theme');
+      return () => {
+        document.body.style.removeProperty('--collection-artwork-image');
+        document.body.style.removeProperty('--collection-tint');
+        document.body.classList.remove('collection-artwork-theme');
+      };
+    }
+
+    let cancelled = false;
+
+    if (singleCollectionBg) {
+      const fullUrl = singleCollectionBg.startsWith('http')
+        ? singleCollectionBg
+        : `https://image.tmdb.org/t/p/w1280${singleCollectionBg.startsWith('/') ? '' : '/'}${singleCollectionBg}`;
+      const thumbUrl = singleCollectionBg.startsWith('http')
+        ? singleCollectionBg
+        : `https://image.tmdb.org/t/p/w92${singleCollectionBg.startsWith('/') ? '' : '/'}${singleCollectionBg}`;
+
+      document.body.style.setProperty('--collection-artwork-image', `url("${fullUrl}")`);
+
+      // Sample dominant colour (same algorithm as DetailHero)
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (cancelled) return;
+        try {
+          const c = document.createElement('canvas');
+          c.width = 24; c.height = 36;
+          const ctx = c.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0, 24, 36);
+          const d = ctx.getImageData(0, 0, 24, 36).data;
+          let r = 0, g = 0, b = 0, w = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            const max = Math.max(d[i], d[i + 1], d[i + 2]);
+            const min = Math.min(d[i], d[i + 1], d[i + 2]);
+            const weight = 1 + (max - min) / 32;
+            r += d[i] * weight; g += d[i + 1] * weight; b += d[i + 2] * weight; w += weight;
+          }
+          r /= w; g /= w; b /= w;
+          const peak = Math.max(r, g, b, 1);
+          const k = Math.min(110 / peak, 1.6);
+          const tint = [r, g, b].map(v => Math.round(Math.min(v * k, 130)));
+          document.body.style.setProperty('--collection-tint', `${tint[0]} ${tint[1]} ${tint[2]}`);
+        } catch { /* keep dark fallback */ }
+      };
+      img.src = thumbUrl;
+    } else {
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.style.removeProperty('--collection-tint');
+    }
+
+    document.body.classList.add('collection-artwork-theme');
+
+    return () => {
+      cancelled = true;
+      document.body.style.removeProperty('--collection-artwork-image');
+      document.body.style.removeProperty('--collection-tint');
+      document.body.classList.remove('collection-artwork-theme');
+    };
+  }, [singleCollectionBg, collection?.name]);
+
   useEffect(() => {
     console.log('[Soulstash][React] UserCollectionDetailPage mounted', {
       route: window.location.pathname,

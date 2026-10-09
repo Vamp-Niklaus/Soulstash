@@ -684,6 +684,19 @@ export function PersonPage() {
               {currentImageIndex + 1} / {personImages.length}
             </div>
           )}
+
+          {/* Preload adjacent images */}
+          {personImages.length > 1 && [-2, -1, 1, 2].map(offset => {
+            const index = (currentImageIndex + offset + personImages.length) % personImages.length;
+            return (
+              <img 
+                key={`preload-${index}`} 
+                src={imageUrl(personImages[index], 'original')} 
+                alt="" 
+                className="hidden" 
+              />
+            );
+          })}
         </div>
       )}
     </div>
