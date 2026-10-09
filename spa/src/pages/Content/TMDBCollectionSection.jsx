@@ -1,20 +1,36 @@
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '../../api/client.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
-import { getCollectionStatus, yearFrom, getPreferredRating } from '../../utils/formatters.js';
+import { getCollectionStatus, yearFrom, getPreferredRating, imageUrl } from '../../utils/formatters.js';
 import { useAuthSession } from '../../hooks/index.js';
 import { FALLBACK_POSTER } from '../../utils/constants.js';
-import { imageUrl } from '../../utils/formatters.js';
 
 export function TMDBCollectionSection({ collection, collections = [], type = 'movie', currentId }) {
   const { user } = useAuthSession();
 
-  if (!collection || !collection.parts || collection.parts.length === 0) {
+  const collectionId = collection?.id;
+
+  // TMDB's movie detail endpoint returns belongs_to_collection with only id, name, poster_path, backdrop_path.
+  // We fetch the full collection (with all parts) via /api/tmdb-collection/:id whenever parts is missing.
+  const { data: fetchedCollection } = useQuery({
+    queryKey: ['tmdb-collection', collectionId],
+    queryFn: () => apiFetch(`/api/tmdb-collection/${collectionId}`),
+    enabled: !!collectionId && (!collection?.parts || collection.parts.length === 0),
+    staleTime: 1000 * 60 * 60 * 24
+  });
+
+  const activeCollection = (collection?.parts && collection.parts.length > 0)
+    ? collection
+    : fetchedCollection;
+
+  if (!activeCollection || !activeCollection.parts || activeCollection.parts.length === 0) {
     return null;
   }
 
   // Include all parts that have a poster — INCLUDING the current one
-  const items = collection.parts.filter(item => !!item.poster_path);
+  const items = activeCollection.parts.filter(item => !!item.poster_path);
 
   if (items.length === 0) return null;
 
@@ -27,7 +43,7 @@ export function TMDBCollectionSection({ collection, collections = [], type = 'mo
 
   return (
     <section className="content-section mt-12">
-      <SectionHeader title={`Part of ${collection.name}`} />
+      <SectionHeader title={`Part of ${activeCollection.name || collection?.name || 'Collection'}`} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mt-4">
         {sorted.map((item) => {
