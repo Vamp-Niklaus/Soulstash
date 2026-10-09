@@ -24,7 +24,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { FALLBACK_AVATAR } from '../../utils/constants.js';
+import { FALLBACK_AVATAR, FALLBACK_POSTER } from '../../utils/constants.js';
 import { imageUrl } from '../../utils/formatters.js';
 import { ActionButton } from '../../components/ui/ActionButton.jsx';
 import { DetailStat } from '../../components/ui/Cards/DetailStat.jsx';
@@ -86,6 +86,12 @@ export function DetailHero({
     ? posters[currentPosterIndex].file_path
     : content.poster_path;
 
+  const fallbackBackdropUrl = content?.backdrop_path
+    ? imageUrl(content.backdrop_path, 'original')
+    : currentPosterPath
+    ? imageUrl(currentPosterPath, 'w780') || imageUrl(currentPosterPath, 'original')
+    : null;
+
   useArtworkAtmosphere(
     content?.poster_path ? imageUrl(content.poster_path, 'w500') : '',
     content?.poster_path ? imageUrl(content.poster_path, 'w92') : ''
@@ -107,13 +113,22 @@ export function DetailHero({
               onError={() => handleBackdropError(index)}
             />
           ))
-        ) : (
+        ) : fallbackBackdropUrl ? (
           <img
-            src={imageUrl(content.backdrop_path, 'original')}
+            src={fallbackBackdropUrl}
             alt={title}
-            className="absolute inset-0 h-full w-full object-cover object-[center_22%]"
-            onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
+            className={`absolute inset-0 h-full w-full object-cover ${content?.backdrop_path ? 'object-[center_22%]' : 'object-[center_35%]'}`}
+            onError={(e) => {
+              if (currentPosterPath && e.currentTarget.src !== imageUrl(currentPosterPath, 'w780')) {
+                e.currentTarget.src = imageUrl(currentPosterPath, 'w780');
+                e.currentTarget.className = "absolute inset-0 h-full w-full object-cover object-[center_35%]";
+              } else {
+                e.currentTarget.src = FALLBACK_POSTER;
+              }
+            }}
           />
+        ) : (
+          <div className="absolute inset-0 h-full w-full bg-neutral-900" />
         )}
 
         <button
