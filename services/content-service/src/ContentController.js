@@ -997,6 +997,21 @@ class ContentController {
             Logger_1.logger.info(`[ContentController] Proxying TMDB endpoint: ${endpoint}`);
             let data = await this.provider.getRawTMDB(endpoint);
             const adminMode = await this.getAdminMode(req);
+            if (data?.belongs_to_collection?.id) {
+                try {
+                    const collectionData = await this.provider.getRawTMDB(`/3/collection/${data.belongs_to_collection.id}`);
+                    if (collectionData && Array.isArray(collectionData.parts)) {
+                        data.belongs_to_collection = {
+                            ...data.belongs_to_collection,
+                            ...collectionData,
+                            parts: collectionData.parts.filter((item) => this.shouldShow(item, adminMode))
+                        };
+                    }
+                }
+                catch (colErr) {
+                    Logger_1.logger.warn(`[ContentController] Failed to enrich belongs_to_collection ${data.belongs_to_collection.id}: ${colErr.message}`);
+                }
+            }
             if (data?.similar?.results) {
                 data.similar.results = data.similar.results.filter((item) => this.shouldShow(item, adminMode));
             }

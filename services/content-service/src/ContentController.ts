@@ -1068,6 +1068,21 @@ private shouldSendPersonCredit(item: any, adminMode: 0 | 1 | 2): boolean {
       let data = await this.provider.getRawTMDB(endpoint);
       const adminMode = await this.getAdminMode(req);
 
+      if (data?.belongs_to_collection?.id) {
+        try {
+          const collectionData = await this.provider.getRawTMDB(`/3/collection/${data.belongs_to_collection.id}`);
+          if (collectionData && Array.isArray(collectionData.parts)) {
+            data.belongs_to_collection = {
+              ...data.belongs_to_collection,
+              ...collectionData,
+              parts: collectionData.parts.filter((item: any) => this.shouldShow(item, adminMode))
+            };
+          }
+        } catch (colErr: any) {
+          logger.warn(`[ContentController] Failed to enrich belongs_to_collection ${data.belongs_to_collection.id}: ${colErr.message}`);
+        }
+      }
+
       if (data?.similar?.results) {
         data.similar.results = data.similar.results.filter((item: any) => this.shouldShow(item, adminMode));
       }
