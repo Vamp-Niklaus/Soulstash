@@ -1011,9 +1011,32 @@ body.detail-artwork-theme .app-shell--textured::before {
   background-blend-mode: luminosity;
 }
 
-.detail-backdrop-fade {
-  background: linear-gradient(to bottom, transparent 0%, rgba(9, 10, 12, 0.25) 25%, rgba(9, 10, 12, 0.75) 65%, rgb(9, 10, 12) 100%) !important;
+body.detail-artwork-theme .app-shell--textured::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vw;
+  height: calc(100vw / var(--detail-artwork-ratio, 1.5));
+  z-index: -2;
   pointer-events: none;
+  background-image: var(--detail-artwork-image);
+  background-size: 100% auto;
+  background-repeat: no-repeat;
+  opacity: 0.38;
+  mask-image: linear-gradient(to bottom, black 0%, black 48%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 48%, transparent 100%);
+}
+
+.detail-backdrop-artwork {
+  mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 60%, transparent 100%);
+}
+
+.detail-backdrop-fade {
+  pointer-events: none;
+  background: linear-gradient(to top, color-mix(in srgb, rgb(var(--detail-tint, 18 20 24)) 28%, var(--cinema-bg, #090a0c)), transparent 100%) !important;
 }
 
 .load-more-zone {

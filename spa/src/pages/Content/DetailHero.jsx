@@ -127,7 +127,7 @@ export function DetailHero({
           <i className="fas fa-play translate-x-[1px] text-sm lg:text-base" />
         </button>
 
-        <div className="detail-backdrop-fade absolute inset-x-0 bottom-0 h-[52%] z-10 pointer-events-none bg-gradient-to-b from-transparent via-[#090a0c]/60 to-[#090a0c]" aria-hidden="true" />
+        <div className="detail-backdrop-fade absolute inset-x-0 bottom-0 h-[65%] z-10" aria-hidden="true" />
       </div>
 
       {/* ── Poster + metadata (below backdrop) ── */}
