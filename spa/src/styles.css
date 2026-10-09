@@ -1011,6 +1011,11 @@ body.detail-artwork-theme .app-shell--textured::before {
   background-blend-mode: luminosity;
 }
 
+.detail-backdrop-fade {
+  background: linear-gradient(to bottom, transparent 0%, rgba(9, 10, 12, 0.25) 25%, rgba(9, 10, 12, 0.75) 65%, rgb(9, 10, 12) 100%) !important;
+  pointer-events: none;
+}
+
 .load-more-zone {
   display: flex;
   min-height: 72px;
