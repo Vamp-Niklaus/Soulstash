@@ -7,6 +7,69 @@ import fetch from 'node-fetch';
 
 const DIRECT_SOURCES = [
   {
+    id: 'vidlink', label: 'VidLink',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://vidlink.pro/tv/${t}/${s || 1}/${e || 1}`
+        : `https://vidlink.pro/movie/${t}`
+  },
+  {
+    id: 'vidrift', label: 'VidRift',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://embed.vidrift.net/embed/tv/${t}/${s || 1}/${e || 1}`
+        : `https://embed.vidrift.net/embed/movie/${t}`
+  },
+  {
+    id: 'vidly', label: 'Vidly',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://vidly.pro/tv/${t}/${s || 1}/${e || 1}`
+        : `https://vidly.pro/movie/${t}`
+  },
+  {
+    id: 'framextv', label: 'FrameXTV',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://framextv.cc/embed/tv/${t}/${s || 1}/${e || 1}`
+        : `https://framextv.cc/embed/movie/${t}`
+  },
+  {
+    id: 'cineverse', label: 'Cineverse',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://rozgarlelo.modiplay.xyz/embed/tmdb/tv?id=${t}&s=${s || 1}&e=${e || 1}`
+        : `https://rozgarlelo.modiplay.xyz/embed/tmdb/movie?id=${t}`
+  },
+  {
+    id: 'vidbolt', label: 'VidBolt',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://vidbolt.xyz/tv/${t}/${s || 1}/${e || 1}`
+        : `https://vidbolt.xyz/movie/${t}`
+  },
+  {
+    id: 'filmu', label: 'Filmu',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://embed.filmu.in/tv/${t}/${s || 1}/${e || 1}`
+        : `https://embed.filmu.in/movie/${t}`
+  },
+  {
+    id: 'vidout', label: 'VIDOUT',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://vidout.pages.dev/tv/${t}/s${s || 1}/e${e || 1}`
+        : `https://vidout.pages.dev/movie/${t}`
+  },
+  {
+    id: 'nexus', label: 'Nexus',
+    template: (m: string, t: number, s: number, e: number) =>
+      (m === 'tv' || m === 'series')
+        ? `https://www.moviesnexus.fun/tv/${t}/${s || 1}/${e || 1}`
+        : `https://www.moviesnexus.fun/movie/${t}?sv=multi-audio`
+  },
+  {
     id: 'videasy', label: 'VIDEASY',
     template: (m: string, t: number, s: number, e: number) =>
       (m === 'tv' || m === 'series')

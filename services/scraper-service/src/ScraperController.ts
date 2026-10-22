@@ -23,6 +23,7 @@ export class ScraperController {
 
     } catch (err: any) {
       console.error('[ScraperController] background scrape failed:', err.message);
+      res.status(500).json({ error: 'Background scrape failed', details: err.message });
     }
   }
 

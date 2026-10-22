@@ -20,6 +20,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const [hindiSources, setHindiSources] = useState([]);
   const [activeUrl, setActiveUrl] = useState('');
   const [sourceSignature, setSourceSignature] = useState('');
+  const [failedUrls, setFailedUrls] = useState(() => new Set());
+  const [verifiedUrls, setVerifiedUrls] = useState(() => new Set());
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [draggingPlayer, setDraggingPlayer] = useState(false);
   const [iframeReloadKey, setIframeReloadKey] = useState(0);
@@ -44,6 +46,8 @@ export function VideoPlayerModal({ request, onClose }) {
     setHindiSources([]);
     setActiveUrl('');
     setSourceSignature('');
+    setFailedUrls(new Set());
+    setVerifiedUrls(new Set());
     setIframeReloadKey(0);
     setDragOffset({ x: 0, y: 0 });
     setDraggingPlayer(false);
@@ -152,7 +156,7 @@ export function VideoPlayerModal({ request, onClose }) {
     const handleFullscreenChange = async () => {
       const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
       
-      if (Capacitor.isNativePlatform()) {
+      if (Capacitor.isNativePlatform() && typeof ScreenOrientation !== 'undefined') {
         try {
           if (fsElement) {
             await ScreenOrientation.unlock();
@@ -190,7 +194,7 @@ export function VideoPlayerModal({ request, onClose }) {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       
-      if (Capacitor.isNativePlatform()) {
+      if (Capacitor.isNativePlatform() && typeof ScreenOrientation !== 'undefined') {
         ScreenOrientation.lock({ type: 'portrait' }).catch(console.error);
       }
     };
@@ -250,43 +254,85 @@ export function VideoPlayerModal({ request, onClose }) {
     }
   }, [sourcePayload, fallbackSources, request, sourceSignature]);
 
-  const sources = useMemo(() => buildPlayerSourceSlots(hindiSources, fallbackSources, isFetching), [hindiSources, fallbackSources, isFetching]);
+  const sources = useMemo(
+    () => buildPlayerSourceSlots(hindiSources, fallbackSources, isFetching, failedUrls, verifiedUrls),
+    [hindiSources, fallbackSources, isFetching, failedUrls, verifiedUrls]
+  );
+
+  const availableSources = useMemo(() => sources.filter((source) => source?.url), [sources]);
+
+  const handleIframeError = useCallback((failedUrl) => {
+    if (!failedUrl) return;
+    console.warn('[Soulstash Player] Stream failed:', failedUrl);
+    setFailedUrls((prev) => {
+      const next = new Set(prev);
+      next.add(failedUrl);
+      return next;
+    });
+    setVerifiedUrls((prev) => {
+      const next = new Set(prev);
+      next.delete(failedUrl);
+      return next;
+    });
+
+    // Auto-switch to next available healthy source
+    const candidates = availableSources.filter((s) => s.url !== failedUrl && !failedUrls.has(s.url));
+    if (candidates.length > 0) {
+      setActiveUrl(candidates[0].url);
+      setIframeReloadKey(0);
+    }
+  }, [availableSources, failedUrls]);
 
   // Race every available stream once; the first host that answers wins.
-  // After a stream is chosen we keep it (no flicker) unless it disappears.
+  // After a stream is chosen we keep it (no flicker) unless it fails or disappears.
   const raceTokenRef = useRef(0);
   const playableKey = sources.filter((s) => s.url).map((s) => s.url).join('|');
+
   useEffect(() => {
-    const playable = sources.filter((s) => s.url);
+    const playable = sources.filter((s) => s.url && !s.failed);
     if (!playable.length) return undefined;
-    if (activeUrl && playable.some((s) => s.url === activeUrl)) return undefined;
+    if (activeUrl && playable.some((s) => s.url === activeUrl && !failedUrls.has(s.url))) {
+      return undefined;
+    }
+
     const token = ++raceTokenRef.current;
     const controllers = [];
     let settled = false;
+
     const pick = (url) => {
       if (settled || raceTokenRef.current !== token) return;
       settled = true;
       controllers.forEach((c) => c.abort());
-      setActiveUrl((current) => (current && playable.some((s) => s.url === current) ? current : url));
+      setVerifiedUrls((prev) => new Set(prev).add(url));
+      setActiveUrl(url);
     };
+
     playable.forEach((s) => {
       const c = new AbortController();
       controllers.push(c);
       fetch(s.url, { mode: 'no-cors', signal: c.signal, cache: 'no-store' })
-        .then(() => pick(s.url))
+        .then(() => {
+          setVerifiedUrls((prev) => new Set(prev).add(s.url));
+          pick(s.url);
+        })
         .catch(() => {});
     });
-    const timer = window.setTimeout(() => pick(playable[0].url), 4000);
+
+    // Fallback: pick the first non-failed priority source after 2.5s if probe hasn't settled yet
+    const timer = window.setTimeout(() => {
+      if (!settled && raceTokenRef.current === token && playable[0]) {
+        pick(playable[0].url);
+      }
+    }, 2500);
+
     return () => {
       window.clearTimeout(timer);
       controllers.forEach((c) => c.abort());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playableKey]);
+  }, [playableKey, activeUrl, failedUrls, sources]);
 
-  const defaultSource = sources.find((source) => source.id === 'vidnest' && source.url) || sources.find((source) => source.url) || sources[0];
+  const defaultSource = sources.find((source) => source.url && !source.failed) || sources.find((source) => source.url) || sources[0];
   const activeSource = sources.find((source) => source.url === activeUrl) || defaultSource;
-  const availableSources = useMemo(() => sources.filter((source) => source?.url), [sources]);
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
 
@@ -323,10 +369,11 @@ export function VideoPlayerModal({ request, onClose }) {
   };
 
   const handleSwitchSource = () => {
-    if (!availableSources.length) return;
-    const currentIndex = availableSources.findIndex((source) => source.url === activeUrl);
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % availableSources.length : 0;
-    setActiveUrl(availableSources[nextIndex]?.url || '');
+    const candidates = availableSources.filter((s) => !failedUrls.has(s.url));
+    if (!candidates.length) return;
+    const currentIndex = candidates.findIndex((source) => source.url === activeUrl);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % candidates.length : 0;
+    setActiveUrl(candidates[nextIndex]?.url || '');
     setIframeReloadKey(0);
   };
 
@@ -489,32 +536,59 @@ export function VideoPlayerModal({ request, onClose }) {
             <div className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
               <div className="flex min-w-max items-center gap-2 pr-2">
                 {sources.length ? (
-                  sources.map((source) => (
-                    <button
-                      key={source.id}
-                      type="button"
-                      data-player-source="true"
-                      data-active-source={activeUrl === source.url}
-                      aria-label={`Play stream ${source.label}`}
-                      className={`${sourceButtonClass} ${
-                        source.pending
-                          ? 'animate-pulse cursor-wait bg-white/15 text-white/50 border-white/20'
-                          : source.disabled
-                          ? 'cursor-not-allowed bg-white/5 text-white/25'
-                          : activeUrl === source.url
-                          ? 'bg-white text-black'
-                          : 'bg-white/10 text-white hover:bg-white/20'
-                      }`}
-                      disabled={source.disabled || source.pending}
-                      onClick={() => {
-                        if (!source.disabled && !source.pending) {
-                          setActiveUrl(source.url);
-                        }
-                      }}
-                    >
-                      {source.label}
-                    </button>
-                  ))
+                  sources.map((source) => {
+                    const isActive = activeUrl === source.url;
+                    const isFailed = source.failed;
+                    const isWorking = source.working || isActive;
+                    return (
+                      <button
+                        key={source.id}
+                        type="button"
+                        data-player-source="true"
+                        data-active-source={isActive}
+                        aria-label={`Play stream ${source.label}`}
+                        className={`inline-flex items-center gap-1.5 ${sourceButtonClass} ${
+                          isFailed
+                            ? 'opacity-60 bg-red-950/40 text-red-300 border border-red-800/40 hover:bg-red-900/50'
+                            : source.pending
+                            ? 'animate-pulse cursor-wait bg-white/15 text-white/50 border-white/20'
+                            : source.disabled
+                            ? 'cursor-not-allowed bg-white/5 text-white/25'
+                            : isActive
+                            ? 'bg-white text-black font-semibold shadow-md'
+                            : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
+                        disabled={source.disabled || source.pending}
+                        onClick={() => {
+                          if (!source.disabled && !source.pending) {
+                            setActiveUrl(source.url);
+                            setIframeReloadKey(0);
+                          }
+                        }}
+                      >
+                        <span>{source.label}</span>
+                        {/* Status dot indicator */}
+                        {isFailed ? (
+                          <span
+                            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
+                            title="Stream failed"
+                          />
+                        ) : isWorking ? (
+                          <span
+                            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+                            title="Active stream"
+                          />
+                        ) : source.pending ? (
+                          <span
+                            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/80 animate-pulse"
+                            title="Probing stream"
+                          />
+                        ) : (
+                          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/30" />
+                        )}
+                      </button>
+                    );
+                  })
                 ) : (
                   <span className="text-[11px] font-medium text-white/50">
                     {errorDisplay || 'No source links yet.'}
@@ -592,18 +666,16 @@ export function VideoPlayerModal({ request, onClose }) {
               </div>
             ) : canUseVideoJs ? (
               <div className="flex h-full w-full items-center justify-center bg-black">
-                <VideoJsPlayer.Provider>
-                  <VideoSkin className="vjs-default-skin w-full h-full bg-black">
-                    <Video 
-                      key={`${sourceSignature}:${activeUrl}`} 
-                      src={activeUrl} 
-                      playsInline 
-                      className="w-full h-full bg-black" 
-                      style={{ backgroundColor: 'black' }}
-                      poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-                    />
-                  </VideoSkin>
-                </VideoJsPlayer.Provider>
+                <video
+                  key={`${sourceSignature}:${activeUrl}`}
+                  src={activeUrl}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="w-full h-full bg-black object-contain"
+                  onError={() => handleIframeError(activeUrl)}
+                  onLoadedData={() => setVerifiedUrls((prev) => new Set(prev).add(activeUrl))}
+                />
               </div>
             ) : !canEmbedSource ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center">
@@ -627,10 +699,13 @@ export function VideoPlayerModal({ request, onClose }) {
                   src={activeUrl}
                   tabIndex={0}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
-                  onLoad={() => console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl)}
+                  onLoad={() => {
+                    console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
+                    setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
+                  }}
                   onError={(e) => {
                     console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e);
-                    handleSwitchSource();
+                    handleIframeError(activeUrl);
                   }}
                   className={`h-full w-full border-0 bg-black ${activeSource?.id?.includes('cinesu') ? 'cine-crop-iframe' : ''}`}
                   style={{

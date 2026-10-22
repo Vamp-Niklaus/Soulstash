@@ -542,14 +542,97 @@ export function firstPlayableUrl(source) {
 /**
  * Generates an array of fallback third-party streaming iframes for when the main server fails.
  */
-export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
-  const input = { mediaType, tmdbId, seasonNumber, episodeNumber };
+export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId }) {
+  const input = { mediaType, tmdbId, seasonNumber, episodeNumber, imdbId };
   const type = String(mediaType || '').toLowerCase();
   const isMovie = type === 'movie';
   const s = seasonNumber || 1;
   const e = episodeNumber || 1;
+  const id = Number(tmdbId || 0);
+  if (!id) return [];
   
   return [
+    {
+      id: 'vidlink',
+      key: 'vidlink',
+      label: 'VidLink',
+      url: isMovie ? `https://vidlink.pro/movie/${id}` : `https://vidlink.pro/tv/${id}/${s}/${e}`,
+      urls: [isMovie ? `https://vidlink.pro/movie/${id}` : `https://vidlink.pro/tv/${id}/${s}/${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'vidrift',
+      key: 'vidrift',
+      label: 'VidRift',
+      url: isMovie ? `https://embed.vidrift.net/embed/movie/${id}` : `https://embed.vidrift.net/embed/tv/${id}/${s}/${e}`,
+      urls: [isMovie ? `https://embed.vidrift.net/embed/movie/${id}` : `https://embed.vidrift.net/embed/tv/${id}/${s}/${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'vidly',
+      key: 'vidly',
+      label: 'Vidly',
+      url: isMovie ? `https://vidly.pro/movie/${id}` : `https://vidly.pro/tv/${id}/${s}/${e}`,
+      urls: [isMovie ? `https://vidly.pro/movie/${id}` : `https://vidly.pro/tv/${id}/${s}/${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'framextv',
+      key: 'framextv',
+      label: 'FrameXTV',
+      url: isMovie ? `https://framextv.cc/embed/movie/${id}` : `https://framextv.cc/embed/tv/${id}/${s}/${e}`,
+      urls: [isMovie ? `https://framextv.cc/embed/movie/${id}` : `https://framextv.cc/embed/tv/${id}/${s}/${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'cineverse',
+      key: 'cineverse',
+      label: 'Cineverse',
+      url: isMovie ? `https://rozgarlelo.modiplay.xyz/embed/tmdb/movie?id=${id}` : `https://rozgarlelo.modiplay.xyz/embed/tmdb/tv?id=${id}&s=${s}&e=${e}`,
+      urls: [isMovie ? `https://rozgarlelo.modiplay.xyz/embed/tmdb/movie?id=${id}` : `https://rozgarlelo.modiplay.xyz/embed/tmdb/tv?id=${id}&s=${s}&e=${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'vidbolt',
+      key: 'vidbolt',
+      label: 'VidBolt',
+      url: isMovie ? `https://vidbolt.xyz/movie/${id}` : `https://vidbolt.xyz/tv/${id}/${s}/${e}`,
+      urls: [isMovie ? `https://vidbolt.xyz/movie/${id}` : `https://vidbolt.xyz/tv/${id}/${s}/${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'filmu',
+      key: 'filmu',
+      label: 'Filmu',
+      url: isMovie ? `https://embed.filmu.in/movie/${id}` : `https://embed.filmu.in/tv/${id}/${s}/${e}`,
+      urls: [isMovie ? `https://embed.filmu.in/movie/${id}` : `https://embed.filmu.in/tv/${id}/${s}/${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'vidout',
+      key: 'vidout',
+      label: 'VIDOUT',
+      url: isMovie ? `https://vidout.pages.dev/movie/${id}` : `https://vidout.pages.dev/tv/${id}/s${s}/e${e}`,
+      urls: [isMovie ? `https://vidout.pages.dev/movie/${id}` : `https://vidout.pages.dev/tv/${id}/s${s}/e${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'nexus',
+      key: 'nexus',
+      label: 'Nexus',
+      url: isMovie ? `https://www.moviesnexus.fun/movie/${id}?sv=multi-audio` : `https://www.moviesnexus.fun/tv/${id}/${s}/${e}`,
+      urls: [isMovie ? `https://www.moviesnexus.fun/movie/${id}?sv=multi-audio` : `https://www.moviesnexus.fun/tv/${id}/${s}/${e}`],
+      embeddable: true,
+      direct: true
+    },
     {
       id: 'legacy-videasy-hi',
       key: 'legacy-videasy-hi',
@@ -577,25 +660,11 @@ export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, epis
       embeddable: true,
       fallback: true
     },
-    { id: 'legacy-vidsrc-pro', key: 'legacy-vidsrc-pro', label: 'VidSrc PRO', url: isMovie ? `https://vidsrc.pro/embed/movie/${tmdbId}` : `https://vidsrc.pro/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.pro/embed/movie/${tmdbId}` : `https://vidsrc.pro/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-vidsrc-in', key: 'legacy-vidsrc-in', label: 'VidSrc IN', url: isMovie ? `https://vidsrc.in/embed/movie/${tmdbId}` : `https://vidsrc.in/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.in/embed/movie/${tmdbId}` : `https://vidsrc.in/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-vidsrc-pm', key: 'legacy-vidsrc-pm', label: 'VidSrc PM', url: isMovie ? `https://vidsrc.pm/embed/movie/${tmdbId}` : `https://vidsrc.pm/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.pm/embed/movie/${tmdbId}` : `https://vidsrc.pm/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-vidsrc-net', key: 'legacy-vidsrc-net', label: 'VidSrc NET', url: isMovie ? `https://vidsrc.net/embed/movie/${tmdbId}` : `https://vidsrc.net/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.net/embed/movie/${tmdbId}` : `https://vidsrc.net/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-vidsrc-xyz', key: 'legacy-vidsrc-xyz', label: 'VidSrc XYZ', url: isMovie ? `https://vidsrc.xyz/embed/movie/${tmdbId}` : `https://vidsrc.xyz/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.xyz/embed/movie/${tmdbId}` : `https://vidsrc.xyz/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-superembed', key: 'legacy-superembed', label: 'SuperEmbed', url: isMovie ? `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`, urls: [isMovie ? `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-autoembed', key: 'legacy-autoembed', label: 'AutoEmbed', url: isMovie ? `https://autoembed.co/movie/tmdb/${tmdbId}` : `https://autoembed.co/tv/tmdb/${tmdbId}-${s}-${e}`, urls: [isMovie ? `https://autoembed.co/movie/tmdb/${tmdbId}` : `https://autoembed.co/tv/tmdb/${tmdbId}-${s}-${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-vidbinge', key: 'legacy-vidbinge', label: 'VidBinge', url: isMovie ? `https://vidbinge.dev/embed/movie/${tmdbId}` : `https://vidbinge.dev/embed/tv/${tmdbId}/${s}/${e}`, urls: [isMovie ? `https://vidbinge.dev/embed/movie/${tmdbId}` : `https://vidbinge.dev/embed/tv/${tmdbId}/${s}/${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-multiembed', key: 'legacy-multiembed', label: 'MultiEmbed', url: isMovie ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`, urls: [isMovie ? `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1` : `https://multiembed.mov/?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-2embed', key: 'legacy-2embed', label: '2Embed', url: isMovie ? `https://www.2embed.cc/embed/${tmdbId}` : `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`, urls: [isMovie ? `https://www.2embed.cc/embed/${tmdbId}` : `https://www.2embed.cc/embedtv/${tmdbId}&s=${s}&e=${e}`], embeddable: true, fallback: true },
-    {
-      id: 'legacy-cinesu',
-      key: 'legacy-cinesu',
-      label: 'Cine.su',
-      url: buildCinesuUrl(input),
-      urls: [buildCinesuUrl(input)],
-      embeddable: true,
-      fallback: true
-    }
+    { id: 'legacy-vidsrc-pro', key: 'legacy-vidsrc-pro', label: 'VidSrc PRO', url: isMovie ? `https://vidsrc.pro/embed/movie/${id}` : `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.pro/embed/movie/${id}` : `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-vidsrc-pm', key: 'legacy-vidsrc-pm', label: 'VidSrc PM', url: isMovie ? `https://vidsrc.pm/embed/movie/${id}` : `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.pm/embed/movie/${id}` : `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-superembed', key: 'legacy-superembed', label: 'SuperEmbed', url: isMovie ? `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1` : `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1&s=${s}&e=${e}`, urls: [isMovie ? `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1` : `https://multiembed.mov/directstream.php?video_id=${id}&tmdb=1&s=${s}&e=${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-autoembed', key: 'legacy-autoembed', label: 'AutoEmbed', url: isMovie ? `https://autoembed.co/movie/tmdb/${id}` : `https://autoembed.co/tv/tmdb/${id}-${s}-${e}`, urls: [isMovie ? `https://autoembed.co/movie/tmdb/${id}` : `https://autoembed.co/tv/tmdb/${id}-${s}-${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-2embed', key: 'legacy-2embed', label: '2Embed', url: isMovie ? `https://www.2embed.cc/embed/${id}` : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`, urls: [isMovie ? `https://www.2embed.cc/embed/${id}` : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`], embeddable: true, fallback: true }
   ].filter((source) => source.url);
 }
 

@@ -1,23 +1,36 @@
 export const PLAYER_SOURCE_SLOTS = [
-  { id: 'h1', key: 'smwh', label: 'H1' },
-  { id: 'h2', key: 'rpmshre', label: 'H2' },
-  { id: 'h3', key: 'upnshr', label: 'H3' },
-  { id: 'h4', key: 'strmp2', label: 'H4' },
-  { id: 'h5', key: 'flls', label: 'H5' },
-  { id: 'vidnest', match: (source) => sourceKeyText(source).includes('vidnest'), label: 'VidNest' },
-  { id: 'videasy', match: (source) => sourceKeyText(source).includes('videasy') || sourceKeyText(source).includes('vid-easy'), label: 'VIDEASY' },
-  { id: 'vidsrc-pm', match: (source) => sourceKeyText(source).includes('vidsrc-pm'), label: 'VidSrc PM' },
-  { id: 'vidfast', match: (source) => sourceKeyText(source).includes('vidfast'), label: 'vidfast' },
-  { id: 'vidsrc-pro', match: (source) => sourceKeyText(source).includes('vidsrc-pro'), label: 'VidSrc PRO' },
-  { id: 'vidsrc-in', match: (source) => sourceKeyText(source).includes('vidsrc-in'), label: 'VidSrc IN' },
-  { id: 'vidsrc-net', match: (source) => sourceKeyText(source).includes('vidsrc-net'), label: 'VidSrc NET' },
-  { id: 'vidsrc-xyz', match: (source) => sourceKeyText(source).includes('vidsrc-xyz'), label: 'VidSrc XYZ' },
-  { id: 'superembed', match: (source) => sourceKeyText(source).includes('superembed'), label: 'SuperEmbed' },
-  { id: 'autoembed', match: (source) => sourceKeyText(source).includes('autoembed'), label: 'AutoEmbed' },
-  { id: 'vidbinge', match: (source) => sourceKeyText(source).includes('vidbinge'), label: 'VidBinge' },
-  { id: 'multiembed', match: (source) => sourceKeyText(source).includes('multiembed'), label: 'MultiEmbed' },
-  { id: '2embed', match: (source) => sourceKeyText(source).includes('2embed'), label: '2Embed' },
-  { id: 'youtube', match: (source) => sourceKeyText(source).includes('youtube'), label: 'YouTube' }
+  { id: 'vidlink', match: (s) => sourceKeyText(s).includes('vidlink'), label: 'VidLink' },
+  { id: 'vidrift', match: (s) => sourceKeyText(s).includes('vidrift'), label: 'VidRift' },
+  { id: 'vidly', match: (s) => sourceKeyText(s).includes('vidly'), label: 'Vidly' },
+  { id: 'framextv', match: (s) => sourceKeyText(s).includes('framextv'), label: 'FrameXTV' },
+  { id: 'cineverse', match: (s) => sourceKeyText(s).includes('cineverse') || sourceKeyText(s).includes('modiplay') || sourceKeyText(s).includes('rozgarlelo'), label: 'Cineverse' },
+  { id: 'vidbolt', match: (s) => sourceKeyText(s).includes('vidbolt'), label: 'VidBolt' },
+  { id: 'filmu', match: (s) => sourceKeyText(s).includes('filmu'), label: 'Filmu' },
+  { id: 'vidout', match: (s) => sourceKeyText(s).includes('vidout'), label: 'VIDOUT' },
+  { id: 'nexus', match: (s) => sourceKeyText(s).includes('nexus') || sourceKeyText(s).includes('moviesnexus'), label: 'Nexus' },
+  { id: 'videasy', match: (s) => sourceKeyText(s).includes('videasy') || sourceKeyText(s).includes('vid-easy'), label: 'VIDEASY' },
+  { id: 'vidfast', match: (s) => sourceKeyText(s).includes('vidfast'), label: 'vidfast' },
+  { id: 'vidnest', match: (s) => sourceKeyText(s).includes('vidnest'), label: 'VidNest' },
+  { id: 'h1', key: 'smwh', match: (s) => sourceKeyText(s).includes('filesforever') || sourceKeyText(s).includes('smwh') || s.key === 'smwh' || s.id === 'h1', label: 'H1' },
+  { id: 'h2', key: 'rpmshre', match: (s) => sourceKeyText(s).includes('rpmshre') || s.key === 'rpmshre' || s.id === 'h2', label: 'H2' },
+  { id: 'h3', key: 'upnshr', match: (s) => sourceKeyText(s).includes('upnshr') || s.key === 'upnshr' || s.id === 'h3', label: 'H3' },
+  { id: 'h4', key: 'strmp2', match: (s) => sourceKeyText(s).includes('strmp2') || s.key === 'strmp2' || s.id === 'h4', label: 'H4' },
+  { id: 'h5', key: 'flls', match: (s) => sourceKeyText(s).includes('flls') || s.key === 'flls' || s.id === 'h5', label: 'H5' },
+  { id: 'flixcloud', match: (s) => sourceKeyText(s).includes('flixcloud'), label: 'FlixCloud' },
+  { id: 'megaplay', match: (s) => sourceKeyText(s).includes('megaplay'), label: 'MegaPlay' },
+  { id: 'vidhawk', match: (s) => sourceKeyText(s).includes('vidhawk'), label: 'VidHawk' },
+  { id: 'tryembed', match: (s) => sourceKeyText(s).includes('tryembed'), label: 'TryEmbed' },
+  { id: 'vidsrc-pm', match: (s) => sourceKeyText(s).includes('vidsrc-pm'), label: 'VidSrc PM' },
+  { id: 'vidsrc-pro', match: (s) => sourceKeyText(s).includes('vidsrc-pro'), label: 'VidSrc PRO' },
+  { id: 'vidsrc-in', match: (s) => sourceKeyText(s).includes('vidsrc-in'), label: 'VidSrc IN' },
+  { id: 'vidsrc-net', match: (s) => sourceKeyText(s).includes('vidsrc-net'), label: 'VidSrc NET' },
+  { id: 'vidsrc-xyz', match: (s) => sourceKeyText(s).includes('vidsrc-xyz'), label: 'VidSrc XYZ' },
+  { id: 'superembed', match: (s) => sourceKeyText(s).includes('superembed'), label: 'SuperEmbed' },
+  { id: 'autoembed', match: (s) => sourceKeyText(s).includes('autoembed'), label: 'AutoEmbed' },
+  { id: 'vidbinge', match: (s) => sourceKeyText(s).includes('vidbinge'), label: 'VidBinge' },
+  { id: 'multiembed', match: (s) => sourceKeyText(s).includes('multiembed'), label: 'MultiEmbed' },
+  { id: '2embed', match: (s) => sourceKeyText(s).includes('2embed'), label: '2Embed' },
+  { id: 'youtube', match: (s) => sourceKeyText(s).includes('youtube'), label: 'YouTube' }
 ];
 
 export function sourceKeyText(source = {}) {
@@ -31,14 +44,20 @@ export function firstPlayableUrl(source) {
   return '';
 }
 
-export function buildPlayerSourceSlots(incomingSources = [], fallbackSources = [], isLoading = false) {
+export function buildPlayerSourceSlots(
+  incomingSources = [],
+  fallbackSources = [],
+  isLoading = false,
+  failedUrls = new Set(),
+  verifiedUrls = new Set()
+) {
   // Cine.su is temporarily hidden and disabled.
   const pool = [...incomingSources, ...fallbackSources]
     .filter(Boolean)
     .filter((source) => !/cine\.?su/.test(sourceKeyText(source)));
   const used = new Set();
 
-  return PLAYER_SOURCE_SLOTS.map((slot) => {
+  const slots = PLAYER_SOURCE_SLOTS.map((slot) => {
     const foundIndex = pool.findIndex((source, index) => {
       if (used.has(index)) return false;
       if (slot.key && (source.key === slot.key || source.id === slot.key)) return true;
@@ -49,8 +68,11 @@ export function buildPlayerSourceSlots(incomingSources = [], fallbackSources = [
 
     const url = firstPlayableUrl(found);
     const isMissing = !url;
-    // If we're loading, any slot that hasn't found a URL yet is considered 'pending' (loading)
-    const isPending = Boolean(found?.pending) || (isLoading && isMissing);
+    // Only pending if it's one of the scraped slots (H1-H5, YouTube, FlixCloud) or explicitly pending
+    const isScrapedSlot = /^(h1|h2|h3|h4|h5|youtube|flixcloud)$/i.test(slot.id);
+    const isPending = Boolean(found?.pending) || (isLoading && isMissing && isScrapedSlot);
+    const isFailed = Boolean(url && failedUrls.has(url));
+    const isWorking = Boolean(url && verifiedUrls.has(url));
 
     return {
       ...(found || {}),
@@ -61,8 +83,24 @@ export function buildPlayerSourceSlots(incomingSources = [], fallbackSources = [
       urls: found?.urls || (url ? [url] : []),
       embeddable: found?.embeddable !== false,
       pending: isPending,
-      disabled: isPending || isMissing
+      failed: isFailed,
+      working: isWorking,
+      disabled: (isPending || isMissing) && !isFailed
     };
+  });
+
+  // Filter out completely missing non-pending slots
+  const availableSlots = slots.filter((s) => s.url || s.pending);
+
+  // Sort so working & active candidate sources are first, and failed sources are moved to the back
+  return availableSlots.sort((a, b) => {
+    if (a.failed !== b.failed) {
+      return a.failed ? 1 : -1; // failed sources go to the very end
+    }
+    if (a.working !== b.working) {
+      return a.working ? -1 : 1; // verified working sources move ahead
+    }
+    return 0; // preserve slot priority
   });
 }
 

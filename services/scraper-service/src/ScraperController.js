@@ -21,6 +21,7 @@ class ScraperController {
         }
         catch (err) {
             console.error('[ScraperController] background scrape failed:', err.message);
+            res.status(500).json({ error: 'Background scrape failed', details: err.message });
         }
     }
     async getImdbFilmography(req, res) {
