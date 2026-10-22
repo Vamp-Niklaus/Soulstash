@@ -560,7 +560,12 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [sourcePayload, fallbackSources, request, sourceSignature]);
 
   const combinedIncoming = useMemo(() => {
-    return [...hindiSources, ...animeSources];
+    // Anime sources generated for current title/episode take precedence over stale backend cache entries
+    const animeKeys = new Set(animeSources.map((s) => s.id));
+    const cleanHindiSources = hindiSources.filter(
+      (s) => !animeKeys.has(s.id) && !/^(gogo|tryembed|megaplay|vidhawk|vidnest-ani|vidnest-pahe)/i.test(s.id || s.key || '')
+    );
+    return [...animeSources, ...cleanHindiSources];
   }, [hindiSources, animeSources]);
 
   const effectiveAnilistId = anilistId || sourcePayload?.anilistId || null;

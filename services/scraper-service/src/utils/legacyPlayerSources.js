@@ -180,6 +180,14 @@ async function refreshPlayerSourceRecord(identity) {
 
       const merged = mergeSourceHistoryRecord({ sources: existingSources, downloads: existingDownloads }, incoming);
 
+      // Clean up legacy unsuffixed anime keys if sub/dub versions are present
+      if (incoming.sources && Object.keys(incoming.sources).some(k => k.includes('-sub') || k.includes('-dub'))) {
+        delete merged.sources['gogo-server'];
+        delete merged.sources['tryembed'];
+        delete merged.sources['megaplay'];
+        delete merged.sources['vidhawk'];
+      }
+
       // Always write identity fields so cachedRecord is fully populated on next read
       const updateSet = {
         tmdbId: identity.tmdbId,
