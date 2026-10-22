@@ -18,6 +18,10 @@ export interface IPlayerIdentity {
     tmdbId: number;
     imdbId: string;
     title: string;
+    originalTitle?: string;
+    originalName?: string;
+    seriesTitle?: string;
+    anilistId?: number | null;
     year: number | null;
     seasonNumber: number | null;
     episodeNumber: number | null;

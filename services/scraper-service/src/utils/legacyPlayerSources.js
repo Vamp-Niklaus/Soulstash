@@ -89,6 +89,7 @@ async function fetchTmdbPlayerIdentity({ mediaType, tmdbId, seasonNumber, episod
   const ep1Detail = ep1Resp?.ok ? await ep1Resp.json() : {};
 
   const title = normalizedMediaType === 'movie' ? detail.title || detail.original_title || '' : detail.name || detail.original_name || '';
+  const originalTitle = normalizedMediaType === 'movie' ? detail.original_title || '' : detail.original_name || '';
   const yearValue = detail.release_date || detail.first_air_date || '';
   const year = Number(String(yearValue).slice(0, 4)) || null;
   const overview = normalizedMediaType === 'movie'
@@ -113,6 +114,7 @@ async function fetchTmdbPlayerIdentity({ mediaType, tmdbId, seasonNumber, episod
     tmdbId: numericTmdbId,
     imdbId: String(detail?.imdb_id || '').trim(),
     title,
+    originalTitle,
     year,
     seasonNumber: normalizedMediaType === 'series' ? Number(seasonNumber || 1) : null,
     episodeNumber: normalizedMediaType === 'series' ? Number(episodeNumber || 1) : null,
@@ -184,11 +186,15 @@ async function refreshPlayerSourceRecord(identity) {
         imdbId: identity.imdbId || '',
         mediaType: identity.mediaType,
         title: identity.title || '',
+        originalTitle: identity.originalTitle || '',
         year: identity.year || null,
         searchKey: identity.mediaType === 'series' ? `series-master-${identity.tmdbId}` : (searchKey || ''),
         overview: identity.overview || '',
         updatedAt: new Date()
       };
+      if (identity.anilistId) {
+        updateSet.anilistId = identity.anilistId;
+      }
       if (identity.mediaType === 'series') {
         updateSet[`episodes.${epKey}.sources`] = merged.sources;
         updateSet[`episodes.${epKey}.downloads`] = merged.downloads;
@@ -352,52 +358,166 @@ async function refreshPlayerSourceRecord(identity) {
   })();
 
   
-  // Anime / AniList / MultiNime Scraper
+  // Anime / AniList / MultiNime Scraper with multi-step search fallback
   const animePromise = (async () => {
     try {
-      const cleanTitle = String(identity.title || '').replace(/\s+/g, ' ').trim();
+      const rawTitle = String(identity.seriesTitle || identity.title || '');
+      const rawOrig = String(identity.originalTitle || identity.original_name || '');
+
+      const cleanTitle = rawTitle
+        .replace(/\s*S\d+E\d+.*$/i, '')
+        .replace(/\s*Season\s*\d+.*$/i, '')
+        .replace(/\s*Episode\s*\d+.*$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const cleanOrig = rawOrig
+        .replace(/\s*S\d+E\d+.*$/i, '')
+        .replace(/\s*Season\s*\d+.*$/i, '')
+        .replace(/\s*Episode\s*\d+.*$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const isMovie = identity.mediaType === 'movie';
+      const formatIn = isMovie ? ['MOVIE'] : ['TV', 'TV_SHORT', 'ONA', 'OVA', 'SPECIAL'];
+      const year = Number(identity.year) || null;
       const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       const ep = identity.episodeNumber || 1;
 
-      const query = `
-        query ($search: String) {
-          Page(page: 1, perPage: 5) {
-            media(search: $search, type: ANIME) {
-              id
-              idMal
-              title { romaji english native }
-              format
-              episodes
+      const searchAniList = async (search, formats = null) => {
+        try {
+          const query = `
+            query ($search: String, $formatIn: [MediaFormat]) {
+              Page(page: 1, perPage: 8) {
+                media(search: $search, type: ANIME, format_in: $formatIn) {
+                  id
+                  idMal
+                  title { romaji english native }
+                  format
+                  seasonYear
+                  startDate { year }
+                  episodes
+                }
+              }
             }
-          }
+          `;
+          const variables = { search };
+          if (formats && formats.length) variables.formatIn = formats;
+          const res = await fetch('https://graphql.anilist.co', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ query, variables })
+          });
+          if (!res.ok) return [];
+          const data = await res.json();
+          return data?.data?.Page?.media || [];
+        } catch (e) {
+          return [];
         }
-      `;
-
-      const res = await fetch('https://graphql.anilist.co', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ query, variables: { search: cleanTitle } })
-      });
-      const data = await res.json();
-      const mediaList = data?.data?.Page?.media || [];
-      if (!mediaList.length) return;
+      };
 
       const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const target = norm(cleanTitle);
-      const match = mediaList.find(m => 
-        norm(m.title.english) === target || norm(m.title.romaji) === target
-      ) || mediaList[0];
+
+      const pickBest = (list, searchTerms) => {
+        if (!list || !list.length) return null;
+        const termNorms = searchTerms.map(norm).filter(Boolean);
+
+        // 1. Exact year + title match
+        if (year) {
+          const yearMatch = list.find((m) => {
+            const mYear = m.seasonYear || m.startDate?.year;
+            const matchesYear = mYear && Math.abs(mYear - year) <= 1;
+            const matchesName = termNorms.some((t) =>
+              norm(m.title?.english) === t || norm(m.title?.romaji) === t || norm(m.title?.native) === t
+            );
+            return matchesYear && matchesName;
+          });
+          if (yearMatch) return yearMatch;
+        }
+
+        // 2. Exact title match
+        const exactMatch = list.find((m) =>
+          termNorms.some((t) =>
+            norm(m.title?.english) === t || norm(m.title?.romaji) === t || norm(m.title?.native) === t
+          )
+        );
+        if (exactMatch) return exactMatch;
+
+        // 3. Year match
+        if (year) {
+          const yearMatch = list.find((m) => {
+            const mYear = m.seasonYear || m.startDate?.year;
+            return mYear && Math.abs(mYear - year) <= 1;
+          });
+          if (yearMatch) return yearMatch;
+        }
+
+        // 4. Return top search hit
+        return list[0];
+      };
+
+      let match = null;
+
+      // Step 1: title with format filter
+      if (cleanTitle) {
+        const list1 = await searchAniList(cleanTitle, formatIn);
+        if (list1.length) match = pickBest(list1, [cleanTitle, cleanOrig]);
+      }
+
+      // Step 2: original_name with format filter
+      if (!match && cleanOrig && cleanOrig.toLowerCase() !== cleanTitle.toLowerCase()) {
+        const list2 = await searchAniList(cleanOrig, formatIn);
+        if (list2.length) match = pickBest(list2, [cleanOrig, cleanTitle]);
+      }
+
+      // Step 3: title without format filter
+      if (!match && cleanTitle) {
+        const list3 = await searchAniList(cleanTitle, null);
+        if (list3.length) match = pickBest(list3, [cleanTitle, cleanOrig]);
+      }
+
+      // Step 4: original_name without format filter
+      if (!match && cleanOrig && cleanOrig.toLowerCase() !== cleanTitle.toLowerCase()) {
+        const list4 = await searchAniList(cleanOrig, null);
+        if (list4.length) match = pickBest(list4, [cleanOrig, cleanTitle]);
+      }
+
+      if (!match || !match.id) {
+        console.log(`[Anime Scraper] No AniList match found for ${identity.title}`);
+        return;
+      }
 
       const anilistId = match.id;
       const malId = match.idMal || match.id;
+      identity.anilistId = anilistId;
 
       console.log(`***************${cleanTitle} / tmdb: ${identity.tmdbId}, anilist :${anilistId}**************`);
 
       const animeSources = [
-        { sourceKey: 'megaplay', serverName: 'MegaPlay', url: `https://megaplay.buzz/stream/ani/${anilistId}/${ep}/sub`, available: true },
-        { sourceKey: 'vidhawk', serverName: 'VidHawk', url: `https://vidhawk.buzz/embed/ani/${anilistId}/${ep}/sub`, available: true },
-        { sourceKey: 'gogo-server', serverName: 'Gogo Server', url: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId}&ep=${ep}&category=sub`, available: true },
-        { sourceKey: 'tryembed', serverName: 'TryEmbed', url: `https://tryembed.us.cc/embed/anime/${anilistId}/${ep}/sub`, available: true },
+        // 6 VidNest Anime Sources
+        { sourceKey: 'vidnest-ani-sub', serverName: 'VidNest Anime (Sub)', url: `https://vidnest.fun/anime/${anilistId}/${ep}/sub`, available: true },
+        { sourceKey: 'vidnest-ani-dub', serverName: 'VidNest Anime (Dub)', url: `https://vidnest.fun/anime/${anilistId}/${ep}/dub`, available: true },
+        { sourceKey: 'vidnest-ani-hindi', serverName: 'VidNest Anime (Hindi)', url: `https://vidnest.fun/anime/${anilistId}/${ep}/hindi`, available: true },
+        { sourceKey: 'vidnest-pahe-sub', serverName: 'VidNest AnimePahe (Sub)', url: `https://vidnest.fun/animepahe/${anilistId}/${ep}/sub`, available: true },
+        { sourceKey: 'vidnest-pahe-dub', serverName: 'VidNest AnimePahe (Dub)', url: `https://vidnest.fun/animepahe/${anilistId}/${ep}/dub`, available: true },
+        { sourceKey: 'vidnest-pahe-hindi', serverName: 'VidNest AnimePahe (Hindi)', url: `https://vidnest.fun/animepahe/${anilistId}/${ep}/hindi`, available: true },
+
+        // Gogo Server (Sub & Dub)
+        { sourceKey: 'gogo-server-sub', serverName: 'Gogo Server (Sub)', url: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId}&ep=${ep}&category=sub`, available: true },
+        { sourceKey: 'gogo-server-dub', serverName: 'Gogo Server (Dub)', url: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId}&ep=${ep}&category=dub`, available: true },
+
+        // MegaPlay (Sub & Dub)
+        { sourceKey: 'megaplay-sub', serverName: 'MegaPlay (Sub)', url: `https://megaplay.buzz/stream/ani/${anilistId}/${ep}/sub`, available: true },
+        { sourceKey: 'megaplay-dub', serverName: 'MegaPlay (Dub)', url: `https://megaplay.buzz/stream/ani/${anilistId}/${ep}/dub`, available: true },
+
+        // VidHawk (Sub & Dub)
+        { sourceKey: 'vidhawk-sub', serverName: 'VidHawk (Sub)', url: `https://vidhawk.buzz/embed/ani/${anilistId}/${ep}/sub`, available: true },
+        { sourceKey: 'vidhawk-dub', serverName: 'VidHawk (Dub)', url: `https://vidhawk.buzz/embed/ani/${anilistId}/${ep}/dub`, available: true },
+
+        // TryEmbed (Sub & Dub)
+        { sourceKey: 'tryembed-sub', serverName: 'TryEmbed (Sub)', url: `https://tryembed.us.cc/embed/anime/${anilistId}/${ep}/sub`, available: true },
+        { sourceKey: 'tryembed-dub', serverName: 'TryEmbed (Dub)', url: `https://tryembed.us.cc/embed/anime/${anilistId}/${ep}/dub`, available: true },
+
+        // Vidstreaming
         { sourceKey: 'vidstreaming', serverName: 'Vidstreaming', url: `https://vidsrc.me/embed/anime?id=${anilistId}&ep=${ep}`, available: true }
       ];
 
@@ -620,9 +740,28 @@ function buildPlayerSourcePayload(record = {}, identity = null, isScraping = fal
     : null;
 
 
+  const knownKeys = new Set([...PREFERRED_SERVER_ORDER, 'youtube']);
+  const dynamicSources = Object.keys(record?.sources || {})
+    .filter((k) => !knownKeys.has(k))
+    .map((sourceKey) => {
+      const urls = sanitizeProviderUrls(record?.sources?.[sourceKey]);
+      const url = urls[0] || '';
+      if (!url) return null;
+      return {
+        id: sourceKey,
+        key: sourceKey,
+        label: sourceKey,
+        urls,
+        url,
+        embeddable: true
+      };
+    })
+    .filter(Boolean);
+
   return {
     searchKey: record.searchKey || '',
     tmdbId,
+    anilistId: record?.anilistId || identity?.anilistId || null,
     imdbId: record.imdbId || identity?.imdbId || '',
     mediaType,
     seasonNumber: record.seasonNumber || identity?.seasonNumber || null,
@@ -631,7 +770,7 @@ function buildPlayerSourcePayload(record = {}, identity = null, isScraping = fal
     scraping: isScraping,
     notAvailable: Boolean(record.notAvailable),
     downloads: Array.isArray(record.downloads) ? record.downloads.filter(Boolean) : [],
-    sources: [...multimoviesSources, ...directSources, ...(youtubeSource ? [youtubeSource] : [])]
+    sources: [...multimoviesSources, ...directSources, ...dynamicSources, ...(youtubeSource ? [youtubeSource] : [])]
   };
 
 }

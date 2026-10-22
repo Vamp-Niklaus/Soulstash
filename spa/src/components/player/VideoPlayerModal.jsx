@@ -19,6 +19,7 @@ export function VideoPlayerModal({ request, onClose }) {
   if (!request?.tmdbId) return null;
   const [hindiSources, setHindiSources] = useState([]);
   const [animeSources, setAnimeSources] = useState([]);
+  const [anilistId, setAnilistId] = useState(null);
   const [activeUrl, setActiveUrl] = useState('');
   const [sourceSignature, setSourceSignature] = useState('');
   const [failedUrls, setFailedUrls] = useState(() => new Set());
@@ -47,6 +48,7 @@ export function VideoPlayerModal({ request, onClose }) {
   useEffect(() => {
     setHindiSources([]);
     setAnimeSources([]);
+    setAnilistId(null);
     setActiveUrl('');
     setSourceSignature('');
     setFailedUrls(new Set());
@@ -59,91 +61,264 @@ export function VideoPlayerModal({ request, onClose }) {
     setNativeScale(1.0);
   }, [request]);
 
-  // Anime / AniList / MultiNime Resolution
+  // Anime / AniList / MultiNime Resolution with multi-step search fallback
   useEffect(() => {
-    if (!request?.title) return;
+    if (!request?.title && !request?.originalTitle) return;
     const ep = request.episodeNumber || 1;
-    const cleanTitle = String(request.title).replace(/\s+/g, ' ').trim();
+    const rawTitle = String(request.seriesTitle || request.title || '');
+    const rawOrig = String(request.originalTitle || request.originalName || '');
+
+    const cleanTitle = rawTitle
+      .replace(/\s*S\d+E\d+.*$/i, '')
+      .replace(/\s*Season\s*\d+.*$/i, '')
+      .replace(/\s*Episode\s*\d+.*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const cleanOrig = rawOrig
+      .replace(/\s*S\d+E\d+.*$/i, '')
+      .replace(/\s*Season\s*\d+.*$/i, '')
+      .replace(/\s*Episode\s*\d+.*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const isMovie = request.mediaType === 'movie';
+    const formatIn = isMovie ? ['MOVIE'] : ['TV', 'TV_SHORT', 'ONA', 'OVA', 'SPECIAL'];
+    const year = Number(request.year) || null;
     const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-    const fetchAnime = async () => {
+    const searchAniList = async (search, formats = null) => {
       try {
         const query = `
-          query ($search: String) {
-            Page(page: 1, perPage: 5) {
-              media(search: $search, type: ANIME) {
+          query ($search: String, $formatIn: [MediaFormat]) {
+            Page(page: 1, perPage: 8) {
+              media(search: $search, type: ANIME, format_in: $formatIn) {
                 id
                 idMal
                 title { romaji english native }
                 format
+                seasonYear
+                startDate { year }
                 episodes
               }
             }
           }
         `;
+        const variables = { search };
+        if (formats && formats.length) variables.formatIn = formats;
         const res = await fetch('https://graphql.anilist.co', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ query, variables: { search: cleanTitle } })
+          body: JSON.stringify({ query, variables })
         });
+        if (!res.ok) return [];
         const data = await res.json();
-        const mediaList = data?.data?.Page?.media || [];
-        if (!mediaList.length) return;
+        return data?.data?.Page?.media || [];
+      } catch (e) {
+        return [];
+      }
+    };
 
-        const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const target = norm(cleanTitle);
-        const match = mediaList.find(m => 
-          norm(m.title.english) === target || norm(m.title.romaji) === target
-        ) || mediaList[0];
+    const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-        const anilistId = match.id;
+    const pickBest = (list, searchTerms) => {
+      if (!list || !list.length) return null;
+      const termNorms = searchTerms.map(norm).filter(Boolean);
+
+      // 1. Exact year + title match
+      if (year) {
+        const yearMatch = list.find((m) => {
+          const mYear = m.seasonYear || m.startDate?.year;
+          const matchesYear = mYear && Math.abs(mYear - year) <= 1;
+          const matchesName = termNorms.some((t) =>
+            norm(m.title?.english) === t || norm(m.title?.romaji) === t || norm(m.title?.native) === t
+          );
+          return matchesYear && matchesName;
+        });
+        if (yearMatch) return yearMatch;
+      }
+
+      // 2. Exact title match
+      const exactMatch = list.find((m) =>
+        termNorms.some((t) =>
+          norm(m.title?.english) === t || norm(m.title?.romaji) === t || norm(m.title?.native) === t
+        )
+      );
+      if (exactMatch) return exactMatch;
+
+      // 3. Year match
+      if (year) {
+        const yearMatch = list.find((m) => {
+          const mYear = m.seasonYear || m.startDate?.year;
+          return mYear && Math.abs(mYear - year) <= 1;
+        });
+        if (yearMatch) return yearMatch;
+      }
+
+      // 4. Return top search hit if non-empty
+      return list[0];
+    };
+
+    const fetchAnime = async () => {
+      try {
+        let match = null;
+
+        // Step 1: title with format filter
+        if (cleanTitle) {
+          const list1 = await searchAniList(cleanTitle, formatIn);
+          if (list1.length) match = pickBest(list1, [cleanTitle, cleanOrig]);
+        }
+
+        // Step 2: original_name with format filter
+        if (!match && cleanOrig && cleanOrig.toLowerCase() !== cleanTitle.toLowerCase()) {
+          const list2 = await searchAniList(cleanOrig, formatIn);
+          if (list2.length) match = pickBest(list2, [cleanOrig, cleanTitle]);
+        }
+
+        // Step 3: title without format filter
+        if (!match && cleanTitle) {
+          const list3 = await searchAniList(cleanTitle, null);
+          if (list3.length) match = pickBest(list3, [cleanTitle, cleanOrig]);
+        }
+
+        // Step 4: original_name without format filter
+        if (!match && cleanOrig && cleanOrig.toLowerCase() !== cleanTitle.toLowerCase()) {
+          const list4 = await searchAniList(cleanOrig, null);
+          if (list4.length) match = pickBest(list4, [cleanOrig, cleanTitle]);
+        }
+
+        if (!match || !match.id) {
+          setAnilistId(null);
+          setAnimeSources([]);
+          return;
+        }
+
+        const resolvedAnilistId = match.id;
         const malId = match.idMal || match.id;
+        setAnilistId(resolvedAnilistId);
 
-        console.log(`***************${cleanTitle} / tmdb: ${request.tmdbId}, anilist :${anilistId}**************`);
+        console.log(`***************${cleanTitle} / tmdb: ${request.tmdbId}, anilist :${resolvedAnilistId}**************`);
 
-        const directAnime = [
+        // Build 6 VidNest Anime Sources + other Anime providers
+        const animeList = [
+          // VidNest Embed Anime
           {
-            id: 'megaplay',
-            key: 'megaplay',
-            label: 'MegaPlay',
-            url: `https://megaplay.buzz/stream/ani/${anilistId}/${ep}/sub`,
+            id: 'vidnest-ani-sub',
+            key: 'vidnest-ani-sub',
+            label: 'VidNest Anime (Sub)',
+            url: `https://vidnest.fun/anime/${resolvedAnilistId}/${ep}/sub`,
             embeddable: true
           },
           {
-            id: 'vidhawk',
-            key: 'vidhawk',
-            label: 'VidHawk',
-            url: `https://vidhawk.buzz/embed/ani/${anilistId}/${ep}/sub`,
+            id: 'vidnest-ani-dub',
+            key: 'vidnest-ani-dub',
+            label: 'VidNest Anime (Dub)',
+            url: `https://vidnest.fun/anime/${resolvedAnilistId}/${ep}/dub`,
             embeddable: true
           },
           {
-            id: 'gogo-server',
-            key: 'gogo-server',
-            label: 'Gogo Server',
+            id: 'vidnest-ani-hindi',
+            key: 'vidnest-ani-hindi',
+            label: 'VidNest Anime (Hindi)',
+            url: `https://vidnest.fun/anime/${resolvedAnilistId}/${ep}/hindi`,
+            embeddable: true
+          },
+          // VidNest Embed AnimePahe
+          {
+            id: 'vidnest-pahe-sub',
+            key: 'vidnest-pahe-sub',
+            label: 'VidNest AnimePahe (Sub)',
+            url: `https://vidnest.fun/animepahe/${resolvedAnilistId}/${ep}/sub`,
+            embeddable: true
+          },
+          {
+            id: 'vidnest-pahe-dub',
+            key: 'vidnest-pahe-dub',
+            label: 'VidNest AnimePahe (Dub)',
+            url: `https://vidnest.fun/animepahe/${resolvedAnilistId}/${ep}/dub`,
+            embeddable: true
+          },
+          {
+            id: 'vidnest-pahe-hindi',
+            key: 'vidnest-pahe-hindi',
+            label: 'VidNest AnimePahe (Hindi)',
+            url: `https://vidnest.fun/animepahe/${resolvedAnilistId}/${ep}/hindi`,
+            embeddable: true
+          },
+          // Gogo Server (Sub & Dub)
+          {
+            id: 'gogo-server-sub',
+            key: 'gogo-server-sub',
+            label: 'Gogo Server (Sub)',
             url: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId}&ep=${ep}&category=sub`,
             embeddable: true
           },
           {
-            id: 'tryembed',
-            key: 'tryembed',
-            label: 'TryEmbed',
-            url: `https://tryembed.us.cc/embed/anime/${anilistId}/${ep}/sub`,
+            id: 'gogo-server-dub',
+            key: 'gogo-server-dub',
+            label: 'Gogo Server (Dub)',
+            url: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId}&ep=${ep}&category=dub`,
             embeddable: true
           },
+          // MegaPlay (Sub & Dub)
+          {
+            id: 'megaplay-sub',
+            key: 'megaplay-sub',
+            label: 'MegaPlay (Sub)',
+            url: `https://megaplay.buzz/stream/ani/${resolvedAnilistId}/${ep}/sub`,
+            embeddable: true
+          },
+          {
+            id: 'megaplay-dub',
+            key: 'megaplay-dub',
+            label: 'MegaPlay (Dub)',
+            url: `https://megaplay.buzz/stream/ani/${resolvedAnilistId}/${ep}/dub`,
+            embeddable: true
+          },
+          // VidHawk (Sub & Dub)
+          {
+            id: 'vidhawk-sub',
+            key: 'vidhawk-sub',
+            label: 'VidHawk (Sub)',
+            url: `https://vidhawk.buzz/embed/ani/${resolvedAnilistId}/${ep}/sub`,
+            embeddable: true
+          },
+          {
+            id: 'vidhawk-dub',
+            key: 'vidhawk-dub',
+            label: 'VidHawk (Dub)',
+            url: `https://vidhawk.buzz/embed/ani/${resolvedAnilistId}/${ep}/dub`,
+            embeddable: true
+          },
+          // TryEmbed (Sub & Dub)
+          {
+            id: 'tryembed-sub',
+            key: 'tryembed-sub',
+            label: 'TryEmbed (Sub)',
+            url: `https://tryembed.us.cc/embed/anime/${resolvedAnilistId}/${ep}/sub`,
+            embeddable: true
+          },
+          {
+            id: 'tryembed-dub',
+            key: 'tryembed-dub',
+            label: 'TryEmbed (Dub)',
+            url: `https://tryembed.us.cc/embed/anime/${resolvedAnilistId}/${ep}/dub`,
+            embeddable: true
+          },
+          // Vidstreaming
           {
             id: 'vidstreaming',
             key: 'vidstreaming',
             label: 'Vidstreaming',
-            url: `https://vidsrc.me/embed/anime?id=${anilistId}&ep=${ep}`,
+            url: `https://vidsrc.me/embed/anime?id=${resolvedAnilistId}&ep=${ep}`,
             embeddable: true
           }
         ];
 
-        setAnimeSources(directAnime);
+        setAnimeSources(animeList);
 
         // Fetch MultiNime watch page for FlixCloud mirrors
         try {
-          const mnRes = await fetch(`https://multinime.site/watch.php?slug=${slug}&ep=${ep}&lang=sub&aid=${anilistId}`);
+          const mnRes = await fetch(`https://multinime.site/watch.php?slug=${slug}&ep=${ep}&lang=sub&aid=${resolvedAnilistId}`);
           if (mnRes.ok) {
             const html = await mnRes.text();
             const btnMatches = [...html.matchAll(/<button[^>]*class=["'][^"']*server-btn[^"']*["'][^>]*data-src=["']([^"']+)["'][^>]*>([\s\S]*?)<\/button>/gi)];
@@ -334,6 +509,9 @@ export function VideoPlayerModal({ request, onClose }) {
       t: Date.now().toString()
     });
     if (request.imdbId) params.set('imdbId', request.imdbId);
+    if (request.title) params.set('title', request.seriesTitle || request.title);
+    if (request.originalTitle) params.set('originalTitle', request.originalTitle);
+    if (request.year) params.set('year', String(request.year));
     if (request.mediaType === 'series') {
       params.set('seasonNumber', String(request.seasonNumber || 1));
       params.set('episodeNumber', String(request.episodeNumber || 1));
@@ -385,9 +563,16 @@ export function VideoPlayerModal({ request, onClose }) {
     return [...hindiSources, ...animeSources];
   }, [hindiSources, animeSources]);
 
+  const effectiveAnilistId = anilistId || sourcePayload?.anilistId || null;
+
   const sources = useMemo(
-    () => buildPlayerSourceSlots(combinedIncoming, fallbackSources, isFetching, failedUrls, verifiedUrls),
-    [combinedIncoming, fallbackSources, isFetching, failedUrls, verifiedUrls]
+    () => buildPlayerSourceSlots(combinedIncoming, fallbackSources, {
+      isLoading: isFetching,
+      failedUrls,
+      verifiedUrls,
+      anilistId: effectiveAnilistId
+    }),
+    [combinedIncoming, fallbackSources, isFetching, failedUrls, verifiedUrls, effectiveAnilistId]
   );
 
   const availableSources = useMemo(() => sources.filter((source) => source?.url), [sources]);

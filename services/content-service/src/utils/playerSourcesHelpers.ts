@@ -196,9 +196,28 @@ export function buildPlayerSourcePayload(record: any = {}, identity: any = null,
       }
     : null;
 
+  const knownKeys = new Set([...PREFERRED_SERVER_ORDER, 'youtube']);
+  const dynamicSources = Object.keys(record?.sources || {})
+    .filter((k) => !knownKeys.has(k))
+    .map((sourceKey) => {
+      const urls = sanitizeProviderUrls(record?.sources?.[sourceKey]);
+      const url = urls[0] || '';
+      if (!url) return null;
+      return {
+        id: sourceKey,
+        key: sourceKey,
+        label: sourceKey,
+        urls,
+        url,
+        embeddable: true
+      };
+    })
+    .filter(Boolean);
+
   return {
     searchKey: record.searchKey || '',
     tmdbId,
+    anilistId: record?.anilistId || identity?.anilistId || null,
     imdbId: record.imdbId || identity?.imdbId || '',
     mediaType,
     seasonNumber: record.seasonNumber || identity?.seasonNumber || null,
@@ -207,7 +226,7 @@ export function buildPlayerSourcePayload(record: any = {}, identity: any = null,
     scraping: isScraping,
     notAvailable: Boolean(record.notAvailable),
     downloads: Array.isArray(record.downloads) ? record.downloads.filter(Boolean) : [],
-    sources: [...multimoviesSources, ...directSources, ...(youtubeSource ? [youtubeSource] : [])]
+    sources: [...multimoviesSources, ...directSources, ...dynamicSources, ...(youtubeSource ? [youtubeSource] : [])]
   };
 }
 

@@ -721,7 +721,7 @@ export function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber 
 /**
  * Structures the complete payload required by the player components to begin streaming.
  */
-export function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title }) {
+export function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title, originalTitle, originalName, seriesTitle, year }) {
   const normalizedType = String(mediaType || '').toLowerCase() === 'movie' ? 'movie' : 'series';
   const resolvedTmdbId = Number(tmdbId);
   const resolvedSeasonNumber = normalizedType === 'series' ? Number(seasonNumber || 1) : null;
@@ -734,6 +734,10 @@ export function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNu
     episodeNumber: resolvedEpisodeNumber,
     imdbId: imdbId || '',
     title: title || '',
+    originalTitle: originalTitle || originalName || '',
+    originalName: originalName || originalTitle || '',
+    seriesTitle: seriesTitle || '',
+    year: Number(year) || null,
     fallbackSources: buildLegacyPlayerSources({
       mediaType: normalizedType,
       tmdbId: resolvedTmdbId,

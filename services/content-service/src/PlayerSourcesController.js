@@ -20,6 +20,9 @@ class PlayerSourcesController {
             const seasonNumber = mediaType === 'series' ? Number(req.query.seasonNumber || 1) : null;
             const episodeNumber = mediaType === 'series' ? Number(req.query.episodeNumber || 1) : null;
             const forceRefresh = String(req.query.refresh || '').trim() === '1';
+            const titleFromQuery = String(req.query.title || '').trim();
+            const originalTitleFromQuery = String(req.query.originalTitle || req.query.original_title || '').trim();
+            const yearFromQuery = Number(req.query.year || 0) || null;
             if (!tmdbId) {
                 return res.status(400).json({ error: 'tmdbId is required.' });
             }
@@ -47,8 +50,10 @@ class PlayerSourcesController {
                             mediaType,
                             tmdbId,
                             imdbId: cachedDoc.imdbId || imdbIdFromQuery || '',
-                            title: cachedDoc.title || '',
-                            year: cachedDoc.year || null,
+                            title: titleFromQuery || cachedDoc.title || '',
+                            originalTitle: originalTitleFromQuery || cachedDoc.originalTitle || '',
+                            year: yearFromQuery || cachedDoc.year || null,
+                            anilistId: cachedDoc.anilistId || null,
                             seasonNumber,
                             episodeNumber,
                             overview: cachedDoc.overview || '',
@@ -71,8 +76,10 @@ class PlayerSourcesController {
                     mediaType,
                     tmdbId,
                     imdbId: cachedRecord.imdbId || imdbIdFromQuery,
-                    title: cachedRecord.title || cachedRecord.metadata?.title || '',
-                    year: cachedRecord.year || null,
+                    title: titleFromQuery || cachedRecord.title || cachedRecord.metadata?.title || '',
+                    originalTitle: originalTitleFromQuery || cachedRecord.originalTitle || '',
+                    year: yearFromQuery || cachedRecord.year || null,
+                    anilistId: cachedRecord.anilistId || null,
                     seasonNumber,
                     episodeNumber,
                     overview: cachedRecord.overview || '',
@@ -107,8 +114,10 @@ class PlayerSourcesController {
                         mediaType,
                         tmdbId,
                         imdbId: (cachedRecord || cachedDoc).imdbId || imdbIdFromQuery,
-                        title: (cachedRecord || cachedDoc).title || (cachedRecord || cachedDoc).metadata?.title || '',
-                        year: (cachedRecord || cachedDoc).year || (cachedRecord || cachedDoc).metadata?.year || null,
+                        title: titleFromQuery || (cachedRecord || cachedDoc).title || (cachedRecord || cachedDoc).metadata?.title || '',
+                        originalTitle: originalTitleFromQuery || (cachedRecord || cachedDoc).originalTitle || '',
+                        year: yearFromQuery || (cachedRecord || cachedDoc).year || (cachedRecord || cachedDoc).metadata?.year || null,
+                        anilistId: (cachedRecord || cachedDoc).anilistId || null,
                         seasonNumber,
                         episodeNumber,
                         overview: (cachedRecord || cachedDoc).overview || (cachedRecord || cachedDoc).metadata?.overview || '',
@@ -120,6 +129,9 @@ class PlayerSourcesController {
                 else {
                     try {
                         identity = await (0, playerSourcesHelpers_1.fetchTmdbPlayerIdentity)({ mediaType, tmdbId, seasonNumber, episodeNumber });
+                        if (titleFromQuery) identity.title = titleFromQuery;
+                        if (originalTitleFromQuery) identity.originalTitle = originalTitleFromQuery;
+                        if (yearFromQuery) identity.year = yearFromQuery;
                     }
                     catch (err) {
                         console.error('[Player Sources] TMDB identity lookup failed', err.message);
