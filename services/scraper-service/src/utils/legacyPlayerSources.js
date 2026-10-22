@@ -351,7 +351,91 @@ async function refreshPlayerSourceRecord(identity) {
     }
   })();
 
-  const [scrapeResult] = await Promise.all([scrapePromise, youtubePromise]);
+  
+  // Anime / AniList / MultiNime Scraper
+  const animePromise = (async () => {
+    try {
+      const cleanTitle = String(identity.title || '').replace(/\s+/g, ' ').trim();
+      const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const ep = identity.episodeNumber || 1;
+
+      const query = `
+        query ($search: String) {
+          Page(page: 1, perPage: 5) {
+            media(search: $search, type: ANIME) {
+              id
+              idMal
+              title { romaji english native }
+              format
+              episodes
+            }
+          }
+        }
+      `;
+
+      const res = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ query, variables: { search: cleanTitle } })
+      });
+      const data = await res.json();
+      const mediaList = data?.data?.Page?.media || [];
+      if (!mediaList.length) return;
+
+      const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const target = norm(cleanTitle);
+      const match = mediaList.find(m => 
+        norm(m.title.english) === target || norm(m.title.romaji) === target
+      ) || mediaList[0];
+
+      const anilistId = match.id;
+      const malId = match.idMal || match.id;
+
+      console.log(`***************${cleanTitle} / tmdb: ${identity.tmdbId}, anilist :${anilistId}**************`);
+
+      const animeSources = [
+        { sourceKey: 'megaplay', serverName: 'MegaPlay', url: `https://megaplay.buzz/stream/ani/${anilistId}/${ep}/sub`, available: true },
+        { sourceKey: 'vidhawk', serverName: 'VidHawk', url: `https://vidhawk.buzz/embed/ani/${anilistId}/${ep}/sub`, available: true },
+        { sourceKey: 'gogo-server', serverName: 'Gogo Server', url: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId}&ep=${ep}&category=sub`, available: true },
+        { sourceKey: 'tryembed', serverName: 'TryEmbed', url: `https://tryembed.us.cc/embed/anime/${anilistId}/${ep}/sub`, available: true },
+        { sourceKey: 'vidstreaming', serverName: 'Vidstreaming', url: `https://vidsrc.me/embed/anime?id=${anilistId}&ep=${ep}`, available: true }
+      ];
+
+      // Scrape MultiNime watch page for FlixCloud (HD-1 & HD-2)
+      try {
+        const mnRes = await fetch(`https://multinime.site/watch.php?slug=${slug}&ep=${ep}&lang=sub&aid=${anilistId}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        });
+        if (mnRes.ok) {
+          const html = await mnRes.text();
+          const btnMatches = [...html.matchAll(/<button[^>]*class=["'][^"']*server-btn[^"']*["'][^>]*data-src=["']([^"']+)["'][^>]*>([\s\S]*?)<\/button>/gi)];
+          btnMatches.forEach((m, idx) => {
+            const label = m[2].replace(/<[^>]+>/g, '').trim();
+            const url = m[1].replace(/&amp;/g, '&');
+            if (url) {
+              const isFlix = /flixcloud/i.test(label);
+              const key = isFlix ? (label.includes('2') ? 'flixcloud-2' : 'flixcloud-1') : `multinime-${idx}`;
+              animeSources.push({
+                sourceKey: key,
+                serverName: label,
+                url,
+                available: true
+              });
+            }
+          });
+        }
+      } catch (mnErr) {
+        console.warn('[MultiNime Scraper] failed:', mnErr.message);
+      }
+
+      await onSource(animeSources);
+      console.log(`[Anime Scraper] Injected ${animeSources.length} sources for ${identity.title}`);
+    } catch (err) {
+      console.warn('[Anime Scraper] failed:', err.message);
+    }
+  })();
+
+  const [scrapeResult] = await Promise.all([scrapePromise, youtubePromise, animePromise]);
 
   console.log(`************************** Scraped Sources Result [Req-${reqId}] [TMDB ${identity.tmdbId}] [url: ${scrapeResult?.pageUrl || '(none)'}]`);
   console.log(JSON.stringify(scrapeResult?.players || [], null, 2));

@@ -1219,6 +1219,29 @@ async function resolveMatchedPage(target, options = {}) {
 
 function toArray(value) { return Array.isArray(value) ? value : [value]; }
 
+
+function extractServerChips(html, pageUrl) {
+  const servers = [];
+  const chipPattern = /<button[^>]*class=["'][^"']*server-chip[^"']*["'][^>]*data-url=["']([^"']+)["'][^>]*>([\s\S]*?)<\/button>/gi;
+  let match;
+  while ((match = chipPattern.exec(html))) {
+    const rawUrl = match[1];
+    const chipText = match[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!rawUrl) continue;
+    const url = absoluteUrl(rawUrl, pageUrl);
+    const isFilesForever = url.includes('filesforever.link');
+    const key = isFilesForever ? 'h1' : `chip_${servers.length}`;
+    servers.push({
+      id: key,
+      sourceKey: key,
+      serverName: chipText || 'Mirror',
+      url,
+      available: true
+    });
+  }
+  return servers;
+}
+
 async function scrapeMultimoviesTitle(input, options = {}) {
   const logger = createLogger(options.logger);
   if (!input?.title) throw new Error('title is required');
@@ -1244,7 +1267,17 @@ async function scrapeMultimoviesTitle(input, options = {}) {
   const embedUrls = uniqueStrings([...staticEmbedUrls, ...ajaxEmbedUrls]);
   const playerResults = extractPlayerResultsFromSnapshotDir(options.snapshotAssetDir);
   const recoveredDownloads = [...extractDownloadUrls(pageResult.html, pageResult.pageUrl)];
-  const directPageServers = extractServerItems(pageResult.html, pageResult.pageUrl);
+    const directPageServers = extractServerItems(pageResult.html, pageResult.pageUrl);
+  const serverChips = extractServerChips(pageResult.html, pageResult.pageUrl);
+  if (serverChips.length) {
+    if (typeof options.onSource === 'function') options.onSource(serverChips);
+    playerResults.unshift({
+      playerUrl: pageResult.pageUrl,
+      playerTitle: extractPlayerTitle(pageResult.html),
+      years: extractPlayerYears(pageResult.html),
+      servers: serverChips
+    });
+  }
 
   if (directPageServers.some((i) => i.available)) {
     if (typeof options.onSource === 'function') options.onSource(directPageServers.filter(s => s.available));
@@ -1306,15 +1339,21 @@ function mergeSourceHistory(previousUrls = [], latestUrl = '') {
 function buildSourceHistoryRecord(result, identity = {}) {
   const providerMap = Object.fromEntries(PREFERRED_SERVER_ORDER.map((key) => [key, []]));
   for (const player of result.players || []) {
-    if (!player.available || !player.url || !providerMap[player.sourceKey]) continue;
-    providerMap[player.sourceKey] = mergeSourceHistory(providerMap[player.sourceKey], player.url);
+    if (!player.available || !player.url) continue;
+    const key = player.sourceKey || player.id;
+    if (!key) continue;
+    if (!providerMap[key]) providerMap[key] = [];
+    providerMap[key] = mergeSourceHistory(providerMap[key], player.url);
   }
   return { searchKey: result.searchKey || '', mediaType: identity.mediaType || 'movie', tmdbId: Number(identity.tmdbId || 0) || null, imdbId: String(identity.imdbId || '').trim(), title: String(identity.title || '').trim(), year: Number(identity.year || 0) || null, seasonNumber: Number(identity.seasonNumber || 0) || null, episodeNumber: Number(identity.episodeNumber || 0) || null, sources: providerMap, downloads: uniqueStrings(result.downloads || []), updatedAt: new Date() };
 }
 
 function mergeSourceHistoryRecord(existingRecord = {}, incomingRecord = {}) {
-  const mergedSources = {};
-  for (const sourceKey of PREFERRED_SERVER_ORDER) mergedSources[sourceKey] = mergeSourceHistory(existingRecord?.sources?.[sourceKey] || [], incomingRecord?.sources?.[sourceKey]?.[0] || '');
+  const mergedSources = { ...(existingRecord?.sources || {}) };
+  const allKeys = new Set([...PREFERRED_SERVER_ORDER, ...Object.keys(existingRecord?.sources || {}), ...Object.keys(incomingRecord?.sources || {})]);
+  for (const sourceKey of allKeys) {
+    mergedSources[sourceKey] = mergeSourceHistory(existingRecord?.sources?.[sourceKey] || [], incomingRecord?.sources?.[sourceKey]?.[0] || '');
+  }
   return { ...Object.fromEntries(Object.entries(existingRecord).filter(([key]) => !['metadata', 'pageUrl', 'pagePath'].includes(key))), ...incomingRecord, createdAt: existingRecord?.createdAt || incomingRecord?.createdAt, sources: mergedSources, downloads: uniqueStrings([...(incomingRecord?.downloads || []), ...(existingRecord?.downloads || [])]), updatedAt: new Date() };
 }
 

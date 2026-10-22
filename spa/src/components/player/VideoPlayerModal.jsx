@@ -18,6 +18,7 @@ import { buildPlayerSourceSlots, firstPlayableUrl, sourceKeyText } from '../../u
 export function VideoPlayerModal({ request, onClose }) {
   if (!request?.tmdbId) return null;
   const [hindiSources, setHindiSources] = useState([]);
+  const [animeSources, setAnimeSources] = useState([]);
   const [activeUrl, setActiveUrl] = useState('');
   const [sourceSignature, setSourceSignature] = useState('');
   const [failedUrls, setFailedUrls] = useState(() => new Set());
@@ -27,6 +28,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const [iframeReloadKey, setIframeReloadKey] = useState(0);
   const [scale, setScale] = useState(1.0);
   const iframeRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   
   const playerBoxRef = useRef(null);
   const dragStateRef = useRef(null);
@@ -44,6 +46,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
   useEffect(() => {
     setHindiSources([]);
+    setAnimeSources([]);
     setActiveUrl('');
     setSourceSignature('');
     setFailedUrls(new Set());
@@ -54,6 +57,130 @@ export function VideoPlayerModal({ request, onClose }) {
     dragStateRef.current = null;
     setScale(1.0);
     setNativeScale(1.0);
+  }, [request]);
+
+  // Anime / AniList / MultiNime Resolution
+  useEffect(() => {
+    if (!request?.title) return;
+    const ep = request.episodeNumber || 1;
+    const cleanTitle = String(request.title).replace(/\s+/g, ' ').trim();
+    const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    const fetchAnime = async () => {
+      try {
+        const query = `
+          query ($search: String) {
+            Page(page: 1, perPage: 5) {
+              media(search: $search, type: ANIME) {
+                id
+                idMal
+                title { romaji english native }
+                format
+                episodes
+              }
+            }
+          }
+        `;
+        const res = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ query, variables: { search: cleanTitle } })
+        });
+        const data = await res.json();
+        const mediaList = data?.data?.Page?.media || [];
+        if (!mediaList.length) return;
+
+        const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const target = norm(cleanTitle);
+        const match = mediaList.find(m => 
+          norm(m.title.english) === target || norm(m.title.romaji) === target
+        ) || mediaList[0];
+
+        const anilistId = match.id;
+        const malId = match.idMal || match.id;
+
+        console.log(`***************${cleanTitle} / tmdb: ${request.tmdbId}, anilist :${anilistId}**************`);
+
+        const directAnime = [
+          {
+            id: 'megaplay',
+            key: 'megaplay',
+            label: 'MegaPlay',
+            url: `https://megaplay.buzz/stream/ani/${anilistId}/${ep}/sub`,
+            embeddable: true
+          },
+          {
+            id: 'vidhawk',
+            key: 'vidhawk',
+            label: 'VidHawk',
+            url: `https://vidhawk.buzz/embed/ani/${anilistId}/${ep}/sub`,
+            embeddable: true
+          },
+          {
+            id: 'gogo-server',
+            key: 'gogo-server',
+            label: 'Gogo Server',
+            url: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId}&ep=${ep}&category=sub`,
+            embeddable: true
+          },
+          {
+            id: 'tryembed',
+            key: 'tryembed',
+            label: 'TryEmbed',
+            url: `https://tryembed.us.cc/embed/anime/${anilistId}/${ep}/sub`,
+            embeddable: true
+          },
+          {
+            id: 'vidstreaming',
+            key: 'vidstreaming',
+            label: 'Vidstreaming',
+            url: `https://vidsrc.me/embed/anime?id=${anilistId}&ep=${ep}`,
+            embeddable: true
+          }
+        ];
+
+        setAnimeSources(directAnime);
+
+        // Fetch MultiNime watch page for FlixCloud mirrors
+        try {
+          const mnRes = await fetch(`https://multinime.site/watch.php?slug=${slug}&ep=${ep}&lang=sub&aid=${anilistId}`);
+          if (mnRes.ok) {
+            const html = await mnRes.text();
+            const btnMatches = [...html.matchAll(/<button[^>]*class=["'][^"']*server-btn[^"']*["'][^>]*data-src=["']([^"']+)["'][^>]*>([\s\S]*?)<\/button>/gi)];
+            const scraped = btnMatches.map((m, idx) => {
+              const label = m[2].replace(/<[^>]+>/g, '').trim();
+              const url = m[1].replace(/&amp;/g, '&');
+              const isFlix = /flixcloud/i.test(label);
+              return {
+                id: isFlix ? (label.includes('2') ? 'flixcloud-2' : 'flixcloud-1') : `multinime-${idx}`,
+                key: isFlix ? (label.includes('2') ? 'flixcloud-2' : 'flixcloud-1') : `multinime-${idx}`,
+                label,
+                url,
+                embeddable: true
+              };
+            }).filter(s => s.url);
+
+            if (scraped.length) {
+              setAnimeSources((prev) => {
+                const combined = [...scraped, ...prev];
+                const seen = new Set();
+                return combined.filter(s => {
+                  if (seen.has(s.url)) return false;
+                  seen.add(s.url);
+                  return true;
+                });
+              });
+            }
+          }
+        } catch (mnErr) {
+          // MultiNime scrape fallback
+        }
+      } catch (err) {
+        console.warn('[Soulstash Player] AniList lookup failed:', err.message);
+      }
+    };
+
+    fetchAnime();
   }, [request]);
 
   useEffect(() => {
@@ -254,9 +381,13 @@ export function VideoPlayerModal({ request, onClose }) {
     }
   }, [sourcePayload, fallbackSources, request, sourceSignature]);
 
+  const combinedIncoming = useMemo(() => {
+    return [...hindiSources, ...animeSources];
+  }, [hindiSources, animeSources]);
+
   const sources = useMemo(
-    () => buildPlayerSourceSlots(hindiSources, fallbackSources, isFetching, failedUrls, verifiedUrls),
-    [hindiSources, fallbackSources, isFetching, failedUrls, verifiedUrls]
+    () => buildPlayerSourceSlots(combinedIncoming, fallbackSources, isFetching, failedUrls, verifiedUrls),
+    [combinedIncoming, fallbackSources, isFetching, failedUrls, verifiedUrls]
   );
 
   const availableSources = useMemo(() => sources.filter((source) => source?.url), [sources]);
@@ -473,8 +604,8 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [isAndroidViewport, stopPlayerDrag]);
 
   useEffect(() => {
-    if (!activeUrl) return;
-    const activeBtn = playerBoxRef.current?.querySelector('button[data-active-source="true"]');
+    if (!activeUrl || !scrollContainerRef.current) return;
+    const activeBtn = scrollContainerRef.current.querySelector('button[data-active-source="true"]');
     if (activeBtn) {
       activeBtn.scrollIntoView({
         behavior: 'smooth',
@@ -482,7 +613,7 @@ export function VideoPlayerModal({ request, onClose }) {
         inline: 'center'
       });
     }
-  }, [activeUrl]);
+  }, [activeUrl, sources.length]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -529,73 +660,98 @@ export function VideoPlayerModal({ request, onClose }) {
             <div
               data-player-controls="true"
               data-player-drag-handle="true"
-              className="flex items-center justify-between gap-3 border-b border-white/10 bg-black/80 px-3 sm:px-4"
+              className="flex items-center justify-between gap-1.5 sm:gap-2 border-b border-white/10 bg-black/80 px-2 sm:px-4"
               style={{ height: controlsHeight, touchAction: 'none' }}
               onPointerDown={handlePlayerPointerDown}
             >
-            <div className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-              <div className="flex min-w-max items-center gap-2 pr-2">
-                {sources.length ? (
-                  sources.map((source) => {
-                    const isActive = activeUrl === source.url;
-                    const isFailed = source.failed;
-                    const isWorking = source.working || isActive;
-                    return (
-                      <button
-                        key={source.id}
-                        type="button"
-                        data-player-source="true"
-                        data-active-source={isActive}
-                        aria-label={`Play stream ${source.label}`}
-                        className={`inline-flex items-center gap-1.5 ${sourceButtonClass} ${
-                          isFailed
-                            ? 'opacity-60 bg-red-950/40 text-red-300 border border-red-800/40 hover:bg-red-900/50'
-                            : source.pending
-                            ? 'animate-pulse cursor-wait bg-white/15 text-white/50 border-white/20'
-                            : source.disabled
-                            ? 'cursor-not-allowed bg-white/5 text-white/25'
-                            : isActive
-                            ? 'bg-white text-black font-semibold shadow-md'
-                            : 'bg-white/10 text-white hover:bg-white/20'
-                        }`}
-                        disabled={source.disabled || source.pending}
-                        onClick={() => {
-                          if (!source.disabled && !source.pending) {
-                            setActiveUrl(source.url);
-                            setIframeReloadKey(0);
-                          }
-                        }}
-                      >
-                        <span>{source.label}</span>
-                        {/* Status dot indicator */}
-                        {isFailed ? (
-                          <span
-                            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
-                            title="Stream failed"
-                          />
-                        ) : isWorking ? (
-                          <span
-                            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
-                            title="Active stream"
-                          />
-                        ) : source.pending ? (
-                          <span
-                            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/80 animate-pulse"
-                            title="Probing stream"
-                          />
-                        ) : (
-                          <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/30" />
-                        )}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <span className="text-[11px] font-medium text-white/50">
-                    {errorDisplay || 'No source links yet.'}
-                  </span>
-                )}
+              {/* Left Scroll Button '<' (fixed at start) */}
+              <button
+                type="button"
+                onClick={() => scrollContainerRef.current?.scrollBy({ left: -220, behavior: 'smooth' })}
+                className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                aria-label="Scroll sources left"
+                title="Scroll Left"
+              >
+                <i className="fas fa-chevron-left text-[10px] sm:text-xs"></i>
+              </button>
+
+              <div
+                ref={scrollContainerRef}
+                className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden scroll-smooth"
+              >
+                <div className="flex min-w-max items-center gap-1.5 sm:gap-2 px-1">
+                  {sources.length ? (
+                    sources.map((source) => {
+                      const isActive = activeUrl === source.url;
+                      const isFailed = source.failed;
+                      const isWorking = source.working || isActive;
+                      return (
+                        <button
+                          key={source.id}
+                          type="button"
+                          data-player-source="true"
+                          data-active-source={isActive}
+                          aria-label={`Play stream ${source.label}`}
+                          className={`inline-flex items-center gap-1.5 ${sourceButtonClass} ${
+                            isFailed
+                              ? 'opacity-60 bg-red-950/40 text-red-300 border border-red-800/40 hover:bg-red-900/50'
+                              : source.pending
+                              ? 'animate-pulse cursor-wait bg-white/15 text-white/50 border-white/20'
+                              : source.disabled
+                              ? 'cursor-not-allowed bg-white/5 text-white/25'
+                              : isActive
+                              ? 'bg-white text-black font-semibold shadow-md'
+                              : 'bg-white/10 text-white hover:bg-white/20'
+                          }`}
+                          disabled={source.disabled || source.pending}
+                          onClick={() => {
+                            if (!source.disabled && !source.pending) {
+                              setActiveUrl(source.url);
+                              setIframeReloadKey(0);
+                            }
+                          }}
+                        >
+                          <span>{source.label}</span>
+                          {/* Status dot indicator */}
+                          {isFailed ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
+                              title="Stream failed"
+                            />
+                          ) : isWorking ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+                              title="Active stream"
+                            />
+                          ) : source.pending ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/80 animate-pulse"
+                              title="Probing stream"
+                            />
+                          ) : (
+                            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/30" />
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <span className="text-[11px] font-medium text-white/50">
+                      {errorDisplay || 'No source links yet.'}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
+
+              {/* Right Scroll Button '>' (fixed just before action buttons) */}
+              <button
+                type="button"
+                onClick={() => scrollContainerRef.current?.scrollBy({ left: 220, behavior: 'smooth' })}
+                className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                aria-label="Scroll sources right"
+                title="Scroll Right"
+              >
+                <i className="fas fa-chevron-right text-[10px] sm:text-xs"></i>
+              </button>
             <div className="flex shrink-0 items-center justify-end gap-2">
               <button
                 type="button"
