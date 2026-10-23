@@ -93,6 +93,7 @@ router.get('/user/:username', (req, res) => sendSpa(res));
 
 // User collections listing page
 router.get('/user/:username/collections', (req, res) => sendSpa(res));
+router.get('/user/:username/collections/:collectionName', (req, res) => sendSpa(res));
 
 // User collection base path (redirect in SPA)
 router.get('/user/:username/collection', (req, res) => sendSpa(res));

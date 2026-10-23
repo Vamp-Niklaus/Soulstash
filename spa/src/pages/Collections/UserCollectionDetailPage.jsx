@@ -22,7 +22,7 @@ export function UserCollectionDetailPage() {
   const decodedCollectionName = decodeURIComponent(collectionName);
   const { collections, loading } = useLiveCollections();
   
-  const isOwner = auth.isLoggedIn && auth.username === username;
+  const isOwner = Boolean(auth.isLoggedIn && auth.username && username && auth.username.toLowerCase() === username.toLowerCase());
   
   const queryClient = useQueryClient();
 

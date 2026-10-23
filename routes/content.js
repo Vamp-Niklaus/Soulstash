@@ -1843,8 +1843,8 @@ router.get('/movies', async (req, res) => {
   }
 });
 
-// GET /api/movies/:id
-router.get('/movies/:id', async (req, res) => {
+// GET /api/movies/:id and /api/movie/:id
+router.get(['/movies/:id', '/movie/:id'], async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { type = 'movie' } = req.query;
@@ -1852,8 +1852,8 @@ router.get('/movies/:id', async (req, res) => {
     const mediaType = isSeries ? 'Series' : 'Movie';
 
     const detailUrl = isSeries
-      ? `https://api.themoviedb.org/3/tv/${id}?language=en-US`
-      : `https://api.themoviedb.org/3/movie/${id}?language=en-US`;
+      ? `https://api.themoviedb.org/3/tv/${id}?append_to_response=videos,similar,images&language=en-US`
+      : `https://api.themoviedb.org/3/movie/${id}?append_to_response=videos,similar,images&language=en-US`;
     const certificationUrl = isSeries
       ? `https://api.themoviedb.org/3/tv/${id}/content_ratings`
       : `https://api.themoviedb.org/3/movie/${id}/release_dates`;
@@ -1874,6 +1874,30 @@ router.get('/movies/:id', async (req, res) => {
     if (!canAccess) {
       return res.status(404).json({ error: 'Content not found' });
     }
+
+    // Automatically embed TMDB collection parts for franchises (e.g. Spider-Man Collection)
+    if (content?.belongs_to_collection?.id) {
+      try {
+        const colResp = await tmdbFetch(
+          `https://api.themoviedb.org/3/collection/${content.belongs_to_collection.id}?language=en-US`,
+          { method: 'GET', headers: tmdbHeaders() },
+          `Collection ${content.belongs_to_collection.id}`
+        );
+        if (colResp.ok) {
+          const colData = await colResp.json();
+          if (colData && Array.isArray(colData.parts)) {
+            content.belongs_to_collection = {
+              ...content.belongs_to_collection,
+              ...colData,
+              parts: colData.parts
+            };
+          }
+        }
+      } catch (colErr) {
+        console.warn(`[Content] Failed to enrich belongs_to_collection ${content.belongs_to_collection.id}: ${colErr.message}`);
+      }
+    }
+
     const imdbResult = await resolveImdbRating(id, mediaType, content).catch((error) => {
       console.warn('[IMDB Ratings] Failed to resolve detail rating', {
         id,
@@ -1943,7 +1967,7 @@ router.get('/series/:id', async (req, res) => {
     const id = parseInt(req.params.id);
     const [resp, ratingsResp] = await Promise.all([
       tmdbFetch(
-        `https://api.themoviedb.org/3/tv/${id}?language=en-US`,
+        `https://api.themoviedb.org/3/tv/${id}?append_to_response=videos,similar,images&language=en-US`,
         { method: 'GET', headers: tmdbHeaders() },
         `TV Series ${id}`
       ),
@@ -1971,6 +1995,7 @@ router.get('/series/:id', async (req, res) => {
       certification = pickSeriesCertification(await ratingsResp.json());
     }
     res.json({
+      ...s,
       id: s.id,
       title: s.name || s.original_name || 'Unknown Series',
       name: s.name || s.original_name || 'Unknown Series',
@@ -1981,7 +2006,7 @@ router.get('/series/:id', async (req, res) => {
       first_air_date: s.first_air_date,
       last_air_date: s.last_air_date,
       release_date: s.first_air_date,
-      genres: s.genres ? s.genres.map(g => g.name) : ['Drama'],
+      genres: s.genres ? s.genres.map(g => (typeof g === 'object' && g.name ? g.name : g)) : ['Drama'],
       runtime: s.episode_run_time?.[0] || 60,
       episode_run_time: s.episode_run_time,
       number_of_episodes: s.number_of_episodes,
@@ -2004,7 +2029,10 @@ router.get('/series/:id', async (req, res) => {
       imdb_id: imdbResult.imdbID || '',
       imdb_rating: imdbResult.imdb_rating ?? undefined,
       age_rating: certification || 'TV-MA',
-      certification: certification || 'TV-MA'
+      certification: certification || 'TV-MA',
+      images: s.images || { backdrops: [], posters: [] },
+      similar: s.similar || { results: [] },
+      videos: s.videos || { results: [] }
     });
   } catch (err) {
     console.error('Error fetching series:', err);
@@ -2054,8 +2082,8 @@ router.get('/series/:id/season/:seasonNumber', async (req, res) => {
   }
 });
 
-// GET /api/person/:id
-router.get('/person/:id', async (req, res) => {
+// GET /api/person/:id and /api/people/:id
+router.get(['/person/:id', '/people/:id'], async (req, res) => {
   try {
     console.log(`[API] /api/person/${req.params.id} hit`);
     const resp = await tmdbFetch(

@@ -256,7 +256,7 @@ export function CollectionDetailPane({
 
           <button type="button"
             className={`absolute top-4 left-4 bg-black/70 p-2.5 rounded-full hover:bg-black/90 transition-colors z-10 focus:outline-none focus:ring-2 focus:ring-white ${!onBackToCollections && !useBannerAsBackdrop ? 'lg:hidden flex' : 'flex'}`}
-            onClick={() => { if (onBackToCollections) { onBackToCollections(); return; } navigate(`/user/${username}/collections`); }}
+            onClick={() => { if (onBackToCollections) { onBackToCollections(); return; } navigate(isOwner ? `/user/${username}/collections` : `/user/${username}`); }}
             aria-label="Back to collections">
             <i className="fas fa-arrow-left text-white"></i>
           </button>
