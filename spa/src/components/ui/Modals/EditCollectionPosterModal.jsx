@@ -16,7 +16,6 @@ import { apiFetch } from '../../../api/client.js';
 export function EditCollectionPosterModal({ open, onClose, collection, onSave }) {
   const [posters, setPosters] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [buffering, setBuffering] = useState(false);
   const fetchedIdsRef = useRef(new Set());
   const moviesRef = useRef([]);
 
@@ -70,7 +69,6 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
     const batch = unfetched.slice(0, 5);
 
     batch.forEach(item => fetchedIdsRef.current.add(item.id));
-    setBuffering(true);
 
     Promise.all(batch.map(async ({ movie, id }) => {
       try {
@@ -97,7 +95,6 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
           return combined;
         });
       }
-      setBuffering(false);
     });
 
     return () => {
@@ -193,14 +190,6 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </button>
-
-          {/* Top Indicator & Buffer status */}
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/50 text-white/90 text-sm font-medium z-20 shadow-md">
-            <span>{currentIndex + 1} / {posters.length}</span>
-            {buffering && (
-              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/60 border-t-transparent" title="Loading more images..." />
-            )}
-          </div>
         </div>
       </div>
     </div>,
