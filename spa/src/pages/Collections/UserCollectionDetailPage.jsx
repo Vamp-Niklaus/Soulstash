@@ -166,36 +166,9 @@ export function UserCollectionDetailPage() {
 
   const movies = useMemo(() => filteredCollectionMovies(collection, filters, watchedIds), [collection, filters, watchedIds]);
 
-  const addMutation = useMutation({
-    mutationFn: async (payload) => {
-      if (window.CollectionStore?.addToCollection) {
-        return await window.CollectionStore.addToCollection(collection._id, payload);
-      }
-      return await apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/add`, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-    },
-    onSuccess: (response) => {
-      if (Array.isArray(response?.collections)) {
-        broadcastCollections(response.collections, response.collectionVersion);
-      }
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-      queryClient.invalidateQueries({ queryKey: ['collection', username, decodedCollectionName] });
-      toast(response?.message || 'Added to collection');
-    },
-    onError: (error) => {
-      if (error.status === 409) {
-        toast('Already in this collection', 'info');
-      } else {
-        const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
-        toast(`Failed to add: ${msg}`, 'error');
-      }
-    }
-  });
-
   async function handleAddToCollection(item, mediaType) {
-    if (!collection?._id) return;
+    const colId = collection?._id || collection?.name || decodedCollectionName;
+    if (!colId) return;
 
     const payload =
       mediaType === 'Series'
@@ -216,56 +189,38 @@ export function UserCollectionDetailPage() {
 
     const contentId = Number(payload.movieId || payload.seriesId);
     
-    setPendingItems(prev => new Set(prev).add(contentId));
+    setPendingItems((prev) => new Set(prev).add(contentId));
     
-    await addMutation.mutateAsync(payload, {
-      onSettled: () => {
-        setPendingItems(prev => {
-          const next = new Set(prev);
-          next.delete(contentId);
-          return next;
-        });
-      }
-    });
-  }
-
-  function handleRemoveFromCollection(itemId, title) {
-    setRemoveTarget({ itemId, title });
-  }
-
-  const removeMutation = useMutation({
-    mutationFn: async ({ collectionId, itemId, target }) => {
-      const payload = {
-        id: itemId,
-        ...(target?.movieId ? { movieId: Number(target.movieId) } : {}),
-        ...(target?.seriesId ? { seriesId: Number(target.seriesId) } : {}),
-        ...(target?.media_type === 'Series' && !target?.seriesId ? { seriesId: Number(itemId) } : {}),
-        ...(target?.media_type === 'Movie' && !target?.movieId ? { movieId: Number(itemId) } : {})
-      };
-      if (window.CollectionStore?.removeFromCollection) {
-        return await window.CollectionStore.removeFromCollection(collectionId, payload.movieId, payload.seriesId);
-      }
-      return await apiFetch(
-        `/api/user/collections/${encodeURIComponent(collectionId)}/remove`,
-        {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        }
-      );
-    },
-    onSuccess: (response, variables) => {
+    try {
+      const response = await apiFetch(`/api/user/collections/${encodeURIComponent(colId)}/add`, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
       if (Array.isArray(response?.collections)) {
         broadcastCollections(response.collections, response.collectionVersion);
       }
       queryClient.invalidateQueries({ queryKey: ['collections'] });
       queryClient.invalidateQueries({ queryKey: ['collection', username, decodedCollectionName] });
-      toast(`Removed ${variables.title}`);
-    },
-    onError: (error) => {
-      const msg = error.message === 'Failed to fetch' ? 'Network error' : error.message;
-      toast(`Failed to remove: ${msg}`, 'error');
+      toast(response?.message || 'Added to collection');
+    } catch (error) {
+      if (error?.status === 409) {
+        toast('Already in this collection', 'info');
+      } else {
+        const msg = error?.message === 'Failed to fetch' ? 'Network error' : (error?.message || 'Failed to add');
+        toast(`Failed to add: ${msg}`, 'error');
+      }
+    } finally {
+      setPendingItems((prev) => {
+        const next = new Set(prev);
+        next.delete(contentId);
+        return next;
+      });
     }
-  });
+  }
+
+  function handleRemoveFromCollection(itemId, title) {
+    setRemoveTarget({ itemId, title });
+  }
 
   async function confirmRemoveFromCollection() {
     if (!removeTarget) return;
@@ -284,7 +239,31 @@ export function UserCollectionDetailPage() {
       return;
     }
 
-    await removeMutation.mutateAsync({ collectionId, itemId, target, title: pendingRemoval.title });
+    try {
+      const payload = {
+        id: itemId,
+        ...(target?.movieId ? { movieId: Number(target.movieId) } : {}),
+        ...(target?.seriesId ? { seriesId: Number(target.seriesId) } : {}),
+        ...(target?.media_type === 'Series' && !target?.seriesId ? { seriesId: Number(itemId) } : {}),
+        ...(target?.media_type === 'Movie' && !target?.movieId ? { movieId: Number(itemId) } : {})
+      };
+      const response = await apiFetch(
+        `/api/user/collections/${encodeURIComponent(collectionId)}/remove`,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        }
+      );
+      if (Array.isArray(response?.collections)) {
+        broadcastCollections(response.collections, response.collectionVersion);
+      }
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['collection', username, decodedCollectionName] });
+      toast(`Removed ${pendingRemoval.title}`);
+    } catch (error) {
+      const msg = error?.message === 'Failed to fetch' ? 'Network error' : (error?.message || 'Failed to remove');
+      toast(`Failed to remove: ${msg}`, 'error');
+    }
   }
 
   // Show spinner while either the owner's live-cache or the public fetch is still in flight.

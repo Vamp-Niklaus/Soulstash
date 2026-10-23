@@ -550,15 +550,16 @@ router.post('/user/collections/:id/add', authenticateToken, async (req, res) => 
       ? { seriesId: contentId, movieId: null, id: contentId, title: resolvedTitle, poster_path: resolvedPosterPath, backdrop_path: resolvedBackdropPath, release_date: resolvedReleaseDate, first_air_date: resolvedReleaseDate, media_type: 'Series', isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() }
       : { movieId: contentId, seriesId: null, id: contentId, title: resolvedTitle, poster_path: resolvedPosterPath, backdrop_path: resolvedBackdropPath, release_date: resolvedReleaseDate, first_air_date: '', media_type: 'Movie', id: contentId, isAnime, vote_average, imdb_id, imdb_rating, addedAt: new Date() };
 
-    const existingMovies = Array.isArray(col.movies) ? col.movies : [];
-    col.movies = [contentData, ...existingMovies];
-    col.movieCount = col.movies.length;
-    col.updatedAt = new Date();
+    // Atomic match: update single collection element within the user's collections array
+    const matchQuery = col._id
+      ? { ...getUserIdentifier(req), 'collections._id': col._id }
+      : { ...getUserIdentifier(req), 'collections.name': col.name };
 
     const latest = await getDb().collection('users').findOneAndUpdate(
-      getUserIdentifier(req),
+      matchQuery,
       {
-        $set: { collections, updatedAt: new Date() },
+        $push: { 'collections.$.movies': { $each: [contentData], $position: 0 } },
+        $set: { updatedAt: new Date(), 'collections.$.updatedAt': new Date() },
         $inc: { collectionVersion: 1 }
       },
       { returnDocument: 'after' }
@@ -595,24 +596,29 @@ router.post('/user/collections/:id/remove', authenticateToken, async (req, res) 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const collections = Array.isArray(user.collections) ? user.collections : [];
-    const colIdx = collections.findIndex(
+    const col = collections.find(
       (c) => String(c._id) === String(collectionId) || String(c.name || '').toLowerCase() === String(collectionId).toLowerCase()
     );
-    if (colIdx === -1) return res.status(404).json({ error: 'Collection not found' });
+    if (!col) return res.status(404).json({ error: 'Collection not found' });
 
-    const col = collections[colIdx];
-    const filteredMovies = (col.movies || []).filter(
-      (m) => Number(m.id || m.movieId || m.seriesId || 0) !== contentId
-    );
-
-    col.movies = filteredMovies;
-    col.movieCount = filteredMovies.length;
-    col.updatedAt = new Date();
+    // Atomic match: pull content item atomically from the matching collection
+    const matchQuery = col._id
+      ? { ...getUserIdentifier(req), 'collections._id': col._id }
+      : { ...getUserIdentifier(req), 'collections.name': col.name };
 
     const latest = await getDb().collection('users').findOneAndUpdate(
-      getUserIdentifier(req),
+      matchQuery,
       {
-        $set: { collections, updatedAt: new Date() },
+        $pull: {
+          'collections.$.movies': {
+            $or: [
+              { id: contentId },
+              { movieId: contentId },
+              { seriesId: contentId }
+            ]
+          }
+        },
+        $set: { updatedAt: new Date(), 'collections.$.updatedAt': new Date() },
         $inc: { collectionVersion: 1 }
       },
       { returnDocument: 'after' }
