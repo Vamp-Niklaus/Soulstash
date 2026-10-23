@@ -164,7 +164,7 @@ router.post('/multimovies', authenticateToken, ensureAdmin, async (req, res) => 
 });
 
 
-const TRAFFIC_COLLECTION_NAME = process.env.TRAFFIC_COLLECTION_NAME || 'SoulstashTrafficLogs';
+const TRAFFIC_COLLECTION_NAME = 'TrafficLogsMonolith';
 
 // POST /api/admin/trafficLogs
 router.post('/trafficLogs', async (req, res) => {
@@ -204,17 +204,7 @@ router.post('/trafficLogs', async (req, res) => {
 // GET /api/admin/trafficLogs/stats
 router.get('/trafficLogs/stats', authenticateToken, ensureAdmin, async (req, res) => {
   try {
-    let trafficColl = getDb().collection(TRAFFIC_COLLECTION_NAME);
-    let count = await trafficColl.countDocuments({}).catch(() => 0);
-    // If new monolith collection is brand new and empty, fall back to legacy collection for historical view
-    if (count === 0) {
-      const legacyColl = getDb().collection('TrafficLogs');
-      const legacyCount = await legacyColl.countDocuments({}).catch(() => 0);
-      if (legacyCount > 0) {
-        trafficColl = legacyColl;
-      }
-    }
-
+    const trafficColl = getDb().collection(TRAFFIC_COLLECTION_NAME);
     const ipFilter = req.query.ip ? String(req.query.ip) : null;
     const matchStage = ipFilter ? { $match: { ip: { $regex: ipFilter, $options: 'i' } } } : { $match: {} };
 

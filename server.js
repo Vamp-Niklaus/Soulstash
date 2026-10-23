@@ -81,7 +81,7 @@ app.use('/assets',     require('express').static(path.join(__dirname, 'spa', 'di
 app.use(express.static(path.join(__dirname, 'spa', 'dist')));
 
 // ── In-Memory Traffic Logging Middleware ───────────────────────────────────────
-const TRAFFIC_COLLECTION_NAME = process.env.TRAFFIC_COLLECTION_NAME || 'SoulstashTrafficLogs';
+const TRAFFIC_COLLECTION_NAME = 'TrafficLogsMonolith';
 let trafficLogBuffer = [];
 app.use((req, res, next) => {
   if (req.path.startsWith('/images') || req.path.startsWith('/assets') || req.path.startsWith('/js') || req.path.startsWith('/favicon')) {
