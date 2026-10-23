@@ -305,6 +305,7 @@ export function UserCollectionDetailPage() {
             onRemoveFromCollection={handleRemoveFromCollection}
             isOwner={isOwner}
             useBannerAsBackdrop={!inLayout}
+            showPublishControls={isOwner}
           />
         </div>
       ) : (

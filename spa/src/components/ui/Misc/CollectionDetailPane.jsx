@@ -13,7 +13,6 @@ import { CollectionFilterControls } from './CollectionFilterControls.jsx';
 import { ContentCard } from '../Cards/ContentCard.jsx';
 import { ConfirmModal } from '../Modals/ConfirmModal.jsx';
 import { EditCollectionPosterModal } from '../Modals/EditCollectionPosterModal.jsx';
-import { useArtworkAtmosphere } from '../../../hooks/useArtworkAtmosphere.js';
 
 export function CollectionDetailPane({
   username,
@@ -27,7 +26,7 @@ export function CollectionDetailPane({
   onPublishChange,
   isOwner = true,
   useBannerAsBackdrop = false,
-  showPublishControls = false
+  showPublishControls = true
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -42,11 +41,11 @@ export function CollectionDetailPane({
   const isDefaultCollection = ['Watched', 'Watchlist'].includes(collection?.name);
   const canPublish = isOwner && !isDefaultCollection && (collectionItemCount(collection) >= PUBLISH_MIN_COLLECTION_TITLES);
   const isPublished = collection?.isPublished === true;
-  const canShowPublishControls = showPublishControls && !isDefaultCollection && canPublish;
+  const itemCount = collectionItemCount(collection);
+  const canShowPublishControls = isOwner && !isDefaultCollection && (showPublishControls !== false);
   const isLongCollectionName = (collection?.name || '').length > 20;
   const [posterEditOpen, setPosterEditOpen] = useState(false);
   const hasMovies = (collection?.movies || []).length > 0;
-  useArtworkAtmosphere(collection?.name ? collection.banner || FALLBACK_AVATAR : '');
 
   const detailGridRef = useRef(null);
   function buildMobileFilterMenuPosition(trigger) {
@@ -82,7 +81,7 @@ export function CollectionDetailPane({
   }, [mobileFiltersOpen]);
 
   const publishMutation = useMutation({
-    mutationFn: (nextPublished) => apiFetch(`/api/user/collections/${encodeURIComponent(collection._id)}/publish`, {
+    mutationFn: (nextPublished) => apiFetch(`/api/user/collections/${encodeURIComponent(collection._id || collection.name)}/publish`, {
       method: 'POST',
       body: JSON.stringify({ publish: nextPublished })
     }),
@@ -124,9 +123,10 @@ export function CollectionDetailPane({
   });
 
   async function togglePublish() {
-    if (!isOwner || publishMutation.isPending || !collection?._id || isDefaultCollection) return;
-    if (!canPublish) {
-      toast(`Add at least ${PUBLISH_MIN_COLLECTION_TITLES} titles to publish this collection`, 'info');
+    const targetId = collection?._id || collection?.name;
+    if (!isOwner || publishMutation.isPending || !targetId || isDefaultCollection) return;
+    if (!isPublished && !canPublish) {
+      toast(`Add at least ${PUBLISH_MIN_COLLECTION_TITLES} titles to publish this collection (currently ${itemCount})`, 'info');
       return;
     }
     const nextPublished = !isPublished;
@@ -175,11 +175,21 @@ export function CollectionDetailPane({
                   ) : null}
                   <CollectionFilterControls filters={filters} setFilters={setFilters} noWrap size="desktop" />
                   {isOwner ? (
-                    <button type="button"
-                      className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] bg-[#2a2a2a] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#343434] focus:outline-none focus:ring-2 focus:ring-white"
-                      onClick={onOpenDrawer} aria-label="Add content to collection">
-                      <i className="fas fa-plus"></i><span>Add Content</span>
-                    </button>
+                    <>
+                      {canShowPublishControls ? (
+                        <button type="button"
+                          className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] px-4 text-[13px] font-medium transition-colors bg-[#2a2a2a] text-white hover:bg-[#343434] focus:outline-none focus:ring-2 focus:ring-white"
+                          onClick={togglePublish}>
+                          <i className={`fas ${isPublished ? 'fa-star text-[#e6c56a]' : 'fa-bullhorn'}`}></i>
+                          <span>{isPublished ? 'Unpublish' : 'Publish'}</span>
+                        </button>
+                      ) : null}
+                      <button type="button"
+                        className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] bg-[#2a2a2a] px-4 text-[13px] font-medium text-white transition-colors hover:bg-[#343434] focus:outline-none focus:ring-2 focus:ring-white"
+                        onClick={onOpenDrawer} aria-label="Add content to collection">
+                        <i className="fas fa-plus"></i><span>Add Content</span>
+                      </button>
+                    </>
                   ) : (
                     <button type="button"
                       className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] bg-white/[0.1] px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/[0.16] focus:outline-none focus:ring-2 focus:ring-white"
