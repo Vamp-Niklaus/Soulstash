@@ -198,34 +198,24 @@ export function EditProfilePage() {
           onKeyDown={handleFormKeyDown}
         >
           <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setAvatarSearchOpen(true)}
-                className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 hover:ring-white/30 focus:outline-none focus:ring-2 focus:ring-[#64FFDA] transition-all"
-                title="Change profile photo"
-              >
-                <img
-                  src={avatarPreview}
-                  alt="Profile avatar"
-                  className="h-full w-full object-cover object-top"
-                  onError={(event) => {
-                    event.currentTarget.src = FALLBACK_AVATAR;
-                  }}
-                />
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <i className="fas fa-pencil-alt text-white text-lg"></i>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAvatarSearchOpen(true)}
-                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#1F1F1F] border border-white/20 text-white/90 shadow-md hover:bg-white/20 transition-colors cursor-pointer"
-                title="Change profile photo"
-              >
-                <i className="fas fa-pencil-alt text-xs"></i>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setAvatarSearchOpen(true)}
+              className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 hover:ring-white/30 focus:outline-none focus:ring-2 focus:ring-[#64FFDA] transition-all"
+              title="Change profile photo"
+            >
+              <img
+                src={avatarPreview}
+                alt="Profile avatar"
+                className="h-full w-full object-cover object-top"
+                onError={(event) => {
+                  event.currentTarget.src = FALLBACK_AVATAR;
+                }}
+              />
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <i className="fas fa-pencil-alt text-white text-lg"></i>
+              </div>
+            </button>
             <div>
               <h3 className="text-white font-medium">Profile photo</h3>
               <p className="mt-1 text-sm text-[#8f8f8f]">Search for a character to set as your avatar.</p>

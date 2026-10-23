@@ -426,15 +426,15 @@ export function CollectionDetailPane({
         open={posterEditOpen}
         onClose={() => setPosterEditOpen(false)}
         collection={collection}
-        onSave={async (url, updatedMovies) => {
+        onSave={async (url) => {
           setPosterEditOpen(false);
 
           // Optimistic UI for useLiveCollections (which powers UserCollectionDetailPage)
           const currentCollections = getCachedUserCollections();
           if (currentCollections) {
             const updatedCollections = currentCollections.map(c => 
-              (c.name === collection.name || c._id === collection._id)
-                ? { ...c, banner: url, movies: updatedMovies || c.movies }
+              (c.name === collection.name || (collection._id && c._id === collection._id))
+                ? { ...c, banner: url }
                 : c
             );
             broadcastCollections(updatedCollections);
@@ -446,19 +446,16 @@ export function CollectionDetailPane({
             queryClient.setQueryData(['collections'], old => {
               if (!old) return old;
               return old.map(c => 
-                (c.name === collection.name || c._id === collection._id)
-                  ? { ...c, banner: url, movies: updatedMovies || c.movies }
+                (c.name === collection.name || (collection._id && c._id === collection._id))
+                  ? { ...c, banner: url }
                   : c
               );
             });
           }
 
           try {
-            const collectionId = collection._id || collection.name;
-            const payload = { name: collection.name, banner: url };
-            if (updatedMovies) {
-              payload.movies = updatedMovies;
-            }
+            const collectionId = collection.name || collection._id;
+            const payload = { banner: url, name: collection.name };
             const response = await apiFetch(`/api/user/collections/${encodeURIComponent(collectionId)}`, {
               method: 'PUT',
               body: JSON.stringify(payload)
@@ -469,13 +466,14 @@ export function CollectionDetailPane({
             queryClient.invalidateQueries({ queryKey: ['collections'] });
             toast('Banner updated!');
           } catch (err) {
+            console.error('[Banner Update Error]', err);
             if (currentCollections) {
               broadcastCollections(currentCollections);
             }
             if (previousCollections) {
               queryClient.setQueryData(['collections'], previousCollections);
             }
-            toast('Failed to update banner', 'error');
+            toast(err?.message || 'Failed to update banner', 'error');
           }
         }}
       />

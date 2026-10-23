@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { FALLBACK_AVATAR } from '../../../utils/constants.js';
 import { imageUrl } from '../../../utils/formatters.js';
@@ -10,75 +10,100 @@ import { apiFetch } from '../../../api/client.js';
  * Fullscreen overlay that lets the user pick a landscape backdrop image
  * from the movies/series in their collection as the collection banner.
  *
- * Index 0 = FALLBACK_AVATAR (the default).
- * Index 1+ = validated backdrop_path images from collection movies.
+ * Opens instantly with the current banner, buffering next/prev movie backdrops
+ * in the background (+/- 5 images) as the user navigates.
  */
 export function EditCollectionPosterModal({ open, onClose, collection, onSave }) {
   const [posters, setPosters] = useState([]);
-  const [updatedMovies, setUpdatedMovies] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [buffering, setBuffering] = useState(false);
+  const fetchedIdsRef = useRef(new Set());
+  const moviesRef = useRef([]);
 
+  // Initialize immediately on open with current banner and any already-known backdrops
+  useEffect(() => {
+    if (!open || !collection) return;
+
+    const currentBanner = collection.banner || FALLBACK_AVATAR;
+    const movies = Array.isArray(collection.movies) ? collection.movies : [];
+    moviesRef.current = movies;
+    fetchedIdsRef.current = new Set();
+
+    const initial = [currentBanner];
+    for (const m of movies) {
+      if (m?.backdrop_path) {
+        const url = imageUrl(m.backdrop_path, 'w780');
+        if (url && !initial.includes(url)) {
+          initial.push(url);
+          const id = m.id || m.movieId || m.seriesId;
+          if (id) fetchedIdsRef.current.add(id);
+        }
+      }
+    }
+
+    setPosters(initial);
+    setCurrentIndex(0);
+  }, [open, collection]);
+
+  // Buffer loader: fetches backdrops for movies near currentIndex (buffer of 5)
   useEffect(() => {
     if (!open || !collection) return;
 
     let isMounted = true;
-    setLoading(true);
+    const movies = moviesRef.current;
+    if (!movies || !movies.length) return;
 
-    const loadPosters = async () => {
-      if (!collection.movies || collection.movies.length === 0) {
-        if (isMounted) {
-          setPosters([FALLBACK_AVATAR]);
-          setLoading(false);
-        }
-        return;
+    // Find unfetched movies prioritized by distance from currentIndex
+    const unfetched = [];
+    for (let i = 0; i < movies.length; i++) {
+      const m = movies[i];
+      const id = m?.id || m?.movieId || m?.seriesId;
+      if (id && !fetchedIdsRef.current.has(id) && !m.backdrop_path) {
+        unfetched.push({ movie: m, id, dist: Math.abs(i - currentIndex) });
       }
+    }
 
-      // Fetch missing backdrops
-      const moviePromises = collection.movies.map(async (m) => {
-        if (m.backdrop_path) return m;
+    if (unfetched.length === 0) return;
 
-        try {
-          const typeStr = m.media_type === 'Series' || m.seriesId ? 'series' : 'movies';
-          const id = m.id || m.movieId || m.seriesId;
-          const detail = await apiFetch(`/api/${typeStr}/${id}`);
-          return { ...m, backdrop_path: detail.backdrop_path || null };
-        } catch (e) {
-          return m;
+    // Sort by proximity and take up to 5 movies to buffer
+    unfetched.sort((a, b) => a.dist - b.dist);
+    const batch = unfetched.slice(0, 5);
+
+    batch.forEach(item => fetchedIdsRef.current.add(item.id));
+    setBuffering(true);
+
+    Promise.all(batch.map(async ({ movie, id }) => {
+      try {
+        const typeStr = movie.media_type === 'Series' || movie.seriesId ? 'series' : 'movies';
+        const detail = await apiFetch(`/api/${typeStr}/${id}`);
+        if (detail?.backdrop_path) {
+          return imageUrl(detail.backdrop_path, 'w780');
         }
-      });
-
-      const moviesWithBackdrops = await Promise.all(moviePromises);
-      
-      const rawUrls = moviesWithBackdrops
-        .map(m => m.backdrop_path ? imageUrl(m.backdrop_path, 'w780') : null)
-        .filter(Boolean);
-      
-      const uniqueUrls = [...new Set(rawUrls)];
-
-      const validUrls = uniqueUrls;
-
-      if (isMounted) {
-        setUpdatedMovies(moviesWithBackdrops);
-        const finalArray = validUrls.length > 0 ? validUrls : [FALLBACK_AVATAR];
-        setPosters(finalArray);
-
-        // Find current banner index
-        const currentBanner = collection.banner;
-        let index = finalArray.indexOf(currentBanner);
-        if (index < 0) index = 0;
-        setCurrentIndex(index);
-
-        setLoading(false);
+      } catch {
+        // Ignore single movie fetch errors
       }
-    };
-
-    loadPosters();
+      return null;
+    })).then(results => {
+      if (!isMounted) return;
+      const newUrls = results.filter(Boolean);
+      if (newUrls.length > 0) {
+        setPosters(prev => {
+          const combined = [...prev];
+          for (const u of newUrls) {
+            if (!combined.includes(u)) {
+              combined.push(u);
+            }
+          }
+          return combined;
+        });
+      }
+      setBuffering(false);
+    });
 
     return () => {
       isMounted = false;
     };
-  }, [open, collection]);
+  }, [open, collection, currentIndex]);
 
   if (!open) return null;
 
@@ -91,8 +116,11 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
   };
 
   const handleSave = () => {
-    onSave(posters[currentIndex], updatedMovies);
+    const selectedUrl = posters[currentIndex] || collection?.banner || FALLBACK_AVATAR;
+    onSave(selectedUrl);
   };
+
+  const currentPoster = posters[currentIndex] || collection?.banner || FALLBACK_AVATAR;
 
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4">
@@ -102,87 +130,78 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
         onClick={onClose}
       />
 
-      {/* Modal Content - Constrained exactly to 16:9 to fit screen */}
+      {/* Modal Content - Constrained to 16:9 */}
       <div 
         className="relative z-10 w-full flex items-center justify-center" 
         style={{ maxWidth: 'min(96vw, 170vh)' }}
       >
-        
         {/* Landscape Image Viewer */}
         <div className="relative w-full aspect-video rounded-[20px] overflow-hidden flex items-center justify-center bg-black/40 shadow-2xl">
           
-          {/* Bottom Controls (Inside Image) */}
-          {!loading && (
-            <>
-              {/* Close Button */}
-              <button
-                onClick={onClose}
-                className="absolute left-4 bottom-4 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20 flex items-center justify-center"
-                title="Close"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+          {/* Main Image (shows current banner immediately, updates on click) */}
+          <img
+            src={currentPoster}
+            alt="Selected Banner"
+            className="w-full h-full object-cover transition-opacity duration-200"
+            onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
+          />
 
-              {/* Save Button */}
-              <button
-                onClick={handleSave}
-                disabled={loading}
-                className="absolute right-4 bottom-4 p-3 text-[#64FFDA] hover:text-[#52e0c0] drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20 flex items-center justify-center disabled:opacity-50"
-                title="Save Banner"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
-            </>
+          {/* Left Arrow */}
+          {posters.length > 1 && (
+            <button
+              onClick={handlePrev}
+              className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20 cursor-pointer"
+              title="Previous banner"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
           )}
 
-          {loading ? (
-            <div className="w-8 h-8 border-2 border-white/50 border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <>
-              <img
-                src={posters[currentIndex]}
-                alt="Selected Banner"
-                className="w-full h-full object-cover transition-opacity duration-300"
-                onError={(e) => { e.target.src = FALLBACK_AVATAR; }}
-              />
-
-              {posters.length > 1 && (
-                <>
-                  {/* Left arrow */}
-                  <button
-                    onClick={handlePrev}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-
-                  {/* Right arrow */}
-                  <button
-                    onClick={handleNext}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </>
-              )}
-            </>
+          {/* Right Arrow */}
+          {posters.length > 1 && (
+            <button
+              onClick={handleNext}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20 cursor-pointer"
+              title="Next banner"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           )}
-        </div>
 
-        {/* Indicator */}
-        {!loading && posters.length > 1 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-black/40 text-white/80 text-sm font-medium z-20">
-            {currentIndex + 1} / {posters.length}
+          {/* Bottom Left: Close Button */}
+          <button
+            onClick={onClose}
+            className="absolute left-4 bottom-4 p-3 text-white/80 hover:text-white drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20 flex items-center justify-center cursor-pointer"
+            title="Cancel"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          {/* Bottom Right: Save Button */}
+          <button
+            onClick={handleSave}
+            className="absolute right-4 bottom-4 p-3 text-[#64FFDA] hover:text-[#52e0c0] drop-shadow-lg hover:scale-110 transition-all bg-black/40 hover:bg-black/60 rounded-full focus:outline-none z-20 flex items-center justify-center cursor-pointer"
+            title="Save Banner"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+
+          {/* Top Indicator & Buffer status */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/50 text-white/90 text-sm font-medium z-20 shadow-md">
+            <span>{currentIndex + 1} / {posters.length}</span>
+            {buffering && (
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/60 border-t-transparent" title="Loading more images..." />
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>,
     document.body

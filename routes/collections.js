@@ -184,12 +184,15 @@ router.put('/user/collections/:id', authenticateToken, async (req, res) => {
     const collectionId = req.params.id;
     const { name, isPublic, description, banner, movies } = req.body;
 
-    const user = await loadUserWithCollections(req.user.userId);
+    const user = await loadUserWithCollections(req);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const colIdx = user.collections.findIndex(c => (c._id || c.name) === collectionId);
+    const collections = Array.isArray(user.collections) ? user.collections : [];
+    const colIdx = collections.findIndex(
+      c => String(c._id) === String(collectionId) || String(c.name || '').toLowerCase() === String(collectionId).toLowerCase()
+    );
     if (colIdx === -1) return res.status(404).json({ error: 'Collection not found' });
-    const col = user.collections[colIdx];
+    const col = collections[colIdx];
     const isDefaultCollection = DEFAULT_COLLECTION_NAMES.includes(col.name);
 
     const targetName = name || col.name;
@@ -221,19 +224,33 @@ router.put('/user/collections/:id', authenticateToken, async (req, res) => {
       setData['collections.$.movieCount'] = movies.length;
     }
 
-    // Try by _id first, then by name
-    let result = await getDb().collection('users').updateOne(
-      { _id: new ObjectId(req.user.userId), 'collections._id': collectionId },
+    const userQuery = getUserIdentifier(req);
+    let updated = false;
+
+    // 1. Match by collection name (unique per user)
+    const resName = await getDb().collection('users').updateOne(
+      { ...userQuery, 'collections.name': col.name },
       { $set: setData, $inc: { collectionVersion: 1 } }
     );
-    if (result.modifiedCount === 0) {
-      result = await getDb().collection('users').updateOne(
-        { _id: new ObjectId(req.user.userId), 'collections.name': col.name },
+    if (resName.matchedCount > 0) {
+      updated = true;
+    }
+
+    // 2. Fallback: match by collection _id if present
+    if (!updated && col._id) {
+      const idVal = ObjectId.isValid(String(col._id)) ? new ObjectId(String(col._id)) : col._id;
+      const resId = await getDb().collection('users').updateOne(
+        { ...userQuery, 'collections._id': idVal },
         { $set: setData, $inc: { collectionVersion: 1 } }
       );
+      if (resId.matchedCount > 0) {
+        updated = true;
+      }
     }
-    if (result.matchedCount === 0)
+
+    if (!updated) {
       return res.status(500).json({ error: 'Failed to update collection in database' });
+    }
 
     const snapshot = await snapshotCollections(req.user.userId);
     const stale = clientVersion !== null && clientVersion !== normalizeUserCollectionVersion(user);
