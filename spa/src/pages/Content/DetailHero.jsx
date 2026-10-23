@@ -23,7 +23,7 @@
  *   seasonDetails      — season detail object with episodes[] (series only)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { FALLBACK_AVATAR, FALLBACK_POSTER } from '../../utils/constants.js';
 import { imageUrl } from '../../utils/formatters.js';
 import { ActionButton } from '../../components/ui/ActionButton.jsx';
@@ -54,40 +54,61 @@ export function DetailHero({
   const hasPosters = posters.length > 0;
   const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
 
-  // Backdrops logic
-  // Limit to max 5 backdrops to prevent massive network payload and memory usage
-  const backdrops = (content?.images?.backdrops || []).slice(0, 5);
+    // Backdrops logic
+  // Limit to max 5 backdrops with stable memoization
+  const backdrops = useMemo(() => {
+    const list = content?.images?.backdrops;
+    if (Array.isArray(list) && list.length > 0) {
+      return list.slice(0, 5);
+    }
+    return [];
+  }, [content?.images?.backdrops]);
+
   const hasBackdrops = backdrops.length > 0;
   const [currentBackdropIndex, setCurrentBackdropIndex] = useState(0);
-  const [failedBackdrops, setFailedBackdrops] = useState(new Set());
+  const loadedSetRef = useRef(new Set([0]));
 
+  // Preload backdrops so they never appear half-loaded
   useEffect(() => {
-    if (!hasBackdrops || backdrops.length <= 1 || isPlayerOpen) return;
+    loadedSetRef.current = new Set([0]);
+    setCurrentBackdropIndex(0);
+    if (backdrops.length <= 1) return;
+
+    backdrops.forEach((backdrop, idx) => {
+      const url = imageUrl(backdrop.file_path, 'w1280');
+      const img = new Image();
+      img.src = url;
+      img.onload = () => {
+        loadedSetRef.current.add(idx);
+      };
+    });
+  }, [backdrops]);
+
+  // Smooth rotation every 5s, transitioning only to loaded images
+  useEffect(() => {
+    if (backdrops.length <= 1 || isPlayerOpen) return;
+
     const interval = setInterval(() => {
       setCurrentBackdropIndex((prev) => {
-        let nextIndex = (prev + 1) % backdrops.length;
-        // Skip failed backdrops
-        let attempts = 0;
-        while (failedBackdrops.has(nextIndex) && attempts < backdrops.length) {
-          nextIndex = (nextIndex + 1) % backdrops.length;
-          attempts++;
+        for (let step = 1; step <= backdrops.length; step++) {
+          const nextIdx = (prev + step) % backdrops.length;
+          if (loadedSetRef.current.has(nextIdx) || step === backdrops.length) {
+            return nextIdx;
+          }
         }
-        return nextIndex;
+        return (prev + 1) % backdrops.length;
       });
-    }, 3500);
-    return () => clearInterval(interval);
-  }, [backdrops.length, failedBackdrops, hasBackdrops, isPlayerOpen]);
+    }, 5000);
 
-  const handleBackdropError = (index) => {
-    setFailedBackdrops(prev => new Set(prev).add(index));
-  };
+    return () => clearInterval(interval);
+  }, [backdrops, isPlayerOpen]);
 
   const currentPosterPath = hasPosters
     ? posters[currentPosterIndex].file_path
     : content.poster_path;
 
   const fallbackBackdropUrl = content?.backdrop_path
-    ? imageUrl(content.backdrop_path, 'original')
+    ? imageUrl(content.backdrop_path, 'w1280')
     : currentPosterPath
     ? imageUrl(currentPosterPath, 'w780') || imageUrl(currentPosterPath, 'original')
     : null;
@@ -102,17 +123,21 @@ export function DetailHero({
       {/* ── Backdrop image + play button ── */}
       <div className="detail-backdrop-artwork relative aspect-[1.6/1] sm:aspect-[2.1/1] lg:aspect-[2.68/1] w-full overflow-hidden bg-black">
         {hasBackdrops ? (
-          backdrops.map((backdrop, index) => (
-            <img
-              key={backdrop.file_path}
-              src={imageUrl(backdrop.file_path, 'original')}
-              alt={`${title} backdrop ${index + 1}`}
-              className={`absolute inset-0 h-full w-full object-cover object-[center_22%] transition-opacity duration-1000 ease-in-out ${
-                index === currentBackdropIndex ? 'opacity-100' : 'opacity-0'
-              }`}
-              onError={() => handleBackdropError(index)}
-            />
-          ))
+          backdrops.map((backdrop, index) => {
+            const isCurrent = index === currentBackdropIndex;
+            return (
+              <img
+                key={backdrop.file_path || index}
+                src={imageUrl(backdrop.file_path, 'w1280')}
+                alt={`${title} backdrop ${index + 1}`}
+                decoding="async"
+                className={`absolute inset-0 h-full w-full object-cover object-[center_22%] transition-opacity duration-[1200ms] ease-in-out will-change-[opacity] ${
+                  isCurrent ? 'opacity-100 z-[2]' : 'opacity-0 z-[1] pointer-events-none'
+                }`}
+                onLoad={() => loadedSetRef.current.add(index)}
+              />
+            );
+          })
         ) : fallbackBackdropUrl ? (
           <img
             src={fallbackBackdropUrl}
@@ -142,7 +167,7 @@ export function DetailHero({
           <i className="fas fa-play translate-x-[1px] text-sm lg:text-base" />
         </button>
 
-        <div className="detail-backdrop-fade absolute inset-x-0 bottom-0 h-[65%] z-10" aria-hidden="true" />
+        <div className="detail-backdrop-fade absolute inset-x-0 bottom-0 h-[38%] sm:h-[44%] z-10" aria-hidden="true" />
       </div>
 
       {/* ── Poster + metadata (below backdrop) ── */}
@@ -262,8 +287,8 @@ function MobileLayout({
   onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick, isPlayerOpen,
 }) {
   return (
-    <div className="-mt-10 sm:-mt-14 lg:-mt-20 xl:hidden">
-      <div className="mt-4 flex items-start gap-4">
+    <div className="-mt-16 sm:-mt-20 lg:-mt-24 xl:hidden">
+      <div className="flex items-start gap-3.5 sm:gap-4">
         {/* Poster */}
         <div className="w-[110px] sm:w-[140px] flex-shrink-0 space-y-2">
           <button 
