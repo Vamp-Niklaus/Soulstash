@@ -6,7 +6,7 @@ const cors = require('cors');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 
-const { initializeDatabase, getClient } = require('./db');
+const { initializeDatabase, getDb, getClient } = require('./db');
 
 // ── Custom timestamped logger ─────────────────────────────────────────────────
 const startTime = process.hrtime.bigint();
@@ -40,45 +40,6 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use('/api', (req, res, next) => {
-  const startedAt = Date.now();
-  const authState = req.headers.authorization ? 'auth=yes' : 'auth=no';
-  console.log(`[API] ${req.method} ${req.originalUrl} ${authState}`);
-
-  res.on('finish', () => {
-    console.log(`[API] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - startedAt}ms)`);
-  });
-
-  next();
-});
-
-// ── Static asset caching headers ─────────────────────────────────────────────
-app.use((req, res, next) => {
-  if (/\/(images|assets)\//.test(req.url)) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  } else if (req.url.includes('/api/content')) {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.setHeader('X-SPA-Content', 'true');
-  }
-  next();
-});
-
-// ── Rate limiting ─────────────────────────────────────────────────────────────
-app.use('/api/', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { error: 'Too many requests, please try again later.' },
-  standardHeaders: true,
-  legacyHeaders: false
-}));
-
-// ── Static files ──────────────────────────────────────────────────────────────
-app.use('/images',     require('express').static(path.join(__dirname, 'assets', 'images')));
-app.use('/js',         require('express').static(path.join(__dirname, 'spa', 'public', 'js')));
-app.use('/assets',     require('express').static(path.join(__dirname, 'spa', 'dist', 'assets'), { setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') }));
-app.use(express.static(path.join(__dirname, 'spa', 'dist')));
 
 // ── In-Memory Traffic Logging Middleware ───────────────────────────────────────
 const TRAFFIC_COLLECTION_NAME = 'TrafficLogsMonolith';
@@ -141,34 +102,93 @@ app.use((req, res, next) => {
 
 setInterval(async () => {
   if (trafficLogBuffer.length > 0) {
+    let db;
+    try {
+      db = getDb();
+    } catch {
+      // DB not ready yet, keep in buffer
+      return;
+    }
     const batch = [...trafficLogBuffer];
     trafficLogBuffer = [];
     try {
-      const db = getDb();
-      if (!db) {
-        trafficLogBuffer.unshift(...batch);
-        return;
-      }
       const trafficColl = db.collection(TRAFFIC_COLLECTION_NAME);
       await trafficColl.createIndex({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }).catch(() => {});
       let geoip = null;
       try { geoip = require('geoip-lite'); } catch {}
       const docs = batch.map((log) => {
-        const geo = geoip && log.ip ? geoip.lookup(log.ip) : null;
+        let country = 'Unknown';
+        let city = 'Unknown';
+        let ll = null;
+        if (log.ip) {
+          const isLocal = log.ip === '127.0.0.1' || log.ip === '::1' || log.ip.startsWith('192.168.') || log.ip.startsWith('10.');
+          if (isLocal) {
+            country = 'Local';
+            city = 'Localhost';
+          } else if (geoip) {
+            const geo = geoip.lookup(log.ip);
+            if (geo) {
+              country = geo.country || 'Unknown';
+              city = geo.city || geo.region || 'Unknown';
+              ll = geo.ll || null;
+            }
+          }
+        }
         return {
           ...log,
-          country: geo?.country || 'Unknown',
-          city: geo?.city || 'Unknown',
-          ll: geo?.ll || null,
+          country,
+          city,
+          ll,
           createdAt: log.createdAt || new Date()
         };
       });
       await trafficColl.insertMany(docs);
+      console.log(`[Traffic] Inserted ${docs.length} records into ${TRAFFIC_COLLECTION_NAME}`);
     } catch (err) {
       console.error('Failed to flush traffic logs:', err.message);
+      trafficLogBuffer.unshift(...batch);
     }
   }
 }, 5000);
+app.use('/api', (req, res, next) => {
+  const startedAt = Date.now();
+  const authState = req.headers.authorization ? 'auth=yes' : 'auth=no';
+  console.log(`[API] ${req.method} ${req.originalUrl} ${authState}`);
+
+  res.on('finish', () => {
+    console.log(`[API] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - startedAt}ms)`);
+  });
+
+  next();
+});
+
+// ── Static asset caching headers ─────────────────────────────────────────────
+app.use((req, res, next) => {
+  if (/\/(images|assets)\//.test(req.url)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else if (req.url.includes('/api/content')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('X-SPA-Content', 'true');
+  }
+  next();
+});
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+app.use('/api/', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { error: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+}));
+
+// ── Static files ──────────────────────────────────────────────────────────────
+app.use('/images',     require('express').static(path.join(__dirname, 'assets', 'images')));
+app.use('/js',         require('express').static(path.join(__dirname, 'spa', 'public', 'js')));
+app.use('/assets',     require('express').static(path.join(__dirname, 'spa', 'dist', 'assets'), { setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') }));
+app.use(express.static(path.join(__dirname, 'spa', 'dist')));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',   require('./routes/auth'));

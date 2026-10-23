@@ -181,13 +181,29 @@ router.post('/trafficLogs', async (req, res) => {
     try { geoip = require('geoip-lite'); } catch {}
 
     const docs = logs.map((log) => {
-      const geo = geoip ? geoip.lookup(log.ip) : null;
+      let country = 'Unknown';
+      let city = 'Unknown';
+      let ll = null;
+      if (log.ip) {
+        const isLocal = log.ip === '127.0.0.1' || log.ip === '::1' || log.ip.startsWith('192.168.') || log.ip.startsWith('10.');
+        if (isLocal) {
+          country = 'Local';
+          city = 'Localhost';
+        } else if (geoip) {
+          const geo = geoip.lookup(log.ip);
+          if (geo) {
+            country = geo.country || 'Unknown';
+            city = geo.city || geo.region || 'Unknown';
+            ll = geo.ll || null;
+          }
+        }
+      }
       return {
         ...log,
-        country: geo ? geo.country : 'Unknown',
-        city: geo ? geo.city : 'Unknown',
-        ll: geo ? geo.ll : null,
-        createdAt: new Date()
+        country,
+        city,
+        ll,
+        createdAt: log.createdAt ? new Date(log.createdAt) : new Date()
       };
     });
 
@@ -204,15 +220,7 @@ router.post('/trafficLogs', async (req, res) => {
 // GET /api/admin/trafficLogs/stats
 router.get('/trafficLogs/stats', authenticateToken, ensureAdmin, async (req, res) => {
   try {
-    let trafficColl = getDb().collection(TRAFFIC_COLLECTION_NAME);
-    const count = await trafficColl.countDocuments({}).catch(() => 0);
-    if (count === 0) {
-      const legacyColl = getDb().collection('TrafficLogs');
-      const legacyCount = await legacyColl.countDocuments({}).catch(() => 0);
-      if (legacyCount > 0) {
-        trafficColl = legacyColl;
-      }
-    }
+    const trafficColl = getDb().collection(TRAFFIC_COLLECTION_NAME);
     const ipFilter = req.query.ip ? String(req.query.ip) : null;
     const matchStage = ipFilter ? { $match: { ip: { $regex: ipFilter, $options: 'i' } } } : { $match: {} };
 
@@ -223,6 +231,9 @@ router.get('/trafficLogs/stats', authenticateToken, ensureAdmin, async (req, res
       { $group: { _id: "$method", count: { $sum: 1 } } }
     ]).toArray();
     const requestTypes = methods.map((m) => ({ type: m._id || 'UNKNOWN', count: m.count }));
+
+    let geoip = null;
+    try { geoip = require('geoip-lite'); } catch {}
 
     const locationsData = await trafficColl.aggregate([
       matchStage,
@@ -241,10 +252,25 @@ router.get('/trafficLogs/stats', authenticateToken, ensureAdmin, async (req, res
     ]).toArray();
     const locations = locationsData.map((loc) => {
       const activeUsers = (loc.usernames || []).filter((u) => u && u !== 'anonymous');
+      let city = loc.city;
+      let country = loc.country;
+      if ((!country || country === 'Unknown') && geoip && loc._id) {
+        const isLocal = loc._id === '127.0.0.1' || loc._id === '::1' || loc._id.startsWith('192.168.') || loc._id.startsWith('10.');
+        if (isLocal) {
+          country = 'Local';
+          city = 'Localhost';
+        } else {
+          const geo = geoip.lookup(loc._id);
+          if (geo) {
+            country = geo.country || 'Unknown';
+            city = geo.city || geo.region || 'Unknown';
+          }
+        }
+      }
       return {
         ip: loc._id || 'Unknown',
-        city: loc.city,
-        country: loc.country,
+        city: city || 'Unknown',
+        country: country || 'Unknown',
         count: loc.count,
         lastActive: loc.lastActive,
         users: activeUsers.length > 0 ? activeUsers : null
