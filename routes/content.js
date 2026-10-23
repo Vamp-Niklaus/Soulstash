@@ -795,10 +795,43 @@ async function attachCachedRatings(items = []) {
   });
 }
 
+const ADULT_KEYWORDS = '&with_keywords=190370|207767|256466|302868|281741|738';
+const CONTENT_CACHE_COLLECTION = 'ContentCache';
+
+async function getMongoCache(key) {
+  try {
+    const db = getDb();
+    if (!db) return null;
+    const doc = await db.collection(CONTENT_CACHE_COLLECTION).findOne({ _id: key });
+    if (!doc) return null;
+    if (Date.now() - new Date(doc.updatedAt).getTime() > (doc.ttl || 600000)) {
+      return null;
+    }
+    return doc.data;
+  } catch {
+    return null;
+  }
+}
+
+async function setMongoCache(key, data, ttlMs = 10 * 60 * 1000) {
+  try {
+    const db = getDb();
+    if (!db) return;
+    await db.collection(CONTENT_CACHE_COLLECTION).updateOne(
+      { _id: key },
+      { $set: { data, ttl: ttlMs, updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch {
+    // Non-critical
+  }
+}
+
 function isAdult(item) {
+  if (item?._isAdultDiscover) return true;
   if (item?.adult === true) return true;
 
-  const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore)\b/i;
+  const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore|hentai|nsfw|xxx)\b/i;
   if (adultRegex.test(item?.title || item?.name || '') || adultRegex.test(item?.overview || '')) {
     return true;
   }
@@ -1489,7 +1522,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
     const adultFilter = adminMode !== 0 ? '&include_adult=true' : '&include_adult=false';
-    const adultKeywords = adminMode === 2 ? '&with_keywords=190370|13054|210024|156416' : '';
+    const adultKeywords = adminMode === 2 ? ADULT_KEYWORDS : '';
     const targetCount = page === 1 ? Math.max(limit, 14) : limit;
 
     let finalItems = [];
@@ -1497,7 +1530,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     let totalPages = 1;
     let totalResults = 0;
 
-    while (finalItems.length < targetCount && currentPage <= page + 3) {
+    while (finalItems.length < targetCount && currentPage <= page + 4) {
       let movieUrl = '';
       if (genre === 'bollywood') {
         movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
@@ -1513,7 +1546,11 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       totalPages = movieData?.total_pages || totalPages;
       totalResults = movieData?.total_results || totalResults;
 
-      let pageItems = (movieData?.results || []).map(i => ({ ...i, media_type: 'Movie' }));
+      let pageItems = (movieData?.results || []).map(i => ({
+        ...i,
+        media_type: 'Movie',
+        ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+      }));
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
       }
@@ -1529,6 +1566,21 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       currentPage++;
     }
 
+    if (adminMode === 2 && finalItems.length < 14 && genre && genre !== 'bollywood') {
+      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement Bg').catch(() => null);
+      if (supResp?.ok) {
+        const supData = await supResp.json();
+        const supItems = (supData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true }));
+        for (const item of supItems) {
+          if (finalItems.length >= 14) break;
+          if (!finalItems.some(existing => existing.id === item.id)) {
+            finalItems.push(item);
+          }
+        }
+      }
+    }
+
     finalItems = await attachCachedRatings(finalItems);
     finalItems = finalItems.slice(0, targetCount);
 
@@ -1537,6 +1589,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     
     if (payload.movies.length > 0) {
       categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
+      await setMongoCache(cacheKey, payload, CATEGORIES_CACHE_DURATION);
       console.log(`[API] Background category revalidate success count=${payload.movies.length} key=${cacheKey}`);
     }
   } catch (err) {
@@ -1547,7 +1600,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
   }
 }
 
-async function refreshTrendingCache(limit = 12) {
+async function refreshTrendingCache(limit = 12, adminMode = 0) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
     const fetchWithDeadline = (promise) =>
@@ -1555,42 +1608,69 @@ async function refreshTrendingCache(limit = 12) {
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('Trending request timed out')), 7000))
       ]);
+
+    let movieUrl = 'https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=1';
+    let tvUrl = 'https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=1';
+
+    if (adminMode === 2) {
+      movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+    }
+
     const [movieResult, tvResult] = await Promise.allSettled([
-      fetchWithDeadline(tmdbFetch(`https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=1`, opts, 'Trending Movies Bg')),
-      fetchWithDeadline(tmdbFetch(`https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=1`, opts, 'Trending TV Bg'))
+      fetchWithDeadline(tmdbFetch(movieUrl, opts, 'Trending Movies Bg')),
+      fetchWithDeadline(tmdbFetch(tvUrl, opts, 'Trending TV Bg'))
     ]);
 
     const movieResp = movieResult.status === 'fulfilled' ? movieResult.value : null;
     const tvResp = tvResult.status === 'fulfilled' ? tvResult.value : null;
 
     if ((movieResp && !movieResp.ok) || (tvResp && !tvResp.ok)) {
-      global.trendingRevalidating = false;
+      if (adminMode === 2) global.trendingAdultRevalidating = false;
+      else global.trendingRevalidating = false;
       return;
     }
 
     const movieData = movieResp?.ok ? await movieResp.json().catch(() => null) : null;
     const tvData = tvResp?.ok ? await tvResp.json().catch(() => null) : null;
     
-    if (!movieData || !tvData) {
-      global.trendingRevalidating = false;
+    if (!movieData && !tvData) {
+      if (adminMode === 2) global.trendingAdultRevalidating = false;
+      else global.trendingRevalidating = false;
       return;
     }
 
-    const movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
-    const tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
+    const movieItems = (movieData?.results || []).map(i => ({
+      ...i,
+      media_type: 'Movie',
+      ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+    }));
+    const tvItems = (tvData?.results || []).map(i => ({
+      ...i,
+      media_type: 'Series',
+      ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+    }));
     
     const all = [...movieItems, ...tvItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     
     const finalItems = all;
     if (finalItems.length > 0) {
-      trendingCache = finalItems;
-      trendingCacheTime = Date.now();
-      console.log(`[API] Background trending revalidate success count=${finalItems.length}`);
+      if (adminMode === 2) {
+        trendingCacheAdult = finalItems;
+        trendingCacheAdultTime = Date.now();
+        await setMongoCache('trending_mode_2_page_1', finalItems, CACHE_DURATION);
+      } else {
+        trendingCache = finalItems;
+        trendingCacheTime = Date.now();
+        await setMongoCache('trending_mode_0_page_1', finalItems, CACHE_DURATION);
+      }
+      console.log(`[API] Background trending revalidate success count=${finalItems.length} mode=${adminMode}`);
     }
   } catch (err) {
     console.error('[API] Background trending refresh failed:', err);
   } finally {
-    global.trendingRevalidating = false;
+    if (adminMode === 2) global.trendingAdultRevalidating = false;
+    else global.trendingRevalidating = false;
   }
 }
 
@@ -1749,14 +1829,21 @@ router.get('/movies', async (req, res) => {
     const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}_mode${adminMode}`;
     const lockKey = `revalidating_category_page${page}_genre${genre || 'all'}_year${year || 'all'}_mode${adminMode}`;
 
-    if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && categoriesCache.has(cacheKey)) {
-      const cached = categoriesCache.get(cacheKey);
-      const isStale = Date.now() - cached.time > CATEGORIES_CACHE_DURATION;
-      if (isStale && !global[lockKey]) {
-        global[lockKey] = true;
-        setTimeout(() => refreshCategoryCache(genre, year, page, limit, adminMode), 0);
+    if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc') {
+      if (categoriesCache.has(cacheKey)) {
+        const cached = categoriesCache.get(cacheKey);
+        const isStale = Date.now() - cached.time > CATEGORIES_CACHE_DURATION;
+        if (isStale && !global[lockKey]) {
+          global[lockKey] = true;
+          setTimeout(() => refreshCategoryCache(genre, year, page, limit, adminMode), 0);
+        }
+        return res.json(cached.data);
       }
-      return res.json(cached.data);
+      const mongoData = await getMongoCache(cacheKey);
+      if (mongoData && mongoData.movies?.length) {
+        categoriesCache.set(cacheKey, { time: Date.now(), data: mongoData });
+        return res.json(mongoData);
+      }
     }
 
     if (search) {
@@ -1788,7 +1875,7 @@ router.get('/movies', async (req, res) => {
     }
 
     const adultFilter = adminMode !== 0 ? '&include_adult=true' : '&include_adult=false';
-    const adultKeywords = adminMode === 2 ? '&with_keywords=190370|13054|210024|156416' : '';
+    const adultKeywords = adminMode === 2 ? ADULT_KEYWORDS : '';
     const sortMap = { popularity: 'popularity', release_date: 'release_date', vote_average: 'vote_average' };
     const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
     const targetCount = page === 1 ? Math.max(limit, 14) : limit;
@@ -1798,7 +1885,7 @@ router.get('/movies', async (req, res) => {
     let totalPages = 1;
     let totalResults = 0;
 
-    while (finalItems.length < targetCount && currentPage <= page + 3) {
+    while (finalItems.length < targetCount && currentPage <= page + 4) {
       let movieUrl;
       if (genre === 'bollywood') {
         movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
@@ -1814,7 +1901,11 @@ router.get('/movies', async (req, res) => {
       totalPages = movieData?.total_pages || totalPages;
       totalResults = movieData?.total_results || totalResults;
 
-      let pageItems = (movieData?.results || []).map(i => ({ ...i, media_type: 'Movie' }));
+      let pageItems = (movieData?.results || []).map(i => ({
+        ...i,
+        media_type: 'Movie',
+        ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+      }));
 
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
@@ -1832,6 +1923,21 @@ router.get('/movies', async (req, res) => {
       currentPage++;
     }
 
+    if (adminMode === 2 && finalItems.length < 14 && genre && genre !== 'bollywood') {
+      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement').catch(() => null);
+      if (supResp?.ok) {
+        const supData = await supResp.json();
+        const supItems = (supData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true }));
+        for (const item of supItems) {
+          if (finalItems.length >= 14) break;
+          if (!finalItems.some(existing => existing.id === item.id)) {
+            finalItems.push(item);
+          }
+        }
+      }
+    }
+
     finalItems = await attachCachedRatings(finalItems);
     finalItems = finalItems.slice(0, targetCount);
 
@@ -1839,6 +1945,7 @@ router.get('/movies', async (req, res) => {
     
     if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && payload.movies.length > 0) {
       categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
+      await setMongoCache(cacheKey, payload, CATEGORIES_CACHE_DURATION);
     }
 
     res.json(payload);
@@ -2321,6 +2428,9 @@ router.get('/person/:id/credits', async (req, res) => {
   }
 });
 
+let trendingCacheAdult = null;
+let trendingCacheAdultTime = 0;
+
 // GET /api/trending
 router.get('/trending', trendingLimiter, async (req, res) => {
   try {
@@ -2332,15 +2442,40 @@ router.get('/trending', trendingLimiter, async (req, res) => {
 
     const filterTrending = (movies = []) => movies.filter(m => shouldShow(m, adminMode));
 
-    if (page === 1 && trendingCache && trendingCache.length) {
-      const isStale = now - trendingCacheTime > CACHE_DURATION;
-      if (isStale && !global.trendingRevalidating) {
-        global.trendingRevalidating = true;
-        // Trigger background refresh, but return cache immediately
-        setTimeout(() => refreshTrendingCache(limit), 0);
+    if (page === 1) {
+      if (adminMode === 2) {
+        if (trendingCacheAdult && trendingCacheAdult.length) {
+          const isStale = now - trendingCacheAdultTime > CACHE_DURATION;
+          if (isStale && !global.trendingAdultRevalidating) {
+            global.trendingAdultRevalidating = true;
+            setTimeout(() => refreshTrendingCache(limit, 2), 0);
+          }
+          return res.json({ movies: trendingCacheAdult.slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
+        }
+        const mongoData = await getMongoCache('trending_mode_2_page_1');
+        if (mongoData && mongoData.length) {
+          trendingCacheAdult = mongoData;
+          trendingCacheAdultTime = now;
+          return res.json({ movies: mongoData.slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
+        }
+      } else {
+        if (trendingCache && trendingCache.length) {
+          const isStale = now - trendingCacheTime > CACHE_DURATION;
+          if (isStale && !global.trendingRevalidating) {
+            global.trendingRevalidating = true;
+            setTimeout(() => refreshTrendingCache(limit, 0), 0);
+          }
+          return res.json({ movies: filterTrending(trendingCache).slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
+        }
+        const mongoData = await getMongoCache('trending_mode_0_page_1');
+        if (mongoData && mongoData.length) {
+          trendingCache = mongoData;
+          trendingCacheTime = now;
+          return res.json({ movies: filterTrending(mongoData).slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
+        }
       }
-      return res.json({ movies: filterTrending(trendingCache).slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
     }
+
     const opts = { method: 'GET', headers: tmdbHeaders() };
     const fetchWithDeadline = (promise) =>
       Promise.race([
@@ -2352,9 +2487,8 @@ router.get('/trending', trendingLimiter, async (req, res) => {
     let tvUrl = `https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=${page}`;
     
     if (adminMode === 2) {
-      const adultKeywords = '&with_keywords=190370|13054|210024|156416';
-      movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${adultKeywords}&sort_by=popularity.desc`;
-      tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}&include_adult=true${adultKeywords}&sort_by=popularity.desc`;
+      movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
     }
 
     const [movieResult, tvResult] = await Promise.allSettled([
@@ -2367,28 +2501,44 @@ router.get('/trending', trendingLimiter, async (req, res) => {
 
     const movieData = movieResp?.ok ? await movieResp.json() : { results: [], total_pages: 1 };
     const tvData = tvResp?.ok ? await tvResp.json() : { results: [], total_pages: 1 };
-    let movieItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
-    let tvItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
+    let movieItems = (movieData.results || []).map(i => ({
+      ...i,
+      media_type: 'Movie',
+      ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+    }));
+    let tvItems = (tvData.results || []).map(i => ({
+      ...i,
+      media_type: 'Series',
+      ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+    }));
     
     const all = [...movieItems, ...tvItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     const finalItems = all;
 
     if (!finalItems.length) {
-      if (page === 1 && trendingCache?.length) {
+      const fallbackCache = adminMode === 2 ? trendingCacheAdult : trendingCache;
+      if (page === 1 && fallbackCache?.length) {
         console.log('[API] /api/trending using stale cache fallback');
-        return res.json({ movies: filterTrending(trendingCache).slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
+        return res.json({ movies: filterTrending(fallbackCache).slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
       }
       return res.json({ movies: [], pagination: { page, limit, pages: 1 } });
     }
 
-    if (page === 1 && adminMode === 0) {
-      trendingCache = finalItems;
-      trendingCacheTime = now;
+    if (page === 1) {
+      if (adminMode === 2) {
+        trendingCacheAdult = finalItems;
+        trendingCacheAdultTime = now;
+        await setMongoCache('trending_mode_2_page_1', finalItems, CACHE_DURATION);
+      } else {
+        trendingCache = finalItems;
+        trendingCacheTime = now;
+        await setMongoCache('trending_mode_0_page_1', finalItems, CACHE_DURATION);
+      }
     }
     
     const totalPages = Math.max(movieData.total_pages || 1, tvData.total_pages || 1);
     const filtered = filterTrending(finalItems);
-    console.log(`[API] /api/trending success count=${filtered.length}`);
+    console.log(`[API] /api/trending success count=${filtered.length} mode=${adminMode}`);
     res.json({ movies: filtered.slice(0, limit), pagination: { page, limit, pages: totalPages } });
   } catch (err) {
     console.error('Error fetching trending:', err);
@@ -2460,6 +2610,8 @@ router.get('/genres', async (req, res) => {
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let homeCache = null;
 let homeCacheTime = 0;
+let homeCacheAdult = null;
+let homeCacheAdultTime = 0;
 const HOME_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 const HOME_CATEGORY_LIMIT = 20; // movies per genre shelf
 const HOME_PRELOAD_GENRES = 8;  // how many genre shelves to pre-bake
@@ -2478,7 +2630,7 @@ function filterHomePayload(payload, adminMode) {
   };
 }
 
-async function buildHomePayload() {
+async function buildHomePayload(adminMode = 0) {
   const opts = { method: 'GET', headers: tmdbHeaders() };
 
   // 1. Trending
@@ -2486,8 +2638,14 @@ async function buildHomePayload() {
   try {
     const fetchWithDeadline = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 7000))]);
     
-    const movieUrl = 'https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=1';
-    const tvUrl = 'https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=1';
+    let movieUrl, tvUrl;
+    if (adminMode === 2) {
+      movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+    } else {
+      movieUrl = 'https://api.themoviedb.org/3/trending/movie/day?language=en-US&page=1';
+      tvUrl = 'https://api.themoviedb.org/3/trending/tv/day?language=en-US&page=1';
+    }
 
     const [movieResult, tvResult] = await Promise.allSettled([
       fetchWithDeadline(tmdbFetch(movieUrl, opts, 'Home Trending Movies')),
@@ -2496,12 +2654,28 @@ async function buildHomePayload() {
     const movieData = movieResult.status === 'fulfilled' && movieResult.value?.ok ? await movieResult.value.json() : { results: [] };
     const tvData = tvResult.status === 'fulfilled' && tvResult.value?.ok ? await tvResult.value.json() : { results: [] };
     
-    let mItems = movieData.results.map(i => ({ ...i, media_type: 'Movie' }));
-    let tItems = tvData.results.map(i => ({ ...i, media_type: 'Series' }));
+    let mItems = (movieData.results || []).map(i => ({
+      ...i,
+      media_type: 'Movie',
+      ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+    }));
+    let tItems = (tvData.results || []).map(i => ({
+      ...i,
+      media_type: 'Series',
+      ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+    }));
 
     const all = [...mItems, ...tItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
     trending = all.slice(0, 18);
-    if (trending.length) { trendingCache = trending; trendingCacheTime = Date.now(); }
+    if (trending.length) {
+      if (adminMode === 2) {
+        trendingCacheAdult = trending;
+        trendingCacheAdultTime = Date.now();
+      } else {
+        trendingCache = trending;
+        trendingCacheTime = Date.now();
+      }
+    }
   } catch (e) { console.warn('[Home] Trending fetch failed:', e.message); }
 
   // 2. Genres
@@ -2527,27 +2701,71 @@ async function buildHomePayload() {
 
   const fetchGenreMovies = async (genre) => {
     try {
-      const strictRatingFilter = '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5';
-      let movieUrl;
-      if (genre && genre.id === 'bollywood') {
-        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=false&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
-      } else {
-        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=false${strictRatingFilter}&sort_by=popularity.desc`;
-        if (genre) movieUrl += `&with_genres=${genre.id}`;
+      let finalItems = [];
+      let pageNum = 1;
+      const maxPages = adminMode === 2 ? 4 : 3;
+
+      while (finalItems.length < 14 && pageNum <= maxPages) {
+        let movieUrl;
+        if (adminMode === 2) {
+          if (genre.id === 'bollywood') {
+            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true&with_original_language=hi&sort_by=popularity.desc`;
+          } else {
+            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_genres=${genre.id}&sort_by=popularity.desc`;
+          }
+        } else {
+          const strictRatingFilter = '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5';
+          if (genre && genre.id === 'bollywood') {
+            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=false&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+          } else {
+            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=false${strictRatingFilter}&sort_by=popularity.desc`;
+            if (genre) movieUrl += `&with_genres=${genre.id}`;
+          }
+        }
+
+        const movieResp = await tmdbFetch(movieUrl, opts, `Home Genre ${genre.name} P${pageNum}`).catch(() => null);
+        if (!movieResp?.ok) break;
+        const movieData = await movieResp.json();
+
+        let mItems = (movieData?.results || []).map(i => ({
+          ...i,
+          media_type: 'Movie',
+          ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+        }));
+
+        if (adminMode !== 2) {
+          mItems = (await attachImdbIds(mItems, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
+          if (String(genre.id) !== '16') {
+            mItems = mItems.filter(item => !isAnimeContent(item));
+          }
+        }
+
+        for (const item of mItems) {
+          if (!finalItems.some(x => x.id === item.id)) {
+            finalItems.push(item);
+          }
+        }
+
+        if (pageNum >= (movieData?.total_pages || 1) || (movieData?.results || []).length === 0) break;
+        pageNum++;
       }
 
-      const movieResp = await tmdbFetch(movieUrl, opts, `Home Genre ${genre.name} Movie`).catch(() => null);
-      if (!movieResp?.ok) return { id: genre.id, movies: [] };
-      const movieData = await movieResp.json();
+      if (adminMode === 2 && finalItems.length < 14 && genre.id !== 'bollywood') {
+        const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+        const supResp = await tmdbFetch(supUrl, opts, `Home Adult Sup ${genre.name}`).catch(() => null);
+        if (supResp?.ok) {
+          const supData = await supResp.json();
+          const supItems = (supData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true }));
+          for (const item of supItems) {
+            if (finalItems.length >= 14) break;
+            if (!finalItems.some(x => x.id === item.id)) {
+              finalItems.push(item);
+            }
+          }
+        }
+      }
 
-      let mItems = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
-      let finalItems = (await attachImdbIds(mItems, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
       finalItems = await attachCachedRatings(finalItems);
-      
-      if (String(genre.id) !== '16') {
-        finalItems = finalItems.filter(item => !isAnimeContent(item));
-      }
-
       finalItems = finalItems.slice(0, HOME_CATEGORY_LIMIT);
       return { id: genre.id, movies: finalItems };
     } catch (e) {
@@ -2564,18 +2782,26 @@ async function buildHomePayload() {
   return { trending, genres: [{ id: 'bollywood', name: 'Latest in India' }, ...genres], categories };
 }
 
-async function refreshHomeCache() {
+async function refreshHomeCache(adminMode = 0) {
   try {
-    const payload = await buildHomePayload();
+    const payload = await buildHomePayload(adminMode);
     if (payload.trending.length || Object.keys(payload.categories).length) {
-      homeCache = payload;
-      homeCacheTime = Date.now();
-      console.log(`[API] /api/home revalidated: trending=${payload.trending.length} genres=${payload.genres.length} categories=${Object.keys(payload.categories).length}`);
+      if (adminMode === 2) {
+        homeCacheAdult = payload;
+        homeCacheAdultTime = Date.now();
+        await setMongoCache('home_mode_2', payload, HOME_CACHE_DURATION);
+      } else {
+        homeCache = payload;
+        homeCacheTime = Date.now();
+        await setMongoCache('home_mode_0', payload, HOME_CACHE_DURATION);
+      }
+      console.log(`[API] /api/home revalidated mode=${adminMode}: trending=${payload.trending.length} categories=${Object.keys(payload.categories).length}`);
     }
   } catch (e) {
-    console.error('[API] /api/home background refresh failed:', e.message);
+    console.error(`[API] /api/home background refresh failed mode=${adminMode}:`, e.message);
   } finally {
-    global.homeRevalidating = false;
+    if (adminMode === 2) global.homeAdultRevalidating = false;
+    else global.homeRevalidating = false;
   }
 }
 
@@ -2584,20 +2810,45 @@ router.get('/home', async (req, res) => {
   try {
     const adminMode = await resolveAdminMode(req);
     const now = Date.now();
+    const isAdultMode = adminMode === 2;
 
-    if (homeCache) {
-      const isStale = now - homeCacheTime > HOME_CACHE_DURATION;
-      if (isStale && !global.homeRevalidating) {
-        global.homeRevalidating = true;
-        setTimeout(() => refreshHomeCache(), 0);
+    const inMemCache = isAdultMode ? homeCacheAdult : homeCache;
+    const inMemTime = isAdultMode ? homeCacheAdultTime : homeCacheTime;
+
+    if (inMemCache) {
+      const isStale = now - inMemTime > HOME_CACHE_DURATION;
+      const isRevalidating = isAdultMode ? global.homeAdultRevalidating : global.homeRevalidating;
+      if (isStale && !isRevalidating) {
+        if (isAdultMode) global.homeAdultRevalidating = true;
+        else global.homeRevalidating = true;
+        setTimeout(() => refreshHomeCache(adminMode), 0);
       }
-      return res.json(filterHomePayload(homeCache, adminMode));
+      return res.json(filterHomePayload(inMemCache, adminMode));
     }
 
-    const payload = await buildHomePayload();
+    const mongoKey = isAdultMode ? 'home_mode_2' : 'home_mode_0';
+    const mongoData = await getMongoCache(mongoKey);
+    if (mongoData) {
+      if (isAdultMode) {
+        homeCacheAdult = mongoData;
+        homeCacheAdultTime = now;
+      } else {
+        homeCache = mongoData;
+        homeCacheTime = now;
+      }
+      return res.json(filterHomePayload(mongoData, adminMode));
+    }
+
+    const payload = await buildHomePayload(adminMode);
     if (payload.trending.length || Object.keys(payload.categories).length) {
-      homeCache = payload;
-      homeCacheTime = now;
+      if (isAdultMode) {
+        homeCacheAdult = payload;
+        homeCacheAdultTime = now;
+      } else {
+        homeCache = payload;
+        homeCacheTime = now;
+      }
+      await setMongoCache(mongoKey, payload, HOME_CACHE_DURATION);
     }
     res.json(filterHomePayload(payload, adminMode));
   } catch (err) {

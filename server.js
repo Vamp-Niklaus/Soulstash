@@ -84,7 +84,13 @@ app.use(express.static(path.join(__dirname, 'spa', 'dist')));
 const TRAFFIC_COLLECTION_NAME = 'TrafficLogsMonolith';
 let trafficLogBuffer = [];
 app.use((req, res, next) => {
-  if (req.path.startsWith('/images') || req.path.startsWith('/assets') || req.path.startsWith('/js') || req.path.startsWith('/favicon')) {
+  if (
+    req.path.startsWith('/images') ||
+    req.path.startsWith('/assets') ||
+    req.path.startsWith('/js') ||
+    req.path.startsWith('/favicon') ||
+    req.path.startsWith('/api/admin/trafficLogs')
+  ) {
     return next();
   }
   const startedAt = Date.now();
@@ -94,7 +100,7 @@ app.use((req, res, next) => {
   const rawIp = (typeof forwarded === 'string' && forwarded.length > 0)
     ? forwarded.split(',')[0].trim()
     : (req.ip || req.socket?.remoteAddress || '');
-  const cleanIp = rawIp.replace(/^::ffff:/, '');
+  const cleanIp = rawIp.replace(/^::ffff:/, '').trim() || '127.0.0.1';
 
   const userAgent = req.headers['user-agent'] || '';
   let username = 'anonymous';
@@ -138,16 +144,26 @@ setInterval(async () => {
     const batch = [...trafficLogBuffer];
     trafficLogBuffer = [];
     try {
-      const client = getClient();
-      if (client) {
-        const trafficColl = client.db().collection(TRAFFIC_COLLECTION_NAME);
-        await trafficColl.createIndex({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }).catch(() => {});
-        const docs = batch.map((log) => ({
-          ...log,
-          createdAt: log.createdAt || new Date()
-        }));
-        await trafficColl.insertMany(docs);
+      const db = getDb();
+      if (!db) {
+        trafficLogBuffer.unshift(...batch);
+        return;
       }
+      const trafficColl = db.collection(TRAFFIC_COLLECTION_NAME);
+      await trafficColl.createIndex({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }).catch(() => {});
+      let geoip = null;
+      try { geoip = require('geoip-lite'); } catch {}
+      const docs = batch.map((log) => {
+        const geo = geoip && log.ip ? geoip.lookup(log.ip) : null;
+        return {
+          ...log,
+          country: geo?.country || 'Unknown',
+          city: geo?.city || 'Unknown',
+          ll: geo?.ll || null,
+          createdAt: log.createdAt || new Date()
+        };
+      });
+      await trafficColl.insertMany(docs);
     } catch (err) {
       console.error('Failed to flush traffic logs:', err.message);
     }

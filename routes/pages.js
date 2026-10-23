@@ -101,4 +101,16 @@ router.get('/user/:username/collection', (req, res) => sendSpa(res));
 // User collection page
 router.get('/user/:username/collection/:collectionName', (req, res) => sendSpa(res));
 
+// Genre pages
+router.get('/genre/:id', (req, res) => sendSpa(res));
+router.get('/genre/:id/:name', (req, res) => sendSpa(res));
+
+// Catch-all for any SPA client routes (prevents 404 on refresh)
+router.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/image') || req.path.startsWith('/assets') || req.path.startsWith('/js') || req.path.startsWith('/images')) {
+    return next();
+  }
+  return sendSpa(res);
+});
+
 module.exports = router;

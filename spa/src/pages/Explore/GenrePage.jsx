@@ -1,5 +1,5 @@
 import { apiFetch } from '../../api/client.js';
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect, useMemo } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
@@ -46,7 +46,22 @@ export function GenrePage() {
     },
   });
 
-  const items = data ? data.pages.flatMap((page) => Array.isArray(page.movies) ? page.movies : []) : [];
+  const items = useMemo(() => {
+    if (!data) return [];
+    const seen = new Set();
+    const deduped = [];
+    for (const page of data.pages) {
+      const list = Array.isArray(page?.movies) ? page.movies : [];
+      for (const item of list) {
+        const id = Number(item?.id || item?.movieId || item?.seriesId);
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          deduped.push(item);
+        }
+      }
+    }
+    return deduped;
+  }, [data]);
 
   // Aggressively preload images as soon as new items are added to the list
   useEffect(() => {

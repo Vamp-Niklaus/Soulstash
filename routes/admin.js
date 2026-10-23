@@ -204,7 +204,15 @@ router.post('/trafficLogs', async (req, res) => {
 // GET /api/admin/trafficLogs/stats
 router.get('/trafficLogs/stats', authenticateToken, ensureAdmin, async (req, res) => {
   try {
-    const trafficColl = getDb().collection(TRAFFIC_COLLECTION_NAME);
+    let trafficColl = getDb().collection(TRAFFIC_COLLECTION_NAME);
+    const count = await trafficColl.countDocuments({}).catch(() => 0);
+    if (count === 0) {
+      const legacyColl = getDb().collection('TrafficLogs');
+      const legacyCount = await legacyColl.countDocuments({}).catch(() => 0);
+      if (legacyCount > 0) {
+        trafficColl = legacyColl;
+      }
+    }
     const ipFilter = req.query.ip ? String(req.query.ip) : null;
     const matchStage = ipFilter ? { $match: { ip: { $regex: ipFilter, $options: 'i' } } } : { $match: {} };
 
