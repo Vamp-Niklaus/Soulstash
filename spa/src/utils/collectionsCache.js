@@ -77,9 +77,9 @@ export function normalizeCollection(collection) {
 
 export function collectionItemCount(collection) {
   if (!collection) return 0;
-  if (Number.isFinite(Number(collection.movieCount))) return Number(collection.movieCount) || 0;
-  if (Array.isArray(collection.movies)) return collection.movies.length;
-  return 0;
+  const arrayLen = Array.isArray(collection.movies) ? collection.movies.length : 0;
+  const numCount = Number.isFinite(Number(collection.movieCount)) ? Number(collection.movieCount) : 0;
+  return Math.max(arrayLen, numCount);
 }
 
 export function normalizeCollections(collections) {

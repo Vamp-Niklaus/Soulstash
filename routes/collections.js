@@ -559,7 +559,7 @@ router.post('/user/collections/:id/remove', authenticateToken, async (req, res) 
   try {
     const clientVersion = getClientCollectionVersion(req);
     const collectionId = req.params.id;
-    const { movieId, seriesId } = req.body;
+    let { movieId, seriesId, id } = req.body || {};
 
     const user = await loadUserWithCollections(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -567,11 +567,25 @@ router.post('/user/collections/:id/remove', authenticateToken, async (req, res) 
     const colIdx = user.collections.findIndex(c => (c._id || c.name) === collectionId);
     if (colIdx === -1) return res.status(404).json({ error: 'Collection not found' });
 
-    if (!movieId && !seriesId)
-      return res.status(400).json({ error: 'Either movieId or seriesId is required' });
+    const rawId = movieId || seriesId || id;
+    if (!rawId)
+      return res.status(400).json({ error: 'Either movieId, seriesId, or id is required' });
 
-    const col = user.collections[colIdx];
-    const pullCondition = movieId ? { movieId: parseInt(movieId) } : { seriesId: parseInt(seriesId) };
+    const parsedId = parseInt(rawId);
+    let pullCondition;
+    if (movieId && !seriesId) {
+      pullCondition = { movieId: parseInt(movieId) };
+    } else if (seriesId && !movieId) {
+      pullCondition = { seriesId: parseInt(seriesId) };
+    } else {
+      pullCondition = {
+        $or: [
+          { movieId: parsedId },
+          { seriesId: parsedId },
+          { id: parsedId }
+        ]
+      };
+    }
 
     await getDb().collection('users').updateOne(
       { _id: new ObjectId(req.user.userId), 'collections.name': col.name },

@@ -74,7 +74,8 @@ function OwnerCollectionsLayout() {
           document.body.style.setProperty('--collection-tint', `${tint[0]} ${tint[1]} ${tint[2]}`);
         } catch { /* keep dark fallback */ }
       };
-      img.src = imageUrl(bgPosterPath, 'w92');
+      img.onerror = () => { /* keep dark fallback */ };
+      img.src = `${imageUrl(bgPosterPath, 'w92')}?tint=1`;
     } else {
       document.body.style.removeProperty('--collection-artwork-image');
       document.body.style.removeProperty('--collection-tint');

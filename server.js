@@ -81,12 +81,21 @@ app.use('/assets',     require('express').static(path.join(__dirname, 'spa', 'di
 app.use(express.static(path.join(__dirname, 'spa', 'dist')));
 
 // ── In-Memory Traffic Logging Middleware ───────────────────────────────────────
+const TRAFFIC_COLLECTION_NAME = process.env.TRAFFIC_COLLECTION_NAME || 'SoulstashTrafficLogs';
 let trafficLogBuffer = [];
 app.use((req, res, next) => {
-  if (req.path.startsWith('/images') || req.path.startsWith('/assets') || req.path.startsWith('/js')) {
+  if (req.path.startsWith('/images') || req.path.startsWith('/assets') || req.path.startsWith('/js') || req.path.startsWith('/favicon')) {
     return next();
   }
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+  const startedAt = Date.now();
+
+  // Directly extract real user's IP in the monolith (handles Render, proxies, and direct connections)
+  const forwarded = req.headers['x-forwarded-for'];
+  const rawIp = (typeof forwarded === 'string' && forwarded.length > 0)
+    ? forwarded.split(',')[0].trim()
+    : (req.ip || req.socket?.remoteAddress || '');
+  const cleanIp = rawIp.replace(/^::ffff:/, '');
+
   const userAgent = req.headers['user-agent'] || '';
   let username = 'anonymous';
   if (req.headers['x-user-name']) {
@@ -98,13 +107,29 @@ app.use((req, res, next) => {
       if (payload.username) username = payload.username;
     } catch (e) {}
   }
-  trafficLogBuffer.push({
-    ip: Array.isArray(ip) ? ip[0] : (typeof ip === 'string' ? ip.split(',')[0].trim() : ip),
-    path: req.path,
-    method: req.method,
-    username,
-    userAgent
+
+  const device = /mobile|android|iphone/i.test(userAgent)
+    ? 'mobile'
+    : /ipad|tablet/i.test(userAgent)
+    ? 'tablet'
+    : 'desktop';
+
+  res.on('finish', () => {
+    trafficLogBuffer.push({
+      ip: cleanIp,
+      domain: req.headers['host'] || 'soulstash.onrender.com',
+      path: req.path,
+      method: req.method,
+      statusCode: res.statusCode,
+      responseTimeMs: Date.now() - startedAt,
+      username,
+      userAgent,
+      device,
+      referer: req.headers['referer'] || req.headers['origin'] || '',
+      createdAt: new Date()
+    });
   });
+
   next();
 });
 
@@ -115,10 +140,11 @@ setInterval(async () => {
     try {
       const client = getClient();
       if (client) {
-        const trafficColl = client.db().collection('TrafficLogs');
+        const trafficColl = client.db().collection(TRAFFIC_COLLECTION_NAME);
+        await trafficColl.createIndex({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }).catch(() => {});
         const docs = batch.map((log) => ({
           ...log,
-          createdAt: new Date()
+          createdAt: log.createdAt || new Date()
         }));
         await trafficColl.insertMany(docs);
       }

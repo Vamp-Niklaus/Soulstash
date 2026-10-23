@@ -21,7 +21,13 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
   // Initialize with the first page from the props
   useEffect(() => {
     if (similar && similar.length > 0) {
+      const currentIdNum = Number(id);
+      const seen = new Set();
       const initialItems = similar.filter(item => {
+        if (!item || !item.id) return false;
+        if (Number(item.id) === currentIdNum) return false;
+        if (seen.has(Number(item.id))) return false;
+        seen.add(Number(item.id));
         if (!item.poster_path) return false;
         return true;
       });
@@ -47,9 +53,12 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       if (data && data.results) {
+        const currentIdNum = Number(id);
         const newItems = data.results.filter(newItem => {
+          if (!newItem || !newItem.id) return false;
+          if (Number(newItem.id) === currentIdNum) return false;
           if (!newItem.poster_path) return false;
-          if (items.some(existingItem => existingItem.id === newItem.id)) return false;
+          if (items.some(existingItem => Number(existingItem.id) === Number(newItem.id))) return false;
           return true;
         });
         

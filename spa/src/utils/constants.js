@@ -9,7 +9,7 @@ export const HOME_TRENDING_TTL = 60 * 60 * 1000;
 export const AUTO_RECOVERY_RETRIES = 3;
 // Published collections are shown on the discovery shelf only from seven titles.
 // Keep the UI eligibility rule aligned with that public-facing requirement.
-export const PUBLISH_MIN_COLLECTION_TITLES = 7;
+export const PUBLISH_MIN_COLLECTION_TITLES = 6;
 
 export const AUTH_POSTER_CACHE_KEY = 'soulstash:auth-posters:v3';
 

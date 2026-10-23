@@ -795,14 +795,43 @@ async function attachCachedRatings(items = []) {
   });
 }
 
+async function resolveAdminMode(req) {
+  if (!req.user?.userId) return 0;
+  try {
+    const user = await getDb()
+      .collection('users')
+      .findOne({ _id: new ObjectId(req.user.userId) }, { projection: { admin: 1, adminMode: 1, showAdult: 1 } });
+    const isAdmin = user?.admin === true || user?.admin === 'true' || user?.admin === 1;
+    if (!isAdmin) return 0;
+    return Number(user?.adminMode ?? (user?.showAdult === true ? 1 : 0));
+  } catch (error) {
+    console.error('[Content] Failed to resolve adminMode', error);
+    return 0;
+  }
+}
+
+async function resolveIncludeAdult(req) {
+  const mode = await resolveAdminMode(req);
+  return mode === 1 || mode === 2;
+}
+
 async function canAccessContentForUser(req, content = {}, mediaType = 'Movie') {
-  const includeAdult = await resolveIncludeAdult(req);
-  if (!includeAdult && content?.adult === true) {
-    return false;
+  const adminMode = await resolveAdminMode(req);
+  if (adminMode === 1) return true; // mode 1: show all, no filter
+
+  const isAdultItem = Boolean(
+    content?.adult === true ||
+    content?.genres?.some(g => String(g?.name || g).toLowerCase().includes('erotic'))
+  );
+
+  if (adminMode === 2) {
+    // mode 2: adult mode (filter in reverse: adult only)
+    return isAdultItem;
   }
 
-  if (includeAdult) {
-    return true;
+  // mode 0: normal mode (strictly filtered)
+  if (isAdultItem) {
+    return false;
   }
 
   const imdbId = String(content?.imdb_id || '').trim();
@@ -1383,20 +1412,6 @@ async function resolveWatchmodeFallback({ tmdbId, imdbId, mediaType }) {
 
 router.use(optionalAuth);
 
-async function resolveIncludeAdult(req) {
-  if (!req.user?.userId) return false;
-  try {
-    const user = await getDb()
-      .collection('users')
-      .findOne({ _id: new ObjectId(req.user.userId) }, { projection: { admin: 1, showAdult: 1 } });
-    const isAdmin = user?.admin === true || user?.admin === 'true' || user?.admin === 1;
-    return Boolean(isAdmin && user?.showAdult);
-  } catch (error) {
-    console.error('[Content] Failed to resolve adult preference', error);
-    return false;
-  }
-}
-
 function pickMovieCertification(payload) {
   const results = Array.isArray(payload?.results) ? payload.results : [];
   const preferredRegions = ['US', 'IN', 'GB', 'CA'];
@@ -1633,10 +1648,12 @@ async function getSimilarContent(req, res, mediaType) {
   try {
     const { id } = req.params;
     const initialPage = Number(req.query.page) || 1;
+    const adminMode = await resolveAdminMode(req);
     let results = [];
     let currentPage = initialPage;
     let totalPages = initialPage;
     let data = null;
+    const seenIds = new Set([Number(id)]); // Exclude the current item itself
 
     while (results.length < 10 && currentPage <= initialPage + 4) {
       const tmdbPath = mediaType === 'movie'
@@ -1657,6 +1674,15 @@ async function getSimilarContent(req, res, mediaType) {
         totalPages = pageData?.total_pages || currentPage;
 
         const filtered = pageResults.filter(item => {
+          if (!item || !item.id) return false;
+          const itemIdNum = Number(item.id);
+          if (seenIds.has(itemIdNum)) return false; // Deduplicate and prevent self-match
+          seenIds.add(itemIdNum);
+
+          if (adminMode === 1) return true; // Show all
+          if (adminMode === 2) return item?.adult === true; // Adult only
+
+          // Normal mode (adminMode === 0 or non-admin)
           if (item?.adult === true) return false;
           const isIndian = item?.origin_country?.includes('IN') || ['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa'].includes(item?.original_language);
           const minVotes = isIndian ? 5 : 300;
