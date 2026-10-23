@@ -835,6 +835,12 @@ function isAdult(item) {
   if (adultRegex.test(item?.title || item?.name || '') || adultRegex.test(item?.overview || '')) {
     return true;
   }
+  if (Array.isArray(item?.genres)) {
+    for (const g of item.genres) {
+      const name = typeof g === 'string' ? g : (g?.name || '');
+      if (adultRegex.test(name)) return true;
+    }
+  }
   return false;
 }
 
@@ -858,20 +864,30 @@ function isAnimeContent(item) {
   return asianLangs.includes(item.original_language) || isAsianCountry;
 }
 
-async function resolveAdminMode(req) {
-  if (!req.user?.userId && !req.user?.username) return 0;
+async function resolveUserAdminInfo(req) {
+  if (!req.user?.userId && !req.user?.username) {
+    return { isAdmin: false, adminMode: 0 };
+  }
   try {
     const query = req.user?.userId ? { _id: new ObjectId(req.user.userId) } : { username: req.user.username };
     const user = await getDb()
       .collection('users')
       .findOne(query, { projection: { admin: 1, adminMode: 1, showAdult: 1 } });
     const isAdmin = user?.admin === true || user?.admin === 'true' || user?.admin === 1;
-    if (!isAdmin) return 0;
-    return Number(user?.adminMode ?? (user?.showAdult === true ? 1 : 0));
+    if (!isAdmin) return { isAdmin: false, adminMode: 0 };
+    return {
+      isAdmin: true,
+      adminMode: Number(user?.adminMode ?? (user?.showAdult === true ? 1 : 0))
+    };
   } catch (error) {
-    console.error('[Content] Failed to resolve adminMode', error);
-    return 0;
+    console.error('[Content] Failed to resolve admin info', error);
+    return { isAdmin: false, adminMode: 0 };
   }
+}
+
+async function resolveAdminMode(req) {
+  const { adminMode } = await resolveUserAdminInfo(req);
+  return adminMode;
 }
 
 async function resolveIncludeAdult(req) {
@@ -1732,7 +1748,22 @@ async function getSimilarContent(req, res, mediaType) {
   try {
     const { id } = req.params;
     const initialPage = Number(req.query.page) || 1;
-    const adminMode = await resolveAdminMode(req);
+    const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
+
+    // If public/guest, do not show similar movies if the page content falls in adult category
+    if (!isAdmin) {
+      const parentUrl = mediaType === 'movie'
+        ? `https://api.themoviedb.org/3/movie/${id}?language=en-US`
+        : `https://api.themoviedb.org/3/tv/${id}?language=en-US`;
+      const parentResp = await tmdbFetch(parentUrl, { method: 'GET', headers: tmdbHeaders() }, `Check Parent ${mediaType} ${id}`).catch(() => null);
+      if (parentResp?.ok) {
+        const parentData = await parentResp.json();
+        if (isAdult(parentData)) {
+          return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+        }
+      }
+    }
+
     let results = [];
     let currentPage = initialPage;
     let totalPages = initialPage;
@@ -1990,9 +2021,15 @@ router.get(['/movies/:id', '/movie/:id'], async (req, res) => {
     if (!detailResp.ok) return res.status(404).json({ error: 'Content not found', details: `TMDB returned ${detailResp.status}` });
 
     const content = await detailResp.json();
-    const adminMode = await resolveAdminMode(req);
+    const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
+    const isCurrentAdult = isAdult(content);
+
     if (content?.similar?.results && Array.isArray(content.similar.results)) {
-      content.similar.results = content.similar.results.filter(item => shouldShow(item, adminMode));
+      if (isCurrentAdult && !isAdmin) {
+        content.similar = { results: [], total_pages: 0, total_results: 0 };
+      } else {
+        content.similar.results = content.similar.results.filter(item => shouldShow(item, adminMode));
+      }
     }
 
     // Automatically embed TMDB collection parts for franchises (e.g. Spider-Man Collection)
@@ -2099,9 +2136,15 @@ router.get('/series/:id', async (req, res) => {
     ]);
     if (!resp.ok) return res.status(404).json({ error: 'Series not found', details: `TMDB returned ${resp.status}` });
     const s = await resp.json();
-    const adminMode = await resolveAdminMode(req);
+    const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
+    const isCurrentAdult = isAdult(s);
+
     if (s?.similar?.results && Array.isArray(s.similar.results)) {
-      s.similar.results = s.similar.results.filter(item => shouldShow(item, adminMode));
+      if (isCurrentAdult && !isAdmin) {
+        s.similar = { results: [], total_pages: 0, total_results: 0 };
+      } else {
+        s.similar.results = s.similar.results.filter(item => shouldShow(item, adminMode));
+      }
     }
     const imdbResult = await resolveImdbRating(id, 'Series', s).catch((error) => {
       console.warn('[IMDB Ratings] Failed to resolve series detail rating', {
