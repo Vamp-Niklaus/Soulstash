@@ -182,10 +182,7 @@ router.put('/user/collections/:id', authenticateToken, async (req, res) => {
   try {
     const clientVersion = getClientCollectionVersion(req);
     const collectionId = req.params.id;
-    const { name, isPublic, description } = req.body;
-    if (!name) return res.status(400).json({ error: 'Collection name is required' });
-    if (name.length < 1 || name.length > COLLECTION_NAME_MAX_LENGTH)
-      return res.status(400).json({ error: `Collection name must be between 1 and ${COLLECTION_NAME_MAX_LENGTH} characters` });
+    const { name, isPublic, description, banner, movies } = req.body;
 
     const user = await loadUserWithCollections(req.user.userId);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -194,22 +191,35 @@ router.put('/user/collections/:id', authenticateToken, async (req, res) => {
     if (colIdx === -1) return res.status(404).json({ error: 'Collection not found' });
     const col = user.collections[colIdx];
     const isDefaultCollection = DEFAULT_COLLECTION_NAMES.includes(col.name);
-    if (isDefaultCollection && name !== col.name) {
-      return res.status(400).json({ error: 'Default collection names cannot be changed' });
+
+    const targetName = name || col.name;
+    if (name) {
+      if (name.length < 1 || name.length > COLLECTION_NAME_MAX_LENGTH)
+        return res.status(400).json({ error: `Collection name must be between 1 and ${COLLECTION_NAME_MAX_LENGTH} characters` });
+      if (isDefaultCollection && name !== col.name) {
+        return res.status(400).json({ error: 'Default collection names cannot be changed' });
+      }
+      if (name !== col.name && user.collections.find(c => c.name.toLowerCase() === name.toLowerCase() && (c._id || c.name) !== collectionId))
+        return res.status(409).json({ error: 'Collection with this name already exists' });
     }
+
     if (col.isPublished === true && isPublic === false) {
       return res.status(400).json({ error: 'Unpublish this collection before making it private' });
     }
 
-    if (name !== col.name && user.collections.find(c => c.name.toLowerCase() === name.toLowerCase() && (c._id || c.name) !== collectionId))
-      return res.status(409).json({ error: 'Collection with this name already exists' });
-
     const setData = {
-      'collections.$.name': isDefaultCollection ? col.name : name,
+      'collections.$.name': isDefaultCollection ? col.name : targetName,
       'collections.$.isPublic': isPublic !== undefined ? isPublic : col.isPublic,
       'collections.$.description': description !== undefined ? description : col.description,
       'collections.$.updatedAt': new Date()
     };
+    if (banner !== undefined) {
+      setData['collections.$.banner'] = banner;
+    }
+    if (Array.isArray(movies)) {
+      setData['collections.$.movies'] = movies;
+      setData['collections.$.movieCount'] = movies.length;
+    }
 
     // Try by _id first, then by name
     let result = await getDb().collection('users').updateOne(
@@ -222,7 +232,7 @@ router.put('/user/collections/:id', authenticateToken, async (req, res) => {
         { $set: setData, $inc: { collectionVersion: 1 } }
       );
     }
-    if (result.modifiedCount === 0)
+    if (result.matchedCount === 0)
       return res.status(500).json({ error: 'Failed to update collection in database' });
 
     const snapshot = await snapshotCollections(req.user.userId);
@@ -232,7 +242,17 @@ router.put('/user/collections/:id', authenticateToken, async (req, res) => {
       message: `Collection "${setData['collections.$.name']}" updated successfully!`,
       snapshot,
       stale,
-      extra: { ...col, _id: col._id || col.name, name: setData['collections.$.name'], isPublic: setData['collections.$.isPublic'], description: setData['collections.$.description'], updatedAt: new Date() }
+      extra: {
+        ...col,
+        _id: col._id || col.name,
+        name: setData['collections.$.name'],
+        isPublic: setData['collections.$.isPublic'],
+        description: setData['collections.$.description'],
+        banner: banner !== undefined ? banner : col.banner,
+        movies: Array.isArray(movies) ? movies : col.movies,
+        movieCount: Array.isArray(movies) ? movies.length : (col.movieCount || (col.movies ? col.movies.length : 0)),
+        updatedAt: new Date()
+      }
     }));
   } catch (err) {
     console.error('Error updating collection:', err);

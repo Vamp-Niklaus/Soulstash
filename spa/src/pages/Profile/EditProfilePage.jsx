@@ -18,21 +18,22 @@ export function EditProfilePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const auth = useAuthSession();
-  const [loading, setLoading] = useState(true);
+  const userFromSession = auth.user || {};
+  const [loading, setLoading] = useState(!userFromSession.username);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [draft, setDraft] = useState({
-    username: '',
-    firstName: '',
-    lastName: '',
-    dateOfBirth: '',
-    bio: '',
-    instagramHandle: '',
-    xHandle: '',
-    youtubeHandle: ''
-  });
-  const [avatarPreview, setAvatarPreview] = useState(FALLBACK_AVATAR);
-  const [avatarUrl, setAvatarUrl] = useState('');
+  const [draft, setDraft] = useState(() => ({
+    username: userFromSession.username || '',
+    firstName: userFromSession.firstName || '',
+    lastName: userFromSession.lastName || '',
+    dateOfBirth: userFromSession.dateOfBirth || '',
+    bio: userFromSession.bio || '',
+    instagramHandle: userFromSession.instagramHandle || '',
+    xHandle: userFromSession.xHandle || '',
+    youtubeHandle: userFromSession.youtubeHandle || ''
+  }));
+  const [avatarPreview, setAvatarPreview] = useState(userFromSession.avatar || FALLBACK_AVATAR);
+  const [avatarUrl, setAvatarUrl] = useState(userFromSession.avatar || '');
   const [avatarSearchOpen, setAvatarSearchOpen] = useState(false);
   const formRef = useRef(null);
 
@@ -59,17 +60,20 @@ export function EditProfilePage() {
         }
         if (!cancelled) {
           const userObj = payload.user || payload;
-          setDraft({
-            username: userObj.username || '',
-            firstName: userObj.firstName || '',
-            lastName: userObj.lastName || '',
-            dateOfBirth: userObj.dateOfBirth || '',
-            bio: userObj.bio || '',
-            instagramHandle: userObj.instagramHandle || '',
-            xHandle: userObj.xHandle || '',
-            youtubeHandle: userObj.youtubeHandle || ''
-          });
-          setAvatarPreview(userObj.avatar || FALLBACK_AVATAR);
+          setDraft((prev) => ({
+            username: userObj.username || prev.username,
+            firstName: userObj.firstName || prev.firstName,
+            lastName: userObj.lastName || prev.lastName,
+            dateOfBirth: userObj.dateOfBirth || prev.dateOfBirth,
+            bio: userObj.bio || prev.bio,
+            instagramHandle: userObj.instagramHandle || prev.instagramHandle,
+            xHandle: userObj.xHandle || prev.xHandle,
+            youtubeHandle: userObj.youtubeHandle || prev.youtubeHandle
+          }));
+          if (userObj.avatar) {
+            setAvatarPreview(userObj.avatar);
+            setAvatarUrl((curr) => curr || userObj.avatar);
+          }
         }
       })
       .catch((fetchError) => {
@@ -112,11 +116,18 @@ export function EditProfilePage() {
       }
 
       const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-      localStorage.setItem('user', JSON.stringify({ ...currentUser, ...data }));
+      const updatedUser = {
+        ...currentUser,
+        ...data,
+        ...(avatarUrl ? { avatar: avatarUrl } : {})
+      };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
 
       toast('Profile updated successfully');
       emitAuthChange();
       queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['profile-session'] });
+      queryClient.invalidateQueries({ queryKey: ['user'] });
       
       // Delay navigation slightly so user sees the success toast
       setTimeout(() => {
@@ -161,37 +172,60 @@ export function EditProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent pb-20 pt-24 md:pt-32">
-      <section className="mx-auto max-w-3xl px-6">
-        <h1 className="mb-8 text-3xl font-bold text-white">Edit Profile</h1>
-        <p className="mt-2 text-sm text-[#9f9f9f]">Update your public details and social links without leaving the app.</p>
+    <div className="min-h-screen bg-transparent pb-16 pt-4 sm:pt-6 md:pt-8">
+      <section className="mx-auto max-w-3xl px-4 sm:px-6">
+        <div className="flex items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Edit Profile</h1>
+            <p className="mt-1 text-xs sm:text-sm text-[#9f9f9f]">Update your public details and social links without leaving the app.</p>
+          </div>
+          <button
+            type="submit"
+            form="edit-profile-form"
+            disabled={saving}
+            className="shrink-0 rounded-full bg-white px-5 py-2 sm:px-6 sm:py-2.5 text-xs sm:text-sm font-semibold text-black transition-colors hover:bg-[#e5e5e5] disabled:opacity-60 shadow-md flex items-center gap-2 cursor-pointer"
+          >
+            {saving && <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-black border-t-transparent" />}
+            <span>{saving ? 'Saving...' : 'Save Changes'}</span>
+          </button>
+        </div>
         <form 
+          id="edit-profile-form"
           ref={formRef}
           onSubmit={handleSave} 
-          className="mt-8 space-y-7" 
+          className="mt-6 space-y-7" 
           data-tv-ignore="true"
           onKeyDown={handleFormKeyDown}
         >
           <div className="flex flex-col sm:flex-row items-center gap-6">
-            <button
-              type="button"
-              onClick={() => setAvatarSearchOpen(true)}
-              className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-[#64FFDA]"
-            >
-              <img
-                src={avatarPreview}
-                alt="Profile avatar"
-                className="h-full w-full object-cover object-top"
-                onError={(event) => {
-                  event.currentTarget.src = FALLBACK_AVATAR;
-                }}
-              />
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} className="text-white">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setAvatarSearchOpen(true)}
+                className="group relative h-24 w-24 cursor-pointer overflow-hidden rounded-full bg-white/[0.06] ring-1 ring-white/10 hover:ring-white/30 focus:outline-none focus:ring-2 focus:ring-[#64FFDA] transition-all"
+                title="Change profile photo"
+              >
+                <img
+                  src={avatarPreview}
+                  alt="Profile avatar"
+                  className="h-full w-full object-cover object-top"
+                  onError={(event) => {
+                    event.currentTarget.src = FALLBACK_AVATAR;
+                  }}
+                />
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <i className="fas fa-pencil-alt text-white text-lg"></i>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAvatarSearchOpen(true)}
+                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#1F1F1F] border border-white/20 text-white/90 shadow-md hover:bg-white/20 transition-colors cursor-pointer"
+                title="Change profile photo"
+              >
+                <i className="fas fa-pencil-alt text-xs"></i>
+              </button>
+            </div>
             <div>
               <h3 className="text-white font-medium">Profile photo</h3>
               <p className="mt-1 text-sm text-[#8f8f8f]">Search for a character to set as your avatar.</p>

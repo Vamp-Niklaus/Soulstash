@@ -455,7 +455,7 @@ export function CollectionDetailPane({
 
           try {
             const collectionId = collection._id || collection.name;
-            const payload = { banner: url };
+            const payload = { name: collection.name, banner: url };
             if (updatedMovies) {
               payload.movies = updatedMovies;
             }

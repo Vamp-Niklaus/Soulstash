@@ -226,6 +226,8 @@ router.post('/update-profile', authenticateToken, upload.single('avatar'), async
     };
     if (req.file) {
       updateData.avatar = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    } else if (formData.avatarUrl || formData.avatar) {
+      updateData.avatar = formData.avatarUrl || formData.avatar;
     }
     const result = await getDb().collection('users').updateOne(
       { _id: new ObjectId(userId) },
