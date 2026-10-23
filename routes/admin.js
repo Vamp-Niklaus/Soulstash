@@ -1,3 +1,5 @@
+const multer = require('multer');
+const upload = multer({ limits: { fileSize: 5 * 1024 * 1024 } });
 const router = require('express').Router();
 const { ObjectId } = require('mongodb');
 const { getDb, SOURCE_CONFIGS_COLLECTION, MULTIMOVIES_CONFIG_DOC_ID } = require('../db');
@@ -94,6 +96,7 @@ router.get('/me', authenticateToken, ensureAdmin, async (req, res) => {
     res.json({
       admin: true,
       showAdult: Boolean(req.adminUser?.showAdult),
+      adminMode: Number(req.adminUser?.adminMode ?? (req.adminUser?.showAdult ? 1 : 0)),
       multimovies
     });
   } catch (error) {
@@ -105,15 +108,16 @@ router.get('/me', authenticateToken, ensureAdmin, async (req, res) => {
 // Admin-only: update adult content preference (self-only).
 router.post('/preferences', authenticateToken, ensureAdmin, async (req, res) => {
   try {
-    const { showAdult } = req.body || {};
+    const { showAdult, adminMode } = req.body || {};
     const nextValue = Boolean(showAdult);
+    const nextMode = Number.isInteger(Number(adminMode)) ? Number(adminMode) : (nextValue ? 1 : 0);
     await getDb()
       .collection('users')
       .updateOne(
         { _id: new ObjectId(req.user.userId) },
-        { $set: { showAdult: nextValue, updatedAt: new Date() } }
+        { $set: { showAdult: nextValue, adminMode: nextMode, updatedAt: new Date() } }
       );
-    res.json({ success: true, showAdult: nextValue });
+    res.json({ success: true, showAdult: nextValue, adminMode: nextMode });
   } catch (error) {
     console.error('Admin preferences error:', error);
     res.status(500).json({ error: 'Failed to update admin preferences' });
@@ -156,6 +160,172 @@ router.post('/multimovies', authenticateToken, ensureAdmin, async (req, res) => 
   } catch (error) {
     console.error('Admin multimovies config error:', error);
     res.status(500).json({ error: 'Failed to update Multimovies config' });
+  }
+});
+
+
+// POST /api/admin/trafficLogs
+router.post('/trafficLogs', async (req, res) => {
+  try {
+    const logs = req.body;
+    if (!Array.isArray(logs) || logs.length === 0) {
+      return res.json({ success: true });
+    }
+
+    const trafficColl = getDb().collection('TrafficLogs');
+    await trafficColl.createIndex({ createdAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }).catch(() => {});
+
+    let geoip = null;
+    try { geoip = require('geoip-lite'); } catch {}
+
+    const docs = logs.map((log) => {
+      const geo = geoip ? geoip.lookup(log.ip) : null;
+      return {
+        ...log,
+        country: geo ? geo.country : 'Unknown',
+        city: geo ? geo.city : 'Unknown',
+        ll: geo ? geo.ll : null,
+        createdAt: new Date()
+      };
+    });
+
+    if (docs.length > 0) {
+      await trafficColl.insertMany(docs);
+    }
+    res.json({ success: true, count: docs.length });
+  } catch (err) {
+    console.error('[Admin] postTrafficLogs error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /api/admin/trafficLogs/stats
+router.get('/trafficLogs/stats', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const trafficColl = getDb().collection('TrafficLogs');
+    const ipFilter = req.query.ip ? String(req.query.ip) : null;
+    const matchStage = ipFilter ? { $match: { ip: { $regex: ipFilter, $options: 'i' } } } : { $match: {} };
+
+    const totalRequests = await trafficColl.countDocuments(ipFilter ? { ip: { $regex: ipFilter, $options: 'i' } } : {});
+
+    const methods = await trafficColl.aggregate([
+      matchStage,
+      { $group: { _id: "$method", count: { $sum: 1 } } }
+    ]).toArray();
+    const requestTypes = methods.map((m) => ({ type: m._id || 'UNKNOWN', count: m.count }));
+
+    const locationsData = await trafficColl.aggregate([
+      matchStage,
+      { 
+        $group: { 
+          _id: "$ip", 
+          count: { $sum: 1 },
+          city: { $first: "$city" },
+          country: { $first: "$country" },
+          lastActive: { $max: "$createdAt" },
+          usernames: { $addToSet: "$username" }
+        } 
+      },
+      { $sort: { count: -1 } },
+      { $limit: 50 }
+    ]).toArray();
+    const locations = locationsData.map((loc) => {
+      const activeUsers = (loc.usernames || []).filter((u) => u && u !== 'anonymous');
+      return {
+        ip: loc._id || 'Unknown',
+        city: loc.city,
+        country: loc.country,
+        count: loc.count,
+        lastActive: loc.lastActive,
+        users: activeUsers.length > 0 ? activeUsers : null
+      };
+    });
+
+    const timeSeriesData = await trafficColl.aggregate([
+      matchStage,
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]).toArray();
+    const timeSeries = timeSeriesData.map((ts) => ({
+      time: ts._id,
+      count: ts.count
+    }));
+
+    res.json({
+      totalRequests,
+      requestTypes,
+      locations,
+      timeSeries
+    });
+  } catch (err) {
+    console.error('[Admin] getTrafficStats error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /api/admin/users/:username/profile
+router.get('/users/:username/profile', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const username = req.params.username;
+    const profileUser = await getDb().collection('users').findOne({ username }, { projection: { password: 0 } });
+    if (!profileUser) return res.status(404).json({ error: 'User not found' });
+
+    const followers = Array.isArray(profileUser.followers) ? profileUser.followers : [];
+    const following = Array.isArray(profileUser.following) ? profileUser.following : [];
+
+    const userData = {
+      ...profileUser,
+      followersCount: followers.length,
+      followingCount: following.length,
+      favoritePeoplePublic: profileUser.favoritePeoplePublic === true,
+      collections: profileUser.collections || [],
+      favoritePeople: Array.isArray(profileUser.favoritePeople) ? profileUser.favoritePeople : []
+    };
+
+    res.json({
+      user: userData,
+      isOwner: false,
+      isAdminView: true,
+      isFollowing: false,
+      isFollowedBy: false
+    });
+  } catch (err) {
+    console.error('[Admin] getUserProfile error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// POST /api/admin/users/:username/avatar
+router.post('/users/:username/avatar', authenticateToken, ensureAdmin, upload.single('avatar'), async (req, res) => {
+  try {
+    const { username } = req.params;
+    const targetUser = await getDb().collection('users').findOne({ username });
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+    let avatar = targetUser.avatar;
+    if (req.file?.buffer) {
+      const mimeType = req.file.mimetype || 'image/png';
+      avatar = `data:${mimeType};base64,${req.file.buffer.toString('base64')}`;
+    } else if (req.body.avatarUrl) {
+      avatar = req.body.avatarUrl;
+    }
+
+    await getDb().collection('users').updateOne(
+      { username },
+      { $set: { avatar, updatedAt: new Date() } }
+    );
+
+    res.json({ success: true, avatar });
+  } catch (err) {
+    console.error('[Admin] updateAvatar error:', err.message);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 

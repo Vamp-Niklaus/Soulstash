@@ -37,3 +37,6 @@ render.yaml
 .render.yml
 requirements.txt
 
+extra_files/
+New Text Document.txt
+spa/public/test.html

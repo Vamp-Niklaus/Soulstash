@@ -947,4 +947,56 @@ router.get('/collections/published', async (req, res) => {
   }
 });
 
+// POST /api/user/favorites/privacy
+router.post('/user/favorites/privacy', authenticateToken, async (req, res) => {
+  try {
+    const userId = new ObjectId(req.user.userId);
+    const isPublic = req.body?.isPublic === true;
+    const result = await getDb().collection('users').updateOne(
+      { _id: userId },
+      { $set: { favoritePeoplePublic: isPublic, updatedAt: new Date() } }
+    );
+    if (!result.matchedCount) return res.status(404).json({ error: 'User not found' });
+    res.json({ success: true, favoritePeoplePublic: isPublic });
+  } catch (err) {
+    console.error('Favorites privacy update error:', err);
+    res.status(500).json({ error: 'Failed to update favorites privacy' });
+  }
+});
+
+// GET /api/public-collection/:username/:collectionName
+router.get('/public-collection/:username/:collectionName', async (req, res) => {
+  const { username, collectionName } = req.params;
+  try {
+    const user = await getDb().collection('users').findOne({
+      username: { $regex: new RegExp('^' + username + '$', 'i') }
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const collection = (user.collections || []).find(
+      (c) => c.name.toLowerCase() === collectionName.toLowerCase() && c.isPublic
+    );
+    if (!collection) {
+      return res.status(404).json({ error: 'Collection not found or private' });
+    }
+
+    res.json({
+      collection: {
+        _id: collection._id,
+        name: collection.name,
+        description: collection.description || '',
+        isPublic: true,
+        isPublished: Boolean(collection.isPublished),
+        author: user.username,
+        authorAvatar: user.avatar || null,
+        movieCount: (collection.movies || []).length,
+        movies: collection.movies || []
+      }
+    });
+  } catch (err) {
+    console.error('Public collection error:', err);
+    res.status(500).json({ error: 'Failed to fetch public collection' });
+  }
+});
+
 module.exports = router;

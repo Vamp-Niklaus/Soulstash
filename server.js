@@ -79,8 +79,57 @@ app.use('/images',     require('express').static(path.join(__dirname, 'assets', 
 app.use('/js',         require('express').static(path.join(__dirname, 'spa', 'public', 'js')));
 app.use('/assets',     require('express').static(path.join(__dirname, 'spa', 'dist', 'assets'), { setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') }));
 
+// ── In-Memory Traffic Logging Middleware ───────────────────────────────────────
+let trafficLogBuffer = [];
+app.use((req, res, next) => {
+  if (req.path.startsWith('/images') || req.path.startsWith('/assets') || req.path.startsWith('/js')) {
+    return next();
+  }
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+  const userAgent = req.headers['user-agent'] || '';
+  let username = 'anonymous';
+  if (req.headers['x-user-name']) {
+    username = req.headers['x-user-name'];
+  } else if (req.headers.authorization) {
+    try {
+      const token = req.headers.authorization.split(' ')[1];
+      const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+      if (payload.username) username = payload.username;
+    } catch (e) {}
+  }
+  trafficLogBuffer.push({
+    ip: Array.isArray(ip) ? ip[0] : (typeof ip === 'string' ? ip.split(',')[0].trim() : ip),
+    path: req.path,
+    method: req.method,
+    username,
+    userAgent
+  });
+  next();
+});
+
+setInterval(async () => {
+  if (trafficLogBuffer.length > 0) {
+    const batch = [...trafficLogBuffer];
+    trafficLogBuffer = [];
+    try {
+      const client = getClient();
+      if (client) {
+        const trafficColl = client.db().collection('TrafficLogs');
+        const docs = batch.map((log) => ({
+          ...log,
+          createdAt: new Date()
+        }));
+        await trafficColl.insertMany(docs);
+      }
+    } catch (err) {
+      console.error('Failed to flush traffic logs:', err.message);
+    }
+  }
+}, 5000);
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',   require('./routes/auth'));
+app.use('/api/user',   require('./routes/auth'));
 app.use('/api',        require('./routes/content'));
 app.use('/api',        require('./routes/collections'));
 app.use('/api/admin',  require('./routes/admin'));

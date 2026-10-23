@@ -30,6 +30,15 @@ const DEFAULT_MULTIMOVIES_ROOT_URL = 'https://multimovies.fyi/';
 const refreshLocks = new Set();
 
 const DIRECT_SOURCES = [
+  { id: 'vidlink', label: 'VidLink', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidlink.pro/tv/${t}/${s || 1}/${e || 1}` : `https://vidlink.pro/movie/${t}` },
+  { id: 'vidrift', label: 'VidRift', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://embed.vidrift.net/embed/tv/${t}/${s || 1}/${e || 1}` : `https://embed.vidrift.net/embed/movie/${t}` },
+  { id: 'vidly', label: 'Vidly', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidly.pro/tv/${t}/${s || 1}/${e || 1}` : `https://vidly.pro/movie/${t}` },
+  { id: 'framextv', label: 'FrameXTV', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://framextv.cc/embed/tv/${t}/${s || 1}/${e || 1}` : `https://framextv.cc/embed/movie/${t}` },
+  { id: 'cineverse', label: 'Cineverse', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://rozgarlelo.modiplay.xyz/embed/tmdb/tv?id=${t}&s=${s || 1}&e=${e || 1}` : `https://rozgarlelo.modiplay.xyz/embed/tmdb/movie?id=${t}` },
+  { id: 'vidbolt', label: 'VidBolt', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidbolt.xyz/tv/${t}/${s || 1}/${e || 1}` : `https://vidbolt.xyz/movie/${t}` },
+  { id: 'filmu', label: 'Filmu', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://embed.filmu.in/tv/${t}/${s || 1}/${e || 1}` : `https://embed.filmu.in/movie/${t}` },
+  { id: 'vidout', label: 'VIDOUT', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidout.pages.dev/tv/${t}/s${s || 1}/e${e || 1}` : `https://vidout.pages.dev/movie/${t}` },
+  { id: 'nexus', label: 'Nexus', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://www.moviesnexus.fun/tv/${t}/${s || 1}/${e || 1}` : `https://www.moviesnexus.fun/movie/${t}?sv=multi-audio` },
   { id: 'videasy', label: 'VIDEASY', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://player.videasy.to/tv/${t}/${s || 1}/${e || 1}?color=F97316&overlay=true&nextEpisode=true&autoplayNextEpisode=true&episodeSelector=true` : `https://player.videasy.to/movie/${t}?color=F97316&overlay=true` },
   { id: 'vidfast', label: 'vidfast', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidfast.pro/tv/${t}/${s || 1}/${e || 1}?autoPlay=true&title=true&poster=true&theme=F97316&nextButton=true&autoNext=true` : `https://vidfast.pro/movie/${t}?autoPlay=true&title=true&poster=true&theme=F97316` }
 ];
@@ -134,6 +143,15 @@ function buildPlayerSourcePayload(record = {}, identity = null, isScraping = fal
     : null;
 
 
+  const knownKeys = new Set([...PREFERRED_SERVER_ORDER, 'youtube']);
+  const dynamicSources = Object.keys(record?.sources || {})
+    .filter((k) => !knownKeys.has(k))
+    .map((k) => {
+      const urls = sanitizeProviderUrls(record?.sources?.[k]);
+      return urls[0] ? { id: k, key: k, label: k, urls, url: urls[0], embeddable: true } : null;
+    })
+    .filter(Boolean);
+
   return {
     searchKey: record.searchKey || '',
     tmdbId,
@@ -145,7 +163,7 @@ function buildPlayerSourcePayload(record = {}, identity = null, isScraping = fal
     scraping: isScraping,
     notAvailable: Boolean(record.notAvailable),
     downloads: Array.isArray(record.downloads) ? record.downloads.filter(Boolean) : [],
-    sources: [...multimoviesSources, ...directSources, ...(youtubeSource ? [youtubeSource] : [])]
+    sources: [...multimoviesSources, ...directSources, ...(youtubeSource ? [youtubeSource] : []), ...dynamicSources]
   };
 
 }
@@ -1609,6 +1627,98 @@ function isIndianPerson(person) {
 }
 
 // GET /api/movies
+
+// ── Similar Content ─────────────────────────────────────────────────────────
+async function getSimilarContent(req, res, mediaType) {
+  try {
+    const { id } = req.params;
+    const initialPage = Number(req.query.page) || 1;
+    let results = [];
+    let currentPage = initialPage;
+    let totalPages = initialPage;
+    let data = null;
+
+    while (results.length < 10 && currentPage <= initialPage + 4) {
+      const tmdbPath = mediaType === 'movie'
+        ? `https://api.themoviedb.org/3/movie/${id}/similar?page=${currentPage}&language=en-US`
+        : `https://api.themoviedb.org/3/tv/${id}/similar?page=${currentPage}&language=en-US`;
+
+      try {
+        const resp = await tmdbFetch(tmdbPath, { method: 'GET', headers: tmdbHeaders() }, `Similar ${mediaType} ${id}`);
+        if (!resp.ok) {
+          if (resp.status === 404 && !data) {
+            return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+          }
+          break;
+        }
+        const pageData = await resp.json();
+        if (!data) data = pageData;
+        const pageResults = Array.isArray(pageData?.results) ? pageData.results : [];
+        totalPages = pageData?.total_pages || currentPage;
+
+        const filtered = pageResults.filter(item => {
+          if (item?.adult === true) return false;
+          const isIndian = item?.origin_country?.includes('IN') || ['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa'].includes(item?.original_language);
+          const minVotes = isIndian ? 5 : 300;
+          return Number(item?.vote_count || 0) >= minVotes;
+        });
+        results.push(...filtered);
+
+        if (currentPage >= totalPages) break;
+        currentPage++;
+      } catch (err) {
+        if (err.message && err.message.includes('404')) {
+          if (!data) return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+          break;
+        }
+        throw err;
+      }
+    }
+
+    if (data) {
+      res.json({ ...data, results, page: initialPage });
+    } else {
+      res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+    }
+  } catch (err) {
+    console.error(`getSimilar error: ${err.message}`);
+    res.status(500).json({ error: 'Failed to load similar content' });
+  }
+}
+
+router.get('/movies/:id/similar', (req, res) => getSimilarContent(req, res, 'movie'));
+router.get('/series/:id/similar', (req, res) => getSimilarContent(req, res, 'tv'));
+
+router.get('/tmdb-collection/:id', async (req, res) => {
+  try {
+    const resp = await tmdbFetch(`https://api.themoviedb.org/3/collection/${req.params.id}?language=en-US`, { method: 'GET', headers: tmdbHeaders() }, `Collection ${req.params.id}`);
+    if (!resp.ok) return res.status(resp.status).json({ error: 'Collection not found' });
+    res.json(await resp.json());
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch collection', details: err.message });
+  }
+});
+
+router.get('/person/:id/images', async (req, res) => {
+  try {
+    const resp = await tmdbFetch(`https://api.themoviedb.org/3/person/${req.params.id}/images`, { method: 'GET', headers: tmdbHeaders() }, `Person Images ${req.params.id}`);
+    if (!resp.ok) return res.status(resp.status).json({ error: 'Images not found' });
+    res.json(await resp.json());
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch person images', details: err.message });
+  }
+});
+
+router.get('/imdb/person/:personId/filmography', async (req, res) => {
+  try {
+    const { scrapeImdbFilmography } = require('../util/imdbScraper');
+    const filmography = await scrapeImdbFilmography(req.params.personId);
+    res.json(filmography);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to scrape IMDB filmography', details: err.message });
+  }
+});
+
 router.get('/movies', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -1969,40 +2079,212 @@ router.get('/person/:id', async (req, res) => {
 // GET /api/person/:id/credits
 router.get('/person/:id/credits', async (req, res) => {
   try {
-    console.log(`[API] /api/person/${req.params.id}/credits hit`);
+    const personId = req.params.id;
+    console.log(`[API] /api/person/${personId}/credits hit`);
     const includeAdult = await resolveIncludeAdult(req);
-    const resp = await tmdbFetch(
-      `https://api.themoviedb.org/3/person/${req.params.id}/combined_credits?language=en-US`,
-      { method: 'GET', headers: tmdbHeaders() },
-      `Person Credits ${req.params.id}`
-    );
-    console.log(`[API] /api/person/${req.params.id}/credits TMDB status=${resp.status}`);
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      console.error(`[API] /api/person/${req.params.id}/credits TMDB error body=${body.slice(0, 300)}`);
+
+    // Fetch person detail (for imdb_id) + combined credits in parallel
+    const [personResp, creditsResp] = await Promise.all([
+      tmdbFetch(`https://api.themoviedb.org/3/person/${personId}?language=en-US`, { method: 'GET', headers: tmdbHeaders() }, `Person Detail ${personId}`).catch(() => null),
+      tmdbFetch(`https://api.themoviedb.org/3/person/${personId}/combined_credits?language=en-US`, { method: 'GET', headers: tmdbHeaders() }, `Person Credits ${personId}`)
+    ]);
+
+    if (!creditsResp || !creditsResp.ok) {
       return res.status(404).json({ error: 'Person credits not found' });
     }
-    const payload = await resp.json();
-    payload.cast = await attachCachedRatings(payload.cast);
-    payload.crew = await attachCachedRatings(payload.crew);
 
-    if (!includeAdult) {
-      const filterCreditsForPublic = (items = []) =>
-        (Array.isArray(items) ? items : []).filter((item) => {
-          if (item?.media_type !== 'movie' && item?.media_type !== 'tv') {
-            return true;
+    const personDetail = personResp?.ok ? await personResp.json() : {};
+    const imdbPersonId = String(personDetail?.imdb_id || '').trim();
+    const payload = await creditsResp.json();
+
+    const filterCredits = (items = []) =>
+      (Array.isArray(items) ? items : []).filter((item) => {
+        if (item?.media_type !== 'movie' && item?.media_type !== 'tv') return false;
+        if (!includeAdult && item?.adult === true) return false;
+        const votes = Number(item?.vote_count || 0);
+        if (votes <= 0 && !item?.imdb_id) return false;
+        const releaseDate = String(item?.release_date || item?.first_air_date || '').trim();
+        return Boolean(releaseDate);
+      });
+
+    const cast = filterCredits(payload.cast);
+    const crew = filterCredits(payload.crew);
+
+    const wantsNdjson = req.headers['content-type']?.includes('ndjson') || req.headers.accept?.includes('ndjson') || req.query.stream === '1' || true;
+
+    if (wantsNdjson) {
+      res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders?.();
+
+      let clientClosed = false;
+      req.on('close', () => { clientClosed = true; });
+
+      const write = (obj) => {
+        if (!clientClosed && !res.writableEnded) res.write(JSON.stringify(obj) + '\n');
+      };
+
+      // 1. Send initial credits immediately for instant UI render
+      write({ type: 'credits', cast, crew });
+
+      const eligible = [...cast, ...crew].filter((item) => item?.id && (item?.media_type === 'movie' || item?.media_type === 'tv'));
+      const seen = new Set();
+      const unique = eligible.filter((item) => {
+        const key = `${item.media_type === 'tv' ? 'Series' : 'Movie'}:${Number(item.id)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (!unique.length) {
+        write({ type: 'done' });
+        return res.end();
+      }
+
+      // 2. Start IMDB scrape in-process directly using Playwright (NO microservice HTTP latency!)
+      const imdbScrapePromise = imdbPersonId
+        ? (async () => {
+            try {
+              const { scrapeImdbFilmography } = require('../util/imdbScraper');
+              const filmography = await scrapeImdbFilmography(imdbPersonId);
+              const imdbMap = new Map();
+              if (Array.isArray(filmography)) {
+                filmography.forEach((entry) => {
+                  const normTitle = String(entry.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                  const year = Number(entry.year) || 0;
+                  if (normTitle && year) {
+                    imdbMap.set(`${normTitle}_${year}`, entry);
+                    imdbMap.set(`${normTitle}_${year - 1}`, entry);
+                    imdbMap.set(`${normTitle}_${year + 1}`, entry);
+                  }
+                });
+              }
+              return imdbMap;
+            } catch (err) {
+              console.warn('[PersonCredits] IMDB filmography scrape error:', err.message);
+              return new Map();
+            }
+          })()
+        : Promise.resolve(new Map());
+
+      // 3. Check DB ratings cache
+      const db = getDb();
+      const tmdbIds = unique.map((item) => Number(item.id));
+      const cachedRecords = await db.collection(RATINGS_COLLECTION).find({ tmdbID: { $in: tmdbIds } }).toArray().catch(() => []);
+      const cacheMap = new Map();
+      for (const record of cachedRecords) {
+        cacheMap.set(`${record.mediaType}:${record.tmdbID}`, record);
+      }
+
+      const cachedResults = [];
+      const needsFetch = [];
+      for (const item of unique) {
+        const key = `${item.media_type === 'tv' ? 'Series' : 'Movie'}:${Number(item.id)}`;
+        const record = cacheMap.get(key);
+        if (record && record.imdb_rating && record.imdb_rating > 0 && record.imdb_rating !== 10.0) {
+          cachedResults.push({
+            tmdbID: Number(item.id),
+            mediaType: item.media_type === 'tv' ? 'Series' : 'Movie',
+            imdb_id: String(record.imdbID || item.imdb_id || '').trim(),
+            imdb_rating: record.imdb_rating,
+            vote_average: record.vote_average ?? item.vote_average ?? null,
+            rating_lookup_attempted: true
+          });
+        } else {
+          needsFetch.push(item);
+        }
+      }
+
+      if (cachedResults.length) {
+        write({ type: 'ratings', items: cachedResults });
+      }
+
+      // 4. Await IMDB filmography scrape & match
+      const imdbMap = await imdbScrapePromise;
+      const imdbMatched = [];
+      const stillNeedsFetch = [];
+
+      for (const item of needsFetch) {
+        const title = item.title || item.name || '';
+        const normTitle = String(title).toLowerCase().replace(/[^a-z0-9]/g, '');
+        const year = Number(String(item.release_date || item.first_air_date || '').slice(0, 4)) || 0;
+        const match = imdbMap.get(`${normTitle}_${year}`);
+        if (match && match.imdb_rating) {
+          imdbMatched.push({ item, match });
+        } else {
+          stillNeedsFetch.push(item);
+        }
+      }
+
+      if (imdbMatched.length) {
+        const imdbResults = [];
+        for (const { item, match } of imdbMatched) {
+          const tmdbID = Number(item.id);
+          const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+          const imdbRating = Number(match.imdb_rating) || null;
+          const voteAverage = Number(item.vote_average) || null;
+          const imdbId = match.imdb_id || '';
+          const doc = {
+            tmdbID,
+            mediaType,
+            imdbID: imdbId,
+            imdb_rating: imdbRating || 10.0,
+            vote_average: voteAverage,
+            lookup_attempted: true,
+            source: 'imdb_scrape',
+            updatedAt: new Date()
+          };
+          db.collection(RATINGS_COLLECTION).updateOne({ tmdbID, mediaType }, { $set: doc, $setOnInsert: { createdAt: new Date() } }, { upsert: true }).catch(() => {});
+          imdbResults.push({ tmdbID, mediaType, imdb_id: imdbId, imdb_rating: imdbRating, vote_average: voteAverage, rating_lookup_attempted: true });
+        }
+        write({ type: 'ratings', items: imdbResults });
+      }
+
+      // 5. Fallback for remaining using OMDB in batches of 6
+      if (stillNeedsFetch.length) {
+        const batchSize = 6;
+        for (let i = 0; i < stillNeedsFetch.length && !clientClosed; i += batchSize) {
+          const batch = stillNeedsFetch.slice(i, i + batchSize);
+          const batchResults = await Promise.all(
+            batch.map(async (item) => {
+              const tmdbID = Number(item.id);
+              const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+              try {
+                const resolved = await resolveImdbRating(tmdbID, mediaType).catch(() => null);
+                return resolved ? {
+                  tmdbID,
+                  mediaType,
+                  imdb_id: resolved.imdbID || '',
+                  imdb_rating: resolved.imdb_rating && resolved.imdb_rating !== 10.0 ? resolved.imdb_rating : null,
+                  vote_average: resolved.vote_average ?? null,
+                  rating_lookup_attempted: true
+                } : null;
+              } catch {
+                return null;
+              }
+            })
+          );
+          const validResults = batchResults.filter(Boolean);
+          if (validResults.length && !clientClosed) {
+            write({ type: 'ratings', items: validResults });
           }
+        }
+      }
 
-          return item?.adult !== true;
-        });
-
-      payload.cast = filterCreditsForPublic(payload.cast);
-      payload.crew = filterCreditsForPublic(payload.crew);
+      write({ type: 'done' });
+      return res.end();
+    } else {
+      payload.cast = await attachCachedRatings(cast);
+      payload.crew = await attachCachedRatings(crew);
+      res.json(payload);
     }
-    res.json(payload);
   } catch (err) {
     console.error('Error fetching person credits:', err);
-    res.status(500).json({ error: 'Failed to fetch person credits', details: err.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to fetch person credits', details: err.message });
+    } else {
+      res.end();
+    }
   }
 });
 
@@ -2756,37 +3038,70 @@ router.post('/ratings/imdb/enrich', async (req, res) => {
       const tmdbID = Number(rawItem?.tmdbID || rawItem?.contentId || rawItem?.id || 0);
       const mediaType = normalizeMediaType(rawItem?.mediaType || rawItem?.media_type || rawItem?.type);
       if (!tmdbID) continue;
-      items.push({ tmdbID, mediaType });
+      items.push({ tmdbID, mediaType, imdb_id: rawItem?.imdb_id, vote_average: rawItem?.vote_average });
     }
 
     if (!items.length) {
       return res.status(400).json({ error: 'No valid items to enrich' });
     }
 
-    console.log(`[Enrich] batch START count=${items.length} items:`, items.map(i => `${i.mediaType}:${i.tmdbID}`).join(', '));
+    // Always stream back NDJSON so frontend gets items one-by-one
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
 
-    const results = [];
-    for (const item of items) {
-      const rating = await resolveImdbRating(item.tmdbID, item.mediaType).catch((error) => {
-        console.warn(`[Enrich] resolveImdbRating failed tmdbID=${item.tmdbID} mediaType=${item.mediaType}:`, error.message);
-        return {
-          tmdbID: item.tmdbID,
-          mediaType: item.mediaType,
-          imdbID: '',
-          imdb_rating: null,
-          vote_average: null,
-          source: 'error'
-        };
-      });
-      console.log(`[Enrich]   result tmdbID=${rating.tmdbID} imdbID="${rating.imdbID}" imdb_rating=${rating.imdb_rating} vote_average=${rating.vote_average} source=${rating.source}`);
-      results.push(rating);
-    }
+    let clientClosed = false;
+    req.on('close', () => { clientClosed = true; });
 
-    console.log(`[Enrich] batch DONE count=${results.length}`);
-    res.json({ items: results });
+    const writeEvent = (payload) => {
+      if (!clientClosed && !res.writableEnded) res.write(JSON.stringify(payload) + '\n');
+    };
+
+    const CONCURRENCY = 6;
+    let nextIndex = 0;
+    let resolvedCount = 0;
+
+    const worker = async () => {
+      while (!clientClosed) {
+        const index = nextIndex++;
+        if (index >= items.length) return;
+        const item = items[index];
+        try {
+          const rating = await resolveImdbRating(item.tmdbID, item.mediaType).catch(() => null);
+          resolvedCount++;
+          if (rating && !clientClosed) {
+            writeEvent({
+              type: 'item',
+              item: {
+                tmdbID: rating.tmdbID,
+                mediaType: rating.mediaType,
+                imdbID: rating.imdbID || '',
+                imdb_rating: rating.imdb_rating && rating.imdb_rating !== 10.0 ? rating.imdb_rating : null,
+                vote_average: rating.vote_average ?? null,
+                lookup_attempted: true
+              },
+              resolved: resolvedCount,
+              total: items.length
+            });
+          }
+        } catch (err) {
+          resolvedCount++;
+        }
+      }
+    };
+
+    const workers = Array.from({ length: Math.min(CONCURRENCY, items.length) }, () => worker());
+    await Promise.all(workers);
+
+    writeEvent({ type: 'done', total: items.length, resolved: resolvedCount });
+    res.end();
   } catch (err) {
     console.error('Error enriching IMDB ratings:', err);
-    res.status(500).json({ error: 'Failed to enrich IMDB ratings' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to enrich IMDB ratings' });
+    } else {
+      res.end();
+    }
   }
 });
 
