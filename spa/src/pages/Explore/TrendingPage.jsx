@@ -1,11 +1,15 @@
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
+import { useAuthSession } from '../../hooks/index.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 
 export function TrendingPage() {
+  const { user } = useAuthSession();
+  const adminMode = Number(user?.adminMode ?? (user?.showAdult ? 1 : 0));
+
   const fetchTrending = async ({ pageParam = 1 }) => {
     return apiFetch(`/api/trending?limit=36&page=${pageParam}`);
   };
@@ -19,10 +23,11 @@ export function TrendingPage() {
     status,
     refetch
   } = useInfiniteQuery({
-    queryKey: ['trending'],
+    queryKey: ['trending', adminMode],
     queryFn: fetchTrending,
     getNextPageParam: (lastPage, pages) => {
-      const totalPages = lastPage?.pagination?.pages ?? 1;
+      if (!lastPage?.movies || lastPage.movies.length === 0) return undefined;
+      const totalPages = lastPage?.pagination?.pages ?? 500;
       if (pages.length < totalPages) {
         return pages.length + 1;
       }
@@ -34,31 +39,43 @@ export function TrendingPage() {
     document.title = 'Trending Now | Soulstash';
   }, []);
 
-  const items = data ? data.pages.flatMap((page) => Array.isArray(page?.movies) ? page.movies : (Array.isArray(page) ? page : [])) : [];
-
-  // Sentinel ref — fires once when sentinel enters viewport
-  const observerRef = useRef(null);
-  const sentinelRef = useCallback((node) => {
-    // Always disconnect old observer first
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
+  const items = useMemo(() => {
+    if (!data) return [];
+    const seen = new Set();
+    const deduped = [];
+    for (const page of data.pages) {
+      const list = Array.isArray(page?.movies) ? page.movies : (Array.isArray(page) ? page : []);
+      for (const item of list) {
+        const itemId = Number(item?.id || item?.movieId || item?.seriesId);
+        if (itemId && !seen.has(itemId)) {
+          seen.add(itemId);
+          deduped.push(item);
+        }
+      }
     }
-    if (!node || !hasNextPage || isFetchingNextPage || status === 'pending') return;
+    return deduped;
+  }, [data]);
 
-    observerRef.current = new IntersectionObserver(
+  // Sentinel observer — attaches cleanly via useEffect every time page state updates
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          // Disconnect immediately — only fire once per scroll-reach
-          observerRef.current?.disconnect();
-          observerRef.current = null;
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
           fetchNextPage();
         }
       },
-      { rootMargin: '300px' }
+      { rootMargin: '800px' }
     );
-    observerRef.current.observe(node);
-  }, [hasNextPage, isFetchingNextPage, status, fetchNextPage]);
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, items.length]);
 
   if (status === 'pending') {
     return (
@@ -95,7 +112,7 @@ export function TrendingPage() {
 
           {/* Sentinel element — observed to trigger next page */}
           {hasNextPage && (
-            <div ref={sentinelRef} className="load-more-zone">
+            <div ref={sentinelRef} className="load-more-zone min-h-[40px] flex items-center justify-center py-4">
               {isFetchingNextPage && (
                 <div className="load-more-indicator" role="status" aria-live="polite">
                   <span className="load-more-indicator__spinner" aria-hidden="true" />

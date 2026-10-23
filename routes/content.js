@@ -1533,7 +1533,11 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     while (finalItems.length < targetCount && currentPage <= page + 4) {
       let movieUrl = '';
       if (genre === 'bollywood') {
-        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+        if (adminMode === 2) {
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_original_language=hi&sort_by=popularity.desc`;
+        } else {
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+        }
       } else {
         movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&vote_count.gte=5${adultKeywords}&sort_by=popularity.desc`;
         if (genre) movieUrl += `&with_genres=${genre}`;
@@ -1566,7 +1570,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       currentPage++;
     }
 
-    if (adminMode === 2 && finalItems.length < 14 && genre && genre !== 'bollywood') {
+    if (adminMode === 2 && finalItems.length < 14) {
       const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement Bg').catch(() => null);
       if (supResp?.ok) {
@@ -1888,7 +1892,11 @@ router.get('/movies', async (req, res) => {
     while (finalItems.length < targetCount && currentPage <= page + 4) {
       let movieUrl;
       if (genre === 'bollywood') {
-        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+        if (adminMode === 2) {
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_original_language=hi&sort_by=popularity.desc`;
+        } else {
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+        }
       } else {
         movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&vote_count.gte=5${adultKeywords}${sortParam}`;
         if (genre) movieUrl += `&with_genres=${genre}`;
@@ -1923,7 +1931,7 @@ router.get('/movies', async (req, res) => {
       currentPage++;
     }
 
-    if (adminMode === 2 && finalItems.length < 14 && genre && genre !== 'bollywood') {
+    if (adminMode === 2 && finalItems.length < 14) {
       const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement').catch(() => null);
       if (supResp?.ok) {
@@ -2444,7 +2452,7 @@ router.get('/trending', trendingLimiter, async (req, res) => {
 
     if (page === 1) {
       if (adminMode === 2) {
-        if (trendingCacheAdult && trendingCacheAdult.length) {
+        if (trendingCacheAdult && trendingCacheAdult.length >= limit) {
           const isStale = now - trendingCacheAdultTime > CACHE_DURATION;
           if (isStale && !global.trendingAdultRevalidating) {
             global.trendingAdultRevalidating = true;
@@ -2453,13 +2461,13 @@ router.get('/trending', trendingLimiter, async (req, res) => {
           return res.json({ movies: trendingCacheAdult.slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
         }
         const mongoData = await getMongoCache('trending_mode_2_page_1');
-        if (mongoData && mongoData.length) {
+        if (mongoData && mongoData.length >= limit) {
           trendingCacheAdult = mongoData;
           trendingCacheAdultTime = now;
           return res.json({ movies: mongoData.slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
         }
       } else {
-        if (trendingCache && trendingCache.length) {
+        if (trendingCache && trendingCache.length >= limit) {
           const isStale = now - trendingCacheTime > CACHE_DURATION;
           if (isStale && !global.trendingRevalidating) {
             global.trendingRevalidating = true;
@@ -2468,7 +2476,7 @@ router.get('/trending', trendingLimiter, async (req, res) => {
           return res.json({ movies: filterTrending(trendingCache).slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
         }
         const mongoData = await getMongoCache('trending_mode_0_page_1');
-        if (mongoData && mongoData.length) {
+        if (mongoData && mongoData.length >= limit) {
           trendingCache = mongoData;
           trendingCacheTime = now;
           return res.json({ movies: filterTrending(mongoData).slice(0, limit), pagination: { page: 1, limit, pages: 500 } });
@@ -2709,7 +2717,7 @@ async function buildHomePayload(adminMode = 0) {
         let movieUrl;
         if (adminMode === 2) {
           if (genre.id === 'bollywood') {
-            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true&with_original_language=hi&sort_by=popularity.desc`;
+            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_original_language=hi&sort_by=popularity.desc`;
           } else {
             movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_genres=${genre.id}&sort_by=popularity.desc`;
           }
@@ -2750,7 +2758,7 @@ async function buildHomePayload(adminMode = 0) {
         pageNum++;
       }
 
-      if (adminMode === 2 && finalItems.length < 14 && genre.id !== 'bollywood') {
+      if (adminMode === 2 && finalItems.length < 14) {
         const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
         const supResp = await tmdbFetch(supUrl, opts, `Home Adult Sup ${genre.name}`).catch(() => null);
         if (supResp?.ok) {

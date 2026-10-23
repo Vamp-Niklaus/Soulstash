@@ -1,13 +1,15 @@
 import { apiFetch } from '../../api/client.js';
-import React, { useRef, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { useAuthSession } from '../../hooks/index.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 import { preloadImages } from '../../utils/preload.js';
 
 const TMDB_GENRE_NAMES = {
+  bollywood: 'Latest in India',
   28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime',
   99: 'Documentary', 18: 'Drama', 10751: 'Family', 14: 'Fantasy', 36: 'History',
   27: 'Horror', 10402: 'Music', 9648: 'Mystery', 10749: 'Romance', 878: 'Science Fiction',
@@ -16,13 +18,15 @@ const TMDB_GENRE_NAMES = {
 
 export function GenrePage() {
   const { id, name } = useParams();
+  const { user } = useAuthSession();
+  const adminMode = Number(user?.adminMode ?? (user?.showAdult ? 1 : 0));
 
   const genreId = id;
   const genreName = decodeURIComponent(name || '');
   const canonicalGenreName = genreName || TMDB_GENRE_NAMES[genreId];
-  const displayGenreName = genreName || decodeURIComponent(genreId || '')
+  const displayGenreName = genreName || (TMDB_GENRE_NAMES[genreId] || decodeURIComponent(genreId || '')
     .replace(/[-_]+/g, ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    .replace(/\b\w/g, (letter) => letter.toUpperCase()));
 
   useEffect(() => {
     document.title = `${displayGenreName} | Soulstash`;
@@ -38,10 +42,11 @@ export function GenrePage() {
     isFetchingNextPage,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ['genre', genreId],
+    queryKey: ['genre', genreId, adminMode],
     queryFn: ({ pageParam = 1 }) => apiFetch(`/api/movies?genre=${genreId}&limit=20&page=${pageParam}`),
     getNextPageParam: (lastPage, allPages) => {
-      const totalPages = lastPage?.pagination?.pages ?? 1;
+      if (!lastPage?.movies || lastPage.movies.length === 0) return undefined;
+      const totalPages = lastPage?.pagination?.pages ?? 500;
       return allPages.length < totalPages ? allPages.length + 1 : undefined;
     },
   });
@@ -53,9 +58,9 @@ export function GenrePage() {
     for (const page of data.pages) {
       const list = Array.isArray(page?.movies) ? page.movies : [];
       for (const item of list) {
-        const id = Number(item?.id || item?.movieId || item?.seriesId);
-        if (id && !seen.has(id)) {
-          seen.add(id);
+        const itemId = Number(item?.id || item?.movieId || item?.seriesId);
+        if (itemId && !seen.has(itemId)) {
+          seen.add(itemId);
           deduped.push(item);
         }
       }
@@ -66,35 +71,31 @@ export function GenrePage() {
   // Aggressively preload images as soon as new items are added to the list
   useEffect(() => {
     if (items.length > 0) {
-      // Just extract the poster_paths of the items
       const newImagePaths = items.map(item => item.poster_path).filter(Boolean);
       preloadImages(newImagePaths);
     }
-  }, [items.length]); // Only re-run when length changes (new page loaded)
+  }, [items.length]);
 
-  // Sentinel ref — fires once when the sentinel div enters the viewport
-  const observerRef = useRef(null);
-  const sentinelRef = useCallback((node) => {
-    // Always disconnect the old observer first
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-    if (!node || !hasNextPage || isFetchingNextPage || isLoading) return;
+  // Sentinel observer — attaches cleanly via useEffect every time page state updates
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasNextPage || isFetchingNextPage) return;
 
-    observerRef.current = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          // Disconnect immediately so it only fires once per scroll-reach
-          observerRef.current?.disconnect();
-          observerRef.current = null;
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
           fetchNextPage();
         }
       },
-      { rootMargin: '2000px' } // Aggressively fetch 2 pages in advance
+      { rootMargin: '800px' }
     );
-    observerRef.current.observe(node);
-  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage]);
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, items.length]);
 
   if (!canonicalGenreName && genreId) {
     return <Navigate to="/" replace />;
@@ -138,7 +139,7 @@ export function GenrePage() {
 
           {/* Sentinel element — observed to trigger next page load */}
           {hasNextPage && (
-            <div ref={sentinelRef} className="load-more-zone">
+            <div ref={sentinelRef} className="load-more-zone min-h-[40px] flex items-center justify-center py-4">
               {isFetchingNextPage && (
                 <div className="load-more-indicator" role="status" aria-live="polite">
                   <span className="load-more-indicator__spinner" aria-hidden="true" />
