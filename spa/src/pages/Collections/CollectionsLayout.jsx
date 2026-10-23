@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
-import { useNavigate, Outlet } from 'react-router-dom';
+import { useNavigate, Outlet, useParams, useLocation, Navigate } from 'react-router-dom';
+import { useAuthSession } from '../../hooks/useAuthSession.js';
 import { useUserCollectionsPage } from '../../hooks/useUserCollectionsPage.js';
 import { createEmptyCollectionDraft, imageUrl } from '../../utils/formatters.js';
 
@@ -10,7 +11,7 @@ import { CreateCollectionModal } from '../../components/ui/Modals/CreateCollecti
 import { EditCollectionModal } from '../../components/ui/Modals/EditCollectionModal.jsx';
 import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
 
-export function CollectionsLayout() {
+function OwnerCollectionsLayout() {
   const page = useUserCollectionsPage();
   const { navigate } = page;
 
@@ -229,4 +230,29 @@ export function CollectionsLayout() {
       />
     </div>
   );
+}
+
+export function CollectionsLayout() {
+  const { username = '', collectionName = '' } = useParams();
+  const auth = useAuthSession();
+  const location = useLocation();
+
+  const isOwner = Boolean(
+    auth.isLoggedIn &&
+    auth.username &&
+    username &&
+    auth.username.toLowerCase() === username.toLowerCase()
+  );
+
+  if (!isOwner) {
+    const targetCollection = collectionName ? encodeURIComponent(decodeURIComponent(collectionName)) : 'Watched';
+    return (
+      <Navigate
+        to={`/user/${encodeURIComponent(username)}/collection/${targetCollection}${location.search}${location.hash}`}
+        replace
+      />
+    );
+  }
+
+  return <OwnerCollectionsLayout />;
 }
