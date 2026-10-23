@@ -22,14 +22,19 @@ export function useLiveCollections() {
       loadRatingsTable().catch(() => {});
 
       if (!hasCollectionCache()) {
-        // Truly no cache at all (first load / logged-out) — must fetch
+        // Truly no cache at all (first load / logged-out) — must show loading state
         setLoading(true);
-        loadUserCollections()
-          .then(applyCollections)
-          .catch(() => setLoading(false));
       }
-      // If cache exists, loadUserCollections already de-duped and session-flagged —
-      // no extra call needed. The event listener below handles any mutations.
+
+      // Always fetch latest from server in background to sync any changes made
+      // on other devices (e.g. collection created on mobile)
+      loadUserCollections()
+        .then((fresh) => {
+          if (Array.isArray(fresh) && fresh.length) {
+            applyCollections(fresh);
+          }
+        })
+        .catch(() => setLoading(false));
     }
 
     const updateEventName = window.CollectionStore?.COLLECTIONS_UPDATED_EVENT || 'soulstash:collections-updated';

@@ -13,6 +13,7 @@ import { getToken, API_BASE_URL, apiFetch, streamApiFetch } from '../api/client.
 import {
   readCollectionsCache,
   updateCollectionsCache,
+  writeCollectionsCache,
   normalizeCollections,
   broadcastCollections,
   lastKnownCollectionVersion,
@@ -70,13 +71,17 @@ export async function fetchUserCollectionsWithVersion(cached) {
     throw error;
   }
 
-  const data = await response.json();
+    const data = await response.json();
   const versionHeader = response.headers.get('x-collection-version');
   const version = Number.isFinite(Number(versionHeader))
     ? Number(versionHeader)
-    : (cached?.version || 0);
+    : ((cached?.version || 0) + 1);
 
-  updateCollectionsCache(data, version);
+  if (Array.isArray(data)) {
+    writeCollectionsCache(data, version);
+    broadcastCollections(data, version);
+  }
+
   return { collections: data, version };
 }
 

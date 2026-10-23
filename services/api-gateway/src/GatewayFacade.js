@@ -123,6 +123,8 @@ class GatewayFacade {
                     initOpts.headers['Content-Type'] = 'application/json';
                 }
                 const proxyRes = await fetch(url, initOpts);
+        const versionHeader = proxyRes.headers.get('x-collection-version');
+        if (versionHeader) res.setHeader('X-Collection-Version', versionHeader);
                 const data = await proxyRes.json().catch(() => ({}));
                 res.status(proxyRes.status).json(data);
             }

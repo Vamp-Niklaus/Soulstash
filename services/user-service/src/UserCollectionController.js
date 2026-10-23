@@ -40,6 +40,7 @@ class UserCollectionController {
                 // Write the cleaned-up list back so the DB is healed too
                 await coll.updateOne({ username: user.username }, { $set: { collections: deduplicated } });
             }
+            if (doc.collectionVersion != null) { res.setHeader('X-Collection-Version', String(doc.collectionVersion)); }
             res.json(deduplicated);
         }
         catch (error) {

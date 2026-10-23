@@ -48,6 +48,7 @@ export class UserCollectionController {
         );
       }
 
+      if (doc.collectionVersion != null) { res.setHeader('X-Collection-Version', String(doc.collectionVersion)); }
       res.json(deduplicated);
     } catch (error: any) {
       logger.error(`[UserCollectionController] getCollections error: ${error.message}`);
