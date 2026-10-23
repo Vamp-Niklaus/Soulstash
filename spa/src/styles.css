@@ -141,15 +141,28 @@ body.collection-artwork-theme {
   --collection-tint: 130 98 62;
   background-color: rgb(9 10 12) !important;
   background-image:
-    linear-gradient(to bottom, rgb(var(--collection-tint) / 0.66), rgb(9 10 12 / 0.94) 82%),
-    linear-gradient(rgb(var(--collection-tint) / 0.16), rgb(var(--collection-tint) / 0.16)),
+    linear-gradient(to bottom, rgb(var(--collection-tint) / 0.40), rgb(9 10 12 / 0.82) 85%),
+    linear-gradient(rgb(var(--collection-tint) / 0.10), rgb(var(--collection-tint) / 0.10)),
     var(--collection-artwork-image, none),
     url('/images/dark-bg.png') !important;
   background-repeat: no-repeat, no-repeat, no-repeat, repeat !important;
   background-position: center top, center top, center top, center !important;
-  background-size: 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
-  background-attachment: fixed !important;
+  background-size: 100% 100%, 100% 100%, cover, auto !important;
+  background-attachment: scroll, scroll, fixed, repeat !important;
   transition: background-color 600ms ease;
+}
+
+@media (min-width: 1024px) {
+  body.collection-artwork-theme {
+    background-image:
+      linear-gradient(to bottom, rgb(var(--collection-tint) / 0.66), rgb(9 10 12 / 0.94) 82%),
+      linear-gradient(rgb(var(--collection-tint) / 0.16), rgb(var(--collection-tint) / 0.16)),
+      var(--collection-artwork-image, none),
+      url('/images/dark-bg.png') !important;
+    background-size: 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
+    background-position: center top, center top, center top, center !important;
+    background-attachment: fixed !important;
+  }
 }
 
 body.collection-artwork-theme .collection-react-shell {
@@ -987,15 +1000,34 @@ body.detail-artwork-theme {
   --detail-tint: 18 20 24;
   background-color: rgb(9 10 12) !important;
   background-image:
-    linear-gradient(to bottom, rgb(var(--detail-tint) / 0.66), rgb(9 10 12 / 0.94) 82%),
-    linear-gradient(rgb(var(--detail-tint) / 0.16), rgb(var(--detail-tint) / 0.16)),
+    linear-gradient(to bottom, rgb(var(--detail-tint) / 0.40), rgb(9 10 12 / 0.82) 85%),
+    linear-gradient(rgb(var(--detail-tint) / 0.10), rgb(var(--detail-tint) / 0.10)),
     var(--detail-artwork-image),
     url('/images/dark-bg.png') !important;
   background-repeat: no-repeat, no-repeat, no-repeat, repeat !important;
   background-position: center top, center top, center top, center !important;
-  background-size: 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
-  background-attachment: fixed !important;
+  background-size: 100% 100%, 100% 100%, cover, auto !important;
+  background-attachment: scroll, scroll, fixed, repeat !important;
   transition: background-color 600ms ease;
+}
+
+@media (min-width: 1024px) {
+  body.detail-artwork-theme {
+    background-image:
+      linear-gradient(to bottom, rgb(var(--detail-tint) / 0.66), rgb(9 10 12 / 0.94) 82%),
+      linear-gradient(rgb(var(--detail-tint) / 0.16), rgb(var(--detail-tint) / 0.16)),
+      var(--detail-artwork-image),
+      url('/images/dark-bg.png') !important;
+    background-size: 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
+    background-position: center top, center top, center top, center !important;
+    background-attachment: fixed !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  body.detail-artwork-theme .app-shell--textured::after {
+    display: none !important;
+  }
 }
 
 body.detail-artwork-theme .app-shell--textured {
