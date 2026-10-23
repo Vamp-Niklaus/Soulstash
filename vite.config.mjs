@@ -1,22 +1,26 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig({
-  root: 'spa',
-  plugins: [react()],
-  server: {
-    port: 5173,
-    proxy: {
-      '/api': 'http://localhost:3000',
-      '/css': 'http://localhost:3000',
-      '/js': 'http://localhost:3000',
-      '/images': 'http://localhost:3000',
-      '/components': 'http://localhost:3000',
-      '/sw.js': 'http://localhost:3000'
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  const backendPort = env.PORT || process.env.PORT || 3000;
+  const backendUrl = `http://localhost:${backendPort}`;
+
+  return {
+    root: 'spa',
+    plugins: [react()],
+    server: {
+      port: 5173,
+      proxy: {
+        '/api': {
+          target: backendUrl,
+          changeOrigin: true
+        }
+      }
+    },
+    build: {
+      outDir: 'dist',
+      emptyOutDir: true
     }
-  },
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true
-  }
+  };
 });
