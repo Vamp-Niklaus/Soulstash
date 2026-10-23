@@ -10,8 +10,7 @@
     "dev:server": "node server.js",
     "dev:client": "vite --configLoader native",
     "dev:full": "npm run dev",
-    "postinstall": "npx playwright install chromium",
-    "render-build": "npm install --include=dev && npx playwright install chromium && npm run build"
+    "render-build": "npm install --include=dev && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium && npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -54,6 +53,6 @@
     "vite": "^8.0.7"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.x"
   }
 }
