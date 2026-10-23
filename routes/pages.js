@@ -105,9 +105,17 @@ router.get('/user/:username/collection/:collectionName', (req, res) => sendSpa(r
 router.get('/genre/:id', (req, res) => sendSpa(res));
 router.get('/genre/:id/:name', (req, res) => sendSpa(res));
 
-// Catch-all for any SPA client routes (prevents 404 on refresh)
-router.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/image') || req.path.startsWith('/assets') || req.path.startsWith('/js') || req.path.startsWith('/images')) {
+// Catch-all for any SPA client routes (prevents 404 on refresh in Express 5)
+router.use((req, res, next) => {
+  if (req.method !== 'GET') return next();
+  if (
+    req.path.startsWith('/api') ||
+    req.path.startsWith('/image') ||
+    req.path.startsWith('/assets') ||
+    req.path.startsWith('/js') ||
+    req.path.startsWith('/images') ||
+    req.path.startsWith('/favicon')
+  ) {
     return next();
   }
   return sendSpa(res);

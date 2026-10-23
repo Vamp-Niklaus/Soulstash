@@ -17,6 +17,7 @@ import { useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { useDetailPage } from '../../hooks/useDetailPage.js';
+import { toast } from '../../utils/toast.js';
 
 import { DetailPageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { CastCard } from '../../components/ui/Cards/CastCard.jsx';
@@ -162,7 +163,7 @@ export function DetailPage({ type }) {
         onOpenSaveModal={() => {
           if (!page.currentUsername) {
             // toast is imported inside useDetailPage but we can call it here too
-            import('../../utils/toast.js').then(({ toast }) => toast('Please login first', 'error'));
+            toast('Please login first', 'error');
             return;
           }
           page.setSaveModalOpen(true);
