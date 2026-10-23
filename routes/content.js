@@ -1555,7 +1555,8 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
           movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
         }
       } else {
-        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&vote_count.gte=5${adultKeywords}&sort_by=popularity.desc`;
+        const voteCountFilter = adminMode === 2 ? '' : '&vote_count.gte=5';
+        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
         if (genre) movieUrl += `&with_genres=${genre}`;
         if (year)  movieUrl += `&primary_release_year=${year}`;
       }
@@ -1563,8 +1564,8 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       const movieResp = await tmdbFetch(movieUrl, opts, 'Discover Movies Bg').catch(() => null);
       if (!movieResp?.ok) break;
       const movieData = await movieResp.json();
-      totalPages = movieData?.total_pages || totalPages;
-      totalResults = movieData?.total_results || totalResults;
+      totalPages = Math.max(Number(movieData?.total_pages) || 0, totalPages);
+      totalResults = Math.max(Number(movieData?.total_results) || 0, totalResults);
 
       let pageItems = (movieData?.results || []).map(i => ({
         ...i,
@@ -1586,14 +1587,14 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       currentPage++;
     }
 
-    if (adminMode === 2 && finalItems.length < 14) {
-      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+    if (adminMode === 2 && finalItems.length < (page === 1 ? 14 : limit)) {
+      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement Bg').catch(() => null);
       if (supResp?.ok) {
         const supData = await supResp.json();
         const supItems = (supData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true }));
         for (const item of supItems) {
-          if (finalItems.length >= 14) break;
+          if (finalItems.length >= (page === 1 ? 14 : limit)) break;
           if (!finalItems.some(existing => existing.id === item.id)) {
             finalItems.push(item);
           }
@@ -1604,8 +1605,14 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     finalItems = await attachCachedRatings(finalItems);
     finalItems = finalItems.slice(0, targetCount);
 
+    const safeTotalPages = Math.max(
+      totalPages > 1 ? totalPages : 500,
+      finalItems.length >= limit ? page + 10 : (finalItems.length > 0 ? page + 1 : page)
+    );
+    const safeTotalResults = Math.max(totalResults, safeTotalPages * limit);
+
     const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}_mode${adminMode}`;
-    const payload = { movies: finalItems, pagination: { page, limit, total: totalResults, pages: totalPages } };
+    const payload = { movies: finalItems, pagination: { page, limit, total: safeTotalResults, pages: safeTotalPages } };
     
     if (payload.movies.length > 0) {
       categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
@@ -1872,10 +1879,15 @@ router.get('/movies', async (req, res) => {
           global[lockKey] = true;
           setTimeout(() => refreshCategoryCache(genre, year, page, limit, adminMode), 0);
         }
+        if (cached?.data?.pagination) {
+          cached.data.pagination.pages = Math.max(Number(cached.data.pagination.pages) || 0, 500);
+        }
         return res.json(cached.data);
       }
       const mongoData = await getMongoCache(cacheKey);
       if (mongoData && mongoData.movies?.length) {
+        if (!mongoData.pagination) mongoData.pagination = {};
+        mongoData.pagination.pages = Math.max(Number(mongoData.pagination.pages) || 0, 500);
         categoriesCache.set(cacheKey, { time: Date.now(), data: mongoData });
         return res.json(mongoData);
       }
@@ -1929,7 +1941,8 @@ router.get('/movies', async (req, res) => {
           movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
         }
       } else {
-        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&vote_count.gte=5${adultKeywords}${sortParam}`;
+        const voteCountFilter = adminMode === 2 ? '' : '&vote_count.gte=5';
+        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
         if (genre) movieUrl += `&with_genres=${genre}`;
         if (year)  movieUrl += `&primary_release_year=${year}`;
       }
@@ -1937,8 +1950,8 @@ router.get('/movies', async (req, res) => {
       const movieResp = await tmdbFetch(movieUrl, opts, 'Discover Movies').catch(() => null);
       if (!movieResp?.ok) break;
       const movieData = await movieResp.json();
-      totalPages = movieData?.total_pages || totalPages;
-      totalResults = movieData?.total_results || totalResults;
+      totalPages = Math.max(Number(movieData?.total_pages) || 0, totalPages);
+      totalResults = Math.max(Number(movieData?.total_results) || 0, totalResults);
 
       let pageItems = (movieData?.results || []).map(i => ({
         ...i,
@@ -1962,14 +1975,14 @@ router.get('/movies', async (req, res) => {
       currentPage++;
     }
 
-    if (adminMode === 2 && finalItems.length < 14) {
-      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+    if (adminMode === 2 && finalItems.length < (page === 1 ? 14 : limit)) {
+      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement').catch(() => null);
       if (supResp?.ok) {
         const supData = await supResp.json();
         const supItems = (supData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true }));
         for (const item of supItems) {
-          if (finalItems.length >= 14) break;
+          if (finalItems.length >= (page === 1 ? 14 : limit)) break;
           if (!finalItems.some(existing => existing.id === item.id)) {
             finalItems.push(item);
           }
@@ -1980,7 +1993,13 @@ router.get('/movies', async (req, res) => {
     finalItems = await attachCachedRatings(finalItems);
     finalItems = finalItems.slice(0, targetCount);
 
-    const payload = { movies: finalItems, pagination: { page, limit, total: totalResults, pages: totalPages } };
+    const safeTotalPages = Math.max(
+      totalPages > 1 ? totalPages : 500,
+      finalItems.length >= limit ? page + 10 : (finalItems.length > 0 ? page + 1 : page)
+    );
+    const safeTotalResults = Math.max(totalResults, safeTotalPages * limit);
+
+    const payload = { movies: finalItems, pagination: { page, limit, total: safeTotalResults, pages: safeTotalPages } };
     
     if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && payload.movies.length > 0) {
       categoriesCache.set(cacheKey, { time: Date.now(), data: payload });
@@ -2587,10 +2606,14 @@ router.get('/trending', trendingLimiter, async (req, res) => {
       }
     }
     
-    const totalPages = Math.max(movieData.total_pages || 1, tvData.total_pages || 1);
+    const totalPages = Math.max(Number(movieData.total_pages) || 0, Number(tvData.total_pages) || 0);
+    const safeTotalPages = Math.max(
+      totalPages > 1 ? totalPages : 500,
+      finalItems.length >= limit ? page + 10 : (finalItems.length > 0 ? page + 1 : page)
+    );
     const filtered = filterTrending(finalItems);
     console.log(`[API] /api/trending success count=${filtered.length} mode=${adminMode}`);
-    res.json({ movies: filtered.slice(0, limit), pagination: { page, limit, pages: totalPages } });
+    res.json({ movies: filtered.slice(0, limit), pagination: { page, limit, pages: safeTotalPages } });
   } catch (err) {
     console.error('Error fetching trending:', err);
     res.status(500).json({ error: 'Failed to fetch trending content' });

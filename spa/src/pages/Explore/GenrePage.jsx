@@ -44,10 +44,18 @@ export function GenrePage() {
   } = useInfiniteQuery({
     queryKey: ['genre', genreId, adminMode],
     queryFn: ({ pageParam = 1 }) => apiFetch(`/api/movies?genre=${genreId}&limit=20&page=${pageParam}`),
-    getNextPageParam: (lastPage, allPages) => {
-      if (!lastPage?.movies || lastPage.movies.length === 0) return undefined;
-      const totalPages = lastPage?.pagination?.pages ?? 500;
-      return allPages.length < totalPages ? allPages.length + 1 : undefined;
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages, lastPageParam) => {
+      if (!Array.isArray(lastPage?.movies) || lastPage.movies.length === 0) {
+        return undefined;
+      }
+      const currentPageNum = Number(lastPageParam) || allPages.length;
+      const reportedPages = Number(lastPage?.pagination?.pages);
+      const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
+      if (currentPageNum < totalPages) {
+        return currentPageNum + 1;
+      }
+      return undefined;
     },
   });
 
@@ -149,7 +157,7 @@ export function GenrePage() {
             </div>
           )}
 
-          {!hasNextPage && items.length > 0 && (
+          {!hasNextPage && items.length >= 30 && (
             <p className="mt-8 text-center text-sm text-white/30">All titles loaded</p>
           )}
         </>

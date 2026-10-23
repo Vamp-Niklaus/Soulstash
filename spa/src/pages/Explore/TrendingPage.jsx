@@ -25,11 +25,16 @@ export function TrendingPage() {
   } = useInfiniteQuery({
     queryKey: ['trending', adminMode],
     queryFn: fetchTrending,
-    getNextPageParam: (lastPage, pages) => {
-      if (!lastPage?.movies || lastPage.movies.length === 0) return undefined;
-      const totalPages = lastPage?.pagination?.pages ?? 500;
-      if (pages.length < totalPages) {
-        return pages.length + 1;
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages, lastPageParam) => {
+      if (!Array.isArray(lastPage?.movies) || lastPage.movies.length === 0) {
+        return undefined;
+      }
+      const currentPageNum = Number(lastPageParam) || allPages.length;
+      const reportedPages = Number(lastPage?.pagination?.pages);
+      const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
+      if (currentPageNum < totalPages) {
+        return currentPageNum + 1;
       }
       return undefined;
     },
@@ -122,7 +127,7 @@ export function TrendingPage() {
             </div>
           )}
 
-          {!hasNextPage && items.length > 0 && (
+          {!hasNextPage && items.length >= 30 && (
             <p className="mt-8 text-center text-sm text-white/30">All titles loaded</p>
           )}
         </>
