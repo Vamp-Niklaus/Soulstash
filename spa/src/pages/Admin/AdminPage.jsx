@@ -62,6 +62,10 @@ export function AdminPage() {
         showAdult: newMode === 1
       }));
       saveAuthSession(getToken(), { ...auth.user, admin: true, adminMode: newMode, showAdult: newMode === 1 });
+      queryClient.invalidateQueries({ queryKey: ['home'] });
+      queryClient.invalidateQueries({ queryKey: ['trending'] });
+      queryClient.invalidateQueries({ queryKey: ['genre'] });
+      queryClient.invalidateQueries({ queryKey: ['movies'] });
       const labels = ['Admin mode off (filtered)', 'Normal + Adult mode', 'Adult Only mode'];
       toast(labels[newMode] || 'Preference updated');
     },

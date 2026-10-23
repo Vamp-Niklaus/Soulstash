@@ -40,7 +40,7 @@ async function ensureAdmin(req, res, next) {
     if (!userId) return res.status(401).json({ error: 'Access token required' });
     const user = await getDb()
       .collection('users')
-      .findOne({ _id: new ObjectId(userId) }, { projection: { admin: 1, showAdult: 1 } });
+      .findOne({ _id: new ObjectId(userId) }, { projection: { admin: 1, adminMode: 1, showAdult: 1 } });
     const isAdmin = user?.admin === true || user?.admin === 'true' || user?.admin === 1;
     if (!isAdmin) {
       return res.status(403).json({ error: 'Admin access required' });
@@ -109,8 +109,8 @@ router.get('/me', authenticateToken, ensureAdmin, async (req, res) => {
 router.post('/preferences', authenticateToken, ensureAdmin, async (req, res) => {
   try {
     const { showAdult, adminMode } = req.body || {};
-    const nextValue = Boolean(showAdult);
-    const nextMode = Number.isInteger(Number(adminMode)) ? Number(adminMode) : (nextValue ? 1 : 0);
+    const nextMode = Number.isInteger(Number(adminMode)) ? Number(adminMode) : (Boolean(showAdult) ? 1 : 0);
+    const nextValue = nextMode === 1;
     await getDb()
       .collection('users')
       .updateOne(
