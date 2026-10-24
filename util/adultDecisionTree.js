@@ -64,7 +64,7 @@ function cloneTree(tree) {
   return JSON.parse(JSON.stringify(tree || DEFAULT_TREE));
 }
 
-function evaluateCondition(node, item) {
+function evaluateCondition(node, item, options = {}) {
   const { field, operator, value } = node;
 
   if (field === 'adult_flag') {
@@ -93,6 +93,9 @@ function evaluateCondition(node, item) {
   }
 
   if (field === 'is_indian') {
+    if (options && options.ignoreIndian) {
+      return operator === 'is_true' ? false : true;
+    }
     const isInd = (Array.isArray(item?.origin_country) && item.origin_country.includes('IN')) ||
       ['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa'].includes(item?.original_language);
     return operator === 'is_true' ? isInd : !isInd;
@@ -132,7 +135,7 @@ function evaluateCondition(node, item) {
   return false;
 }
 
-function traverseTree(node, item, trace = null) {
+function traverseTree(node, item, trace = null, options = {}) {
   if (!node) return false;
 
   if (node.type === 'result') {
@@ -147,7 +150,7 @@ function traverseTree(node, item, trace = null) {
     return isAdultResult;
   }
 
-  const conditionMet = evaluateCondition(node, item);
+  const conditionMet = evaluateCondition(node, item, options);
   if (trace) {
     trace.push({
       nodeId: node.id,
@@ -160,7 +163,7 @@ function traverseTree(node, item, trace = null) {
   }
 
   const nextNode = conditionMet ? node.yesNode : node.noNode;
-  return traverseTree(nextNode, item, trace);
+  return traverseTree(nextNode, item, trace, options);
 }
 
 async function loadAdultTree() {
@@ -240,17 +243,17 @@ async function resetAdultTree() {
   return activeTreeCache;
 }
 
-function evaluateAdultItem(item, trace = null) {
+function evaluateAdultItem(item, trace = null, options = {}) {
   if (!isLoaded) {
     // Asynchronously kick off DB load if not yet done
     loadAdultTree().catch(() => {});
   }
-  return traverseTree(activeTreeCache, item, trace);
+  return traverseTree(activeTreeCache, item, trace, options);
 }
 
-function testTreeWithItem(tree, item) {
+function testTreeWithItem(tree, item, options = {}) {
   const trace = [];
-  const isAdult = traverseTree(tree || activeTreeCache, item, trace);
+  const isAdult = traverseTree(tree || activeTreeCache, item, trace, options);
   return { isAdult, trace };
 }
 

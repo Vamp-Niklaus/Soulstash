@@ -828,14 +828,14 @@ async function setMongoCache(key, data, ttlMs = 10 * 60 * 1000) {
   }
 }
 
-function isAdult(item) {
-  return evaluateAdultItem(item);
+function isAdult(item, options = {}) {
+  return evaluateAdultItem(item, null, options);
 }
 
-function shouldShow(item, adminMode) {
+function shouldShow(item, adminMode, options = {}) {
   if (adminMode === 1) return true; // Mode 1: All Content (Normal + Adult shown)
-  if (adminMode === 2) return isAdult(item); // Mode 2: Adult Only (Only adult content)
-  return !isAdult(item); // Mode 0: Filter On (Adult content hidden)
+  if (adminMode === 2) return isAdult(item, options); // Mode 2: Adult Only (Only adult content)
+  return !isAdult(item, options); // Mode 0: Filter On (Adult content hidden)
 }
 
 function isAnimeContent(item) {
@@ -1534,9 +1534,12 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     let totalPages = 1;
     let totalResults = 0;
 
+    const isBollywood = String(genre).toLowerCase() === 'bollywood';
+    const filterOpts = { ignoreIndian: isBollywood };
+
     while (finalItems.length < targetCount && currentPage <= page + 4) {
       let movieUrl = '';
-      if (genre === 'bollywood') {
+      if (isBollywood) {
         if (adminMode === 2) {
           movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_original_language=hi&sort_by=popularity.desc`;
         } else {
@@ -1563,7 +1566,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
       }
-      pageItems = pageItems.filter(item => shouldShow(item, adminMode));
+      pageItems = pageItems.filter(item => shouldShow(item, adminMode, filterOpts));
 
       for (const item of pageItems) {
         if (!finalItems.some(existing => existing.id === item.id)) {
@@ -1576,7 +1579,8 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     }
 
     if (adminMode === 2 && finalItems.length < (page === 1 ? 14 : limit)) {
-      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      const langParam = isBollywood ? '&with_original_language=hi' : '';
+      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}${langParam}&sort_by=popularity.desc`;
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement Bg').catch(() => null);
       if (supResp?.ok) {
         const supData = await supResp.json();
@@ -1750,32 +1754,30 @@ async function getSimilarContent(req, res, mediaType) {
     const initialPage = Number(req.query.page) || 1;
     const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
 
-    // If public/guest, do not show similar movies if the page content falls in adult category or has adult collection parts
-    if (!isAdmin) {
-      const parentUrl = mediaType === 'movie'
-        ? `https://api.themoviedb.org/3/movie/${id}?language=en-US`
-        : `https://api.themoviedb.org/3/tv/${id}?language=en-US`;
-      const parentResp = await tmdbFetch(parentUrl, { method: 'GET', headers: tmdbHeaders() }, `Check Parent ${mediaType} ${id}`).catch(() => null);
-      if (parentResp?.ok) {
-        const parentData = await parentResp.json();
-        if (isAdult(parentData)) {
-          return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
-        }
-        if (parentData?.belongs_to_collection?.id) {
-          try {
-            const colResp = await tmdbFetch(
-              `https://api.themoviedb.org/3/collection/${parentData.belongs_to_collection.id}?language=en-US`,
-              { method: 'GET', headers: tmdbHeaders() },
-              `Check Collection Parts ${parentData.belongs_to_collection.id}`
-            ).catch(() => null);
-            if (colResp?.ok) {
-              const colData = await colResp.json();
-              if (Array.isArray(colData?.parts) && colData.parts.some((p) => isAdult(p))) {
-                return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
-              }
+    // If the content itself is adult by our criteria or has adult collection parts, do not show similar movies
+    const parentUrl = mediaType === 'movie'
+      ? `https://api.themoviedb.org/3/movie/${id}?language=en-US`
+      : `https://api.themoviedb.org/3/tv/${id}?language=en-US`;
+    const parentResp = await tmdbFetch(parentUrl, { method: 'GET', headers: tmdbHeaders() }, `Check Parent ${mediaType} ${id}`).catch(() => null);
+    if (parentResp?.ok) {
+      const parentData = await parentResp.json();
+      if (isAdult(parentData)) {
+        return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+      }
+      if (parentData?.belongs_to_collection?.id) {
+        try {
+          const colResp = await tmdbFetch(
+            `https://api.themoviedb.org/3/collection/${parentData.belongs_to_collection.id}?language=en-US`,
+            { method: 'GET', headers: tmdbHeaders() },
+            `Check Collection Parts ${parentData.belongs_to_collection.id}`
+          ).catch(() => null);
+          if (colResp?.ok) {
+            const colData = await colResp.json();
+            if (Array.isArray(colData?.parts) && colData.parts.some((p) => isAdult(p))) {
+              return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
             }
-          } catch {}
-        }
+          }
+        } catch {}
       }
     }
 
@@ -1842,7 +1844,11 @@ router.get('/tmdb-collection/:id', async (req, res) => {
   try {
     const resp = await tmdbFetch(`https://api.themoviedb.org/3/collection/${req.params.id}?language=en-US`, { method: 'GET', headers: tmdbHeaders() }, `Collection ${req.params.id}`);
     if (!resp.ok) return res.status(resp.status).json({ error: 'Collection not found' });
-    res.json(await resp.json());
+    const colData = await resp.json();
+    if (Array.isArray(colData?.parts) && colData.parts.some((p) => isAdult(p))) {
+      return res.status(404).json({ error: 'Collection not found' });
+    }
+    res.json(colData);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch collection', details: err.message });
   }
@@ -1935,6 +1941,9 @@ router.get('/movies', async (req, res) => {
     const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
     const targetCount = page === 1 ? Math.max(limit, 14) : limit;
 
+    const isBollywood = String(genre).toLowerCase() === 'bollywood';
+    const filterOpts = { ignoreIndian: isBollywood };
+
     let finalItems = [];
     let currentPage = page;
     let totalPages = 1;
@@ -1942,7 +1951,7 @@ router.get('/movies', async (req, res) => {
 
     while (finalItems.length < targetCount && currentPage <= page + 4) {
       let movieUrl;
-      if (genre === 'bollywood') {
+      if (isBollywood) {
         if (adminMode === 2) {
           movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_original_language=hi&sort_by=popularity.desc`;
         } else {
@@ -1971,7 +1980,7 @@ router.get('/movies', async (req, res) => {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
       }
 
-      pageItems = pageItems.filter(item => shouldShow(item, adminMode));
+      pageItems = pageItems.filter(item => shouldShow(item, adminMode, filterOpts));
 
       for (const item of pageItems) {
         if (!finalItems.some(existing => existing.id === item.id)) {
@@ -1984,7 +1993,8 @@ router.get('/movies', async (req, res) => {
     }
 
     if (adminMode === 2 && finalItems.length < (page === 1 ? 14 : limit)) {
-      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      const langParam = isBollywood ? '&with_original_language=hi' : '';
+      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}${langParam}&sort_by=popularity.desc`;
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement').catch(() => null);
       if (supResp?.ok) {
         const supData = await supResp.json();
@@ -2051,43 +2061,45 @@ router.get(['/movies/:id', '/movie/:id'], async (req, res) => {
     const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
     const isCurrentAdult = isAdult(content);
 
-    if (content?.similar?.results && Array.isArray(content.similar.results)) {
-      if (isCurrentAdult && !isAdmin) {
-        content.similar = { results: [], total_pages: 0, total_results: 0 };
-      } else {
+    if (isCurrentAdult) {
+      // If the content itself is adult by our criteria, do not show collection or similar movies
+      content.belongs_to_collection = null;
+      content.similar = { results: [], total_pages: 0, total_results: 0 };
+    } else {
+      if (content?.similar?.results && Array.isArray(content.similar.results)) {
         content.similar.results = content.similar.results.filter(item => shouldShow(item, adminMode));
       }
-    }
 
-    // Automatically embed TMDB collection parts for franchises (e.g. Spider-Man Collection)
-    if (content?.belongs_to_collection?.id) {
-      try {
-        const colResp = await tmdbFetch(
-          `https://api.themoviedb.org/3/collection/${content.belongs_to_collection.id}?language=en-US`,
-          { method: 'GET', headers: tmdbHeaders() },
-          `Collection ${content.belongs_to_collection.id}`
-        );
-        if (colResp.ok) {
-          const colData = await colResp.json();
-          if (colData && Array.isArray(colData.parts)) {
-            const hasAdultPart = !isAdmin && colData.parts.some((part) => isAdult(part));
-            if (hasAdultPart) {
-              // If any movie in the collection is adult, hide collection data and hide similar movies
-              content.belongs_to_collection = null;
-              if (content.similar) {
-                content.similar = { results: [], total_pages: 0, total_results: 0 };
+      // Automatically embed TMDB collection parts for franchises (e.g. Spider-Man Collection)
+      if (content?.belongs_to_collection?.id) {
+        try {
+          const colResp = await tmdbFetch(
+            `https://api.themoviedb.org/3/collection/${content.belongs_to_collection.id}?language=en-US`,
+            { method: 'GET', headers: tmdbHeaders() },
+            `Collection ${content.belongs_to_collection.id}`
+          );
+          if (colResp.ok) {
+            const colData = await colResp.json();
+            if (colData && Array.isArray(colData.parts)) {
+              const hasAdultPart = colData.parts.some((part) => isAdult(part));
+              if (hasAdultPart) {
+                // If any movie in the collection is adult, hide collection data and hide similar movies
+                content.belongs_to_collection = null;
+                if (content.similar) {
+                  content.similar = { results: [], total_pages: 0, total_results: 0 };
+                }
+              } else {
+                content.belongs_to_collection = {
+                  ...content.belongs_to_collection,
+                  ...colData,
+                  parts: colData.parts.filter(item => shouldShow(item, adminMode))
+                };
               }
-            } else {
-              content.belongs_to_collection = {
-                ...content.belongs_to_collection,
-                ...colData,
-                parts: colData.parts.filter(item => shouldShow(item, adminMode))
-              };
             }
           }
+        } catch (colErr) {
+          console.warn(`[Content] Failed to enrich belongs_to_collection ${content.belongs_to_collection.id}: ${colErr.message}`);
         }
-      } catch (colErr) {
-        console.warn(`[Content] Failed to enrich belongs_to_collection ${content.belongs_to_collection.id}: ${colErr.message}`);
       }
     }
 
@@ -2175,12 +2187,10 @@ router.get('/series/:id', async (req, res) => {
     const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
     const isCurrentAdult = isAdult(s);
 
-    if (s?.similar?.results && Array.isArray(s.similar.results)) {
-      if (isCurrentAdult && !isAdmin) {
-        s.similar = { results: [], total_pages: 0, total_results: 0 };
-      } else {
-        s.similar.results = s.similar.results.filter(item => shouldShow(item, adminMode));
-      }
+    if (isCurrentAdult) {
+      s.similar = { results: [], total_pages: 0, total_results: 0 };
+    } else if (s?.similar?.results && Array.isArray(s.similar.results)) {
+      s.similar.results = s.similar.results.filter(item => shouldShow(item, adminMode));
     }
     const imdbResult = await resolveImdbRating(id, 'Series', s).catch((error) => {
       console.warn('[IMDB Ratings] Failed to resolve series detail rating', {
@@ -2830,6 +2840,8 @@ async function buildHomePayload(adminMode = 0) {
           if (String(genre.id) !== '16') {
             mItems = mItems.filter(item => !isAnimeContent(item));
           }
+          const isBollywood = String(genre?.id).toLowerCase() === 'bollywood';
+          mItems = mItems.filter(item => shouldShow(item, adminMode, { ignoreIndian: isBollywood }));
         }
 
         for (const item of mItems) {
