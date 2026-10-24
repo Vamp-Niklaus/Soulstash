@@ -215,6 +215,14 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   try {
     await initializeDatabase();
+    try {
+      const contentRouter = require('./routes/content');
+      if (typeof contentRouter.flushAllMongoCache === 'function') {
+        await contentRouter.flushAllMongoCache();
+      }
+    } catch (e) {
+      console.warn('Cache flush on startup warning:', e.message);
+    }
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       // Pre-warm Playwright browser so the first scrape request has no cold-start delay
