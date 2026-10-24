@@ -46,13 +46,17 @@ export function GenrePage() {
     queryFn: ({ pageParam = 1 }) => apiFetch(`/api/movies?genre=${genreId}&limit=20&page=${pageParam}`),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages, lastPageParam) => {
-      if (!Array.isArray(lastPage?.movies) || lastPage.movies.length === 0) {
-        return undefined;
-      }
       const currentPageNum = Number(lastPageParam) || allPages.length;
       const reportedPages = Number(lastPage?.pagination?.pages);
       const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
       if (currentPageNum < totalPages) {
+        if (allPages.length >= 2) {
+          const lastOne = allPages[allPages.length - 1]?.movies || [];
+          const secondLast = allPages[allPages.length - 2]?.movies || [];
+          if (lastOne.length === 0 && secondLast.length === 0) {
+            return undefined;
+          }
+        }
         return currentPageNum + 1;
       }
       return undefined;

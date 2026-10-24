@@ -796,7 +796,7 @@ async function attachCachedRatings(items = []) {
   });
 }
 
-const ADULT_KEYWORDS = '&with_keywords=190370|207767|256466|302868|281741|738';
+const ADULT_KEYWORDS = '&with_keywords=190370|207767|256466|302868|281741|738|155477|170827|14794|3182|1326|286925|11034|2804';
 const CONTENT_CACHE_COLLECTION = 'ContentCache';
 
 async function getMongoCache(key) {
@@ -1540,15 +1540,16 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     let totalResults = 0;
 
     const isBollywood = String(genre).toLowerCase() === 'bollywood';
-    const filterOpts = { ignoreIndian: isBollywood };
+    const filterOpts = { ignoreIndian: isBollywood && adminMode === 2 };
+    const today = new Date().toISOString().split('T')[0];
 
-    while (finalItems.length < targetCount && currentPage <= page + 4) {
+    while (finalItems.length < targetCount && currentPage <= page + 6) {
       let movieUrl = '';
       if (isBollywood) {
         if (adminMode === 2) {
-          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_original_language=hi&sort_by=popularity.desc`;
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_origin_country=IN&sort_by=popularity.desc`;
         } else {
-          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=popularity.desc&primary_release_date.lte=${today}&vote_count.gte=5`;
         }
       } else {
         const voteCountFilter = adminMode === 2 ? '' : '&vote_count.gte=5';
@@ -1583,8 +1584,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     }
 
     if (adminMode === 2 && finalItems.length < (page === 1 ? 14 : limit)) {
-      const langParam = isBollywood ? '&with_original_language=hi' : '';
-      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}${langParam}&sort_by=popularity.desc`;
+      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement Bg').catch(() => null);
       if (supResp?.ok) {
         const supData = await supResp.json();
@@ -1949,20 +1949,24 @@ router.get('/movies', async (req, res) => {
     const targetCount = page === 1 ? Math.max(limit, 14) : limit;
 
     const isBollywood = String(genre).toLowerCase() === 'bollywood';
-    const filterOpts = { ignoreIndian: isBollywood };
+    const filterOpts = { ignoreIndian: isBollywood && adminMode === 2 };
+    const today = new Date().toISOString().split('T')[0];
 
     let finalItems = [];
     let currentPage = page;
     let totalPages = 1;
     let totalResults = 0;
 
-    while (finalItems.length < targetCount && currentPage <= page + 4) {
+    while (finalItems.length < targetCount && currentPage <= page + 6) {
       let movieUrl;
       if (isBollywood) {
         if (adminMode === 2) {
-          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_original_language=hi&sort_by=popularity.desc`;
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_origin_country=IN&sort_by=popularity.desc`;
         } else {
-          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+          const sortByParam = sortBy === 'release_date'
+            ? `sort_by=primary_release_date.${sortOrder}&primary_release_date.lte=${today}`
+            : `sort_by=popularity.desc&primary_release_date.lte=${today}`;
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_original_language=hi&${sortByParam}&vote_count.gte=5`;
         }
       } else {
         const voteCountFilter = adminMode === 2 ? '' : '&vote_count.gte=5';
@@ -1999,8 +2003,7 @@ router.get('/movies', async (req, res) => {
     }
 
     if (adminMode === 2 && finalItems.length < (page === 1 ? 14 : limit)) {
-      const langParam = isBollywood ? '&with_original_language=hi' : '';
-      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}${langParam}&sort_by=popularity.desc`;
+      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement').catch(() => null);
       if (supResp?.ok) {
         const supData = await supResp.json();
@@ -2819,14 +2822,15 @@ async function buildHomePayload(adminMode = 0) {
         let movieUrl;
         if (adminMode === 2) {
           if (genre.id === 'bollywood') {
-            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_original_language=hi&sort_by=popularity.desc`;
+            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_origin_country=IN&sort_by=popularity.desc`;
           } else {
             movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_genres=${genre.id}&sort_by=popularity.desc`;
           }
         } else {
           const strictRatingFilter = '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5';
           if (genre && genre.id === 'bollywood') {
-            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=false&with_original_language=hi&sort_by=primary_release_date.desc&vote_count.gte=5`;
+            const today = new Date().toISOString().split('T')[0];
+            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=false&with_original_language=hi&sort_by=popularity.desc&primary_release_date.lte=${today}&vote_count.gte=5`;
           } else {
             movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=false${strictRatingFilter}&sort_by=popularity.desc`;
             if (genre) movieUrl += `&with_genres=${genre.id}`;
@@ -2849,7 +2853,7 @@ async function buildHomePayload(adminMode = 0) {
             mItems = mItems.filter(item => !isAnimeContent(item));
           }
           const isBollywood = String(genre?.id).toLowerCase() === 'bollywood';
-          mItems = mItems.filter(item => shouldShow(item, adminMode, { ignoreIndian: isBollywood }));
+          mItems = mItems.filter(item => shouldShow(item, adminMode, { ignoreIndian: isBollywood && adminMode === 2 }));
         }
 
         for (const item of mItems) {
@@ -3490,8 +3494,9 @@ router.get('/search', async (req, res) => {
         .slice(0, Number(limit))
         .map(normalizeUser);
 
-      const responseData = { query: q, results, page: batchPage, hasMore: endTmdbPage < maxTmdbPagesFound };
+      const responseData = { query: q, results, page: Number(req.query.page) || 1, hasMore: false };
       lastSearchResults.set(requestId, { data: responseData, timestamp: Date.now() });
+      searchRequests.delete(requestId);
       return res.json(responseData);
     }
     const yearMatch = base_query.match(/\b(19\d{2}|20\d{2})\b/);
