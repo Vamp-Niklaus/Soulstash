@@ -1711,15 +1711,20 @@ const trendingLimiter = rateLimit({
 const searchRequests = new Map();
 const lastSearchResults = new Map();
 
-function normalizePerson(person) {
+function normalizePerson(person, adminMode = 0) {
+  const rawKnownFor = Array.isArray(person?.known_for) ? person.known_for : [];
+  const filteredKnownFor = rawKnownFor.filter(item => shouldShow(item, adminMode));
   return {
     id: person.id,
     media_type: 'Person',
     title: person.name || '',
     name: person.name || '',
+    gender: person.gender,
+    adult: Boolean(person.adult),
     poster_path: person.profile_path || null,
     profile_path: person.profile_path || null,
-    known_for_department: person.known_for_department || 'Cast & Crew'
+    known_for_department: person.known_for_department || 'Cast & Crew',
+    known_for: filteredKnownFor
   };
 }
 
@@ -2286,11 +2291,12 @@ router.get(['/person/:id', '/people/:id'], async (req, res) => {
   }
 });
 
-// GET /api/person/:id/credits
-router.get('/person/:id/credits', async (req, res) => {
+// GET /api/person/:id/credits and /api/people/:id/credits
+router.get(['/person/:id/credits', '/people/:id/credits'], async (req, res) => {
   try {
     const personId = req.params.id;
     console.log(`[API] /api/person/${personId}/credits hit`);
+    const adminMode = await resolveAdminMode(req);
     const includeAdult = await resolveIncludeAdult(req);
 
     // Fetch person detail (for imdb_id) + combined credits in parallel
@@ -2310,7 +2316,7 @@ router.get('/person/:id/credits', async (req, res) => {
     const filterCredits = (items = []) =>
       (Array.isArray(items) ? items : []).filter((item) => {
         if (item?.media_type !== 'movie' && item?.media_type !== 'tv') return false;
-        if (!includeAdult && item?.adult === true) return false;
+        if (!shouldShow(item, adminMode)) return false;
         const votes = Number(item?.vote_count || 0);
         if (votes <= 0 && !item?.imdb_id) return false;
         const releaseDate = String(item?.release_date || item?.first_air_date || '').trim();
@@ -3489,7 +3495,7 @@ router.get('/search', async (req, res) => {
           .map(item => {
             if (mediaType === 'person') {
               return {
-                ...normalizePerson(item),
+                ...normalizePerson(item, adminMode),
                 _isIndian: isIndianPerson(item),
                 _popularity: Number(item?.popularity || 0)
               };
@@ -3505,6 +3511,9 @@ router.get('/search', async (req, res) => {
           .sort((a, b) => {
             if (mediaType === 'person') {
               if (a._isIndian !== b._isIndian) return a._isIndian ? -1 : 1;
+              const aHasPhoto = Boolean(a.profile_path || a.poster_path);
+              const bHasPhoto = Boolean(b.profile_path || b.poster_path);
+              if (aHasPhoto !== bHasPhoto) return aHasPhoto ? -1 : 1;
               return b._popularity - a._popularity;
             }
             if (hasYear) {
@@ -3519,7 +3528,7 @@ router.get('/search', async (req, res) => {
       };
       const fetchPage = async (tmdbType, query, page, year = null) => {
         if (clientClosed) return;
-        const shouldIncludeAdult = adminMode !== 0;
+        const shouldIncludeAdult = tmdbType === 'person' ? true : (adminMode !== 0);
         const url = `https://api.themoviedb.org/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${shouldIncludeAdult ? 'true' : 'false'}&language=en-US&page=${page}${year ? `&year=${year}` : ''}`;
         try {
           const response = await tmdbFetch(url, { headers }, `TMDB stream ${tmdbType} "${query}" p${page}`);
@@ -3570,7 +3579,7 @@ router.get('/search', async (req, res) => {
 
     const queuePages = (type, query, maxPages, year = null) => {
       for (let page = 1; page <= maxPages; page++) {
-        const shouldIncludeAdult = adminMode !== 0;
+        const shouldIncludeAdult = type === 'person' ? true : (adminMode !== 0);
         const url = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(query)}&include_adult=${shouldIncludeAdult ? 'true' : 'false'}&language=en-US&page=${page}${year ? `&year=${year}` : ''}`;
         promises.push(
           tmdbFetch(url, { headers }, `TMDB ${type} "${query}" p${page}`)
@@ -3651,12 +3660,15 @@ router.get('/search', async (req, res) => {
     const personResults = allPeople
       .filter(person => person?.id && person?.name)
       .map((person) => ({
-        ...normalizePerson(person),
+        ...normalizePerson(person, adminMode),
         _isIndian: isIndianPerson(person),
         _popularity: Number(person?.popularity || 0)
       }))
       .sort((a, b) => {
         if (a._isIndian !== b._isIndian) return a._isIndian ? -1 : 1;
+        const aHasPhoto = Boolean(a.profile_path || a.poster_path);
+        const bHasPhoto = Boolean(b.profile_path || b.poster_path);
+        if (aHasPhoto !== bHasPhoto) return aHasPhoto ? -1 : 1;
         return b._popularity - a._popularity;
       });
 
