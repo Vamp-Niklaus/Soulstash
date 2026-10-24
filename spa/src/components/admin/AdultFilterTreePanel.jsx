@@ -287,6 +287,40 @@ export function AdultFilterTreePanel() {
     centerView();
   }, [centerView]);
 
+  // Native non-passive wheel listener to strictly prevent page scrolling
+  useEffect(() => {
+    const el = canvasViewportRef.current;
+    if (!el) return;
+
+    const handleNativeWheel = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+
+      setZoom((prevZoom) => {
+        const nextZoom = Math.min(2.5, Math.max(0.25, prevZoom * zoomFactor));
+        setPan((prevPan) => {
+          const worldX = (mouseX - prevPan.x) / prevZoom;
+          const worldY = (mouseY - prevPan.y) / prevZoom;
+          return {
+            x: mouseX - worldX * nextZoom,
+            y: mouseY - worldY * nextZoom
+          };
+        });
+        return nextZoom;
+      });
+    };
+
+    el.addEventListener('wheel', handleNativeWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleNativeWheel);
+    };
+  }, []);
+
   // Auto-Tidy button (re-aligns tree cleanly without overlap)
   const autoTidyLayout = () => {
     if (treeState) {
@@ -391,13 +425,6 @@ export function AdultFilterTreePanel() {
       // Final relaxation pass
       setNodePositions((prev) => resolveCollisions(prev));
     }
-  };
-
-  // Zoom with mouse wheel
-  const handleCanvasWheel = (e) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    setZoom((prev) => Math.min(2.5, Math.max(0.3, prev * zoomFactor)));
   };
 
   // Start dragging a node
@@ -755,8 +782,7 @@ export function AdultFilterTreePanel() {
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseUp={handleCanvasMouseUp}
-          onWheel={handleCanvasWheel}
-          className={`relative h-[680px] w-full overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`relative h-[680px] w-full overflow-hidden overscroll-contain touch-none ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
           style={{
             backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.08) 1.5px, transparent 1.5px)',
             backgroundSize: '28px 28px'
