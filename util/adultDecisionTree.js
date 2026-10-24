@@ -36,7 +36,7 @@ const DEFAULT_TREE = {
         type: 'decision',
         field: 'vote_count',
         operator: '<',
-        value: 10,
+        value: 30,
         yesNode: {
           id: 'res_low_votes_old',
           type: 'result',

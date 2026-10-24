@@ -1750,7 +1750,7 @@ async function getSimilarContent(req, res, mediaType) {
     const initialPage = Number(req.query.page) || 1;
     const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
 
-    // If public/guest, do not show similar movies if the page content falls in adult category
+    // If public/guest, do not show similar movies if the page content falls in adult category or has adult collection parts
     if (!isAdmin) {
       const parentUrl = mediaType === 'movie'
         ? `https://api.themoviedb.org/3/movie/${id}?language=en-US`
@@ -1760,6 +1760,21 @@ async function getSimilarContent(req, res, mediaType) {
         const parentData = await parentResp.json();
         if (isAdult(parentData)) {
           return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+        }
+        if (parentData?.belongs_to_collection?.id) {
+          try {
+            const colResp = await tmdbFetch(
+              `https://api.themoviedb.org/3/collection/${parentData.belongs_to_collection.id}?language=en-US`,
+              { method: 'GET', headers: tmdbHeaders() },
+              `Check Collection Parts ${parentData.belongs_to_collection.id}`
+            ).catch(() => null);
+            if (colResp?.ok) {
+              const colData = await colResp.json();
+              if (Array.isArray(colData?.parts) && colData.parts.some((p) => isAdult(p))) {
+                return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
+              }
+            }
+          } catch {}
         }
       }
     }
@@ -2055,11 +2070,20 @@ router.get(['/movies/:id', '/movie/:id'], async (req, res) => {
         if (colResp.ok) {
           const colData = await colResp.json();
           if (colData && Array.isArray(colData.parts)) {
-            content.belongs_to_collection = {
-              ...content.belongs_to_collection,
-              ...colData,
-              parts: colData.parts
-            };
+            const hasAdultPart = !isAdmin && colData.parts.some((part) => isAdult(part));
+            if (hasAdultPart) {
+              // If any movie in the collection is adult, hide collection data and hide similar movies
+              content.belongs_to_collection = null;
+              if (content.similar) {
+                content.similar = { results: [], total_pages: 0, total_results: 0 };
+              }
+            } else {
+              content.belongs_to_collection = {
+                ...content.belongs_to_collection,
+                ...colData,
+                parts: colData.parts.filter(item => shouldShow(item, adminMode))
+              };
+            }
           }
         }
       } catch (colErr) {

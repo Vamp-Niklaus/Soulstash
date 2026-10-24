@@ -7,7 +7,7 @@ const AVAILABLE_FIELDS = [
   { id: 'adult_flag', label: 'TMDB Adult Flag (item.adult === true)', type: 'boolean' },
   { id: 'adult_keywords', label: 'Adult Keywords (erotic, porn, softcore, xxx, etc.)', type: 'boolean' },
   { id: 'release_age_days', label: 'Release Age in Days (days since release)', type: 'number', defaultVal: 60 },
-  { id: 'vote_count', label: 'TMDB Vote Count', type: 'number', defaultVal: 10 },
+  { id: 'vote_count', label: 'TMDB Vote Count', type: 'number', defaultVal: 30 },
   { id: 'has_imdb', label: 'Has IMDb ID (item.imdb_id exists)', type: 'boolean' },
   { id: 'is_indian', label: 'Is Indian Content (IN country or Indian language)', type: 'boolean' }
 ];
@@ -494,7 +494,7 @@ export function AdultFilterTreePanel() {
       type: 'decision',
       field: 'vote_count',
       operator: '<',
-      value: 10,
+      value: 30,
       yesNode: {
         id: generateId(),
         type: 'result',
@@ -608,7 +608,7 @@ export function AdultFilterTreePanel() {
               <p className="mt-1 text-xs text-yellow-200/80">
                 This will overwrite any custom nodes and restore the standard Option A rules:
                 <br />
-                <span className="font-mono text-white/90">Adult Flag &rarr; Adult Keywords &rarr; (Release Age &ge; 60 days AND Votes &lt; 10 &rarr; Adult)</span>.
+                <span className="font-mono text-white/90">Adult Flag &rarr; Adult Keywords &rarr; (Release Age &ge; 60 days AND Votes &lt; 30 &rarr; Adult)</span>.
               </p>
             </div>
             <div className="flex items-center gap-2">
