@@ -832,10 +832,15 @@ function isAdult(item, options = {}) {
   return evaluateAdultItem(item, null, options);
 }
 
-function shouldShow(item, adminMode, options = {}) {
-  if (adminMode === 1) return true; // Mode 1: All Content (Normal + Adult shown)
-  if (adminMode === 2) return isAdult(item, options); // Mode 2: Adult Only (Only adult content)
-  return !isAdult(item, options); // Mode 0: Filter On (Adult content hidden)
+function shouldShow(item, adminMode = 0, options = {}) {
+  if (adminMode === 1) return true; // Mode 1: All Content (Normal + Adult shown - returns 1 always)
+  if (adminMode === 2) return isAdult(item, options); // Mode 2: Reverse Filter (Adult only)
+  return !isAdult(item, options); // Mode 0 / Public: Normal Filter (Adult content hidden)
+}
+
+function shouldSuppressContent(item, adminMode = 0, options = {}) {
+  // If content is not visible to this user under their current adminMode, suppress it
+  return !shouldShow(item, adminMode, options);
 }
 
 function isAnimeContent(item) {
@@ -1754,14 +1759,14 @@ async function getSimilarContent(req, res, mediaType) {
     const initialPage = Number(req.query.page) || 1;
     const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
 
-    // If the content itself is adult by our criteria or has adult collection parts, do not show similar movies
+    // If the content itself should be suppressed for this user or has suppressed collection parts, do not show similar movies
     const parentUrl = mediaType === 'movie'
       ? `https://api.themoviedb.org/3/movie/${id}?language=en-US`
       : `https://api.themoviedb.org/3/tv/${id}?language=en-US`;
     const parentResp = await tmdbFetch(parentUrl, { method: 'GET', headers: tmdbHeaders() }, `Check Parent ${mediaType} ${id}`).catch(() => null);
     if (parentResp?.ok) {
       const parentData = await parentResp.json();
-      if (isAdult(parentData)) {
+      if (shouldSuppressContent(parentData, adminMode)) {
         return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
       }
       if (parentData?.belongs_to_collection?.id) {
@@ -1773,7 +1778,7 @@ async function getSimilarContent(req, res, mediaType) {
           ).catch(() => null);
           if (colResp?.ok) {
             const colData = await colResp.json();
-            if (Array.isArray(colData?.parts) && colData.parts.some((p) => isAdult(p))) {
+            if (Array.isArray(colData?.parts) && colData.parts.some((p) => shouldSuppressContent(p, adminMode))) {
               return res.json({ page: initialPage, results: [], total_pages: 0, total_results: 0 });
             }
           }
@@ -1842,10 +1847,11 @@ router.get('/series/:id/similar', (req, res) => getSimilarContent(req, res, 'tv'
 
 router.get('/tmdb-collection/:id', async (req, res) => {
   try {
+    const { adminMode } = await resolveUserAdminInfo(req);
     const resp = await tmdbFetch(`https://api.themoviedb.org/3/collection/${req.params.id}?language=en-US`, { method: 'GET', headers: tmdbHeaders() }, `Collection ${req.params.id}`);
     if (!resp.ok) return res.status(resp.status).json({ error: 'Collection not found' });
     const colData = await resp.json();
-    if (Array.isArray(colData?.parts) && colData.parts.some((p) => isAdult(p))) {
+    if (Array.isArray(colData?.parts) && colData.parts.some((p) => shouldSuppressContent(p, adminMode))) {
       return res.status(404).json({ error: 'Collection not found' });
     }
     res.json(colData);
@@ -2059,10 +2065,10 @@ router.get(['/movies/:id', '/movie/:id'], async (req, res) => {
 
     const content = await detailResp.json();
     const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
-    const isCurrentAdult = isAdult(content);
+    const isCurrentSuppressed = shouldSuppressContent(content, adminMode);
 
-    if (isCurrentAdult) {
-      // If the content itself is adult by our criteria, do not show collection or similar movies
+    if (isCurrentSuppressed) {
+      // If the content itself is suppressed under the viewer's adminMode, hide collection and similar movies
       content.belongs_to_collection = null;
       content.similar = { results: [], total_pages: 0, total_results: 0 };
     } else {
@@ -2081,9 +2087,9 @@ router.get(['/movies/:id', '/movie/:id'], async (req, res) => {
           if (colResp.ok) {
             const colData = await colResp.json();
             if (colData && Array.isArray(colData.parts)) {
-              const hasAdultPart = colData.parts.some((part) => isAdult(part));
-              if (hasAdultPart) {
-                // If any movie in the collection is adult, hide collection data and hide similar movies
+              const hasSuppressedPart = colData.parts.some((part) => shouldSuppressContent(part, adminMode));
+              if (hasSuppressedPart) {
+                // If any movie in the collection is suppressed for this user, hide collection data and similar movies
                 content.belongs_to_collection = null;
                 if (content.similar) {
                   content.similar = { results: [], total_pages: 0, total_results: 0 };
@@ -2185,9 +2191,9 @@ router.get('/series/:id', async (req, res) => {
     if (!resp.ok) return res.status(404).json({ error: 'Series not found', details: `TMDB returned ${resp.status}` });
     const s = await resp.json();
     const { isAdmin, adminMode } = await resolveUserAdminInfo(req);
-    const isCurrentAdult = isAdult(s);
+    const isCurrentSuppressed = shouldSuppressContent(s, adminMode);
 
-    if (isCurrentAdult) {
+    if (isCurrentSuppressed) {
       s.similar = { results: [], total_pages: 0, total_results: 0 };
     } else if (s?.similar?.results && Array.isArray(s.similar.results)) {
       s.similar.results = s.similar.results.filter(item => shouldShow(item, adminMode));
