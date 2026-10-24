@@ -1565,8 +1565,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
 
       let pageItems = (movieData?.results || []).map(i => ({
         ...i,
-        media_type: 'Movie',
-        ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+        media_type: 'Movie'
       }));
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
@@ -1589,7 +1588,9 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement Bg').catch(() => null);
       if (supResp?.ok) {
         const supData = await supResp.json();
-        const supItems = (supData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true }));
+        const supItems = (supData?.results || [])
+          .map(i => ({ ...i, media_type: 'Movie' }))
+          .filter(item => shouldShow(item, adminMode, filterOpts));
         for (const item of supItems) {
           if (finalItems.length >= (page === 1 ? 14 : limit)) break;
           if (!finalItems.some(existing => existing.id === item.id)) {
@@ -1891,7 +1892,7 @@ router.get('/movies', async (req, res) => {
     const cacheKey = `movies_page${page}_genre${genre || 'all'}_year${year || 'all'}_mode${adminMode}`;
     const lockKey = `revalidating_category_page${page}_genre${genre || 'all'}_year${year || 'all'}_mode${adminMode}`;
 
-    if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc') {
+    if (page === 1 && !search && sortBy === 'popularity' && sortOrder === 'desc' && adminMode === 0) {
       if (categoriesCache.has(cacheKey)) {
         const cached = categoriesCache.get(cacheKey);
         const isStale = Date.now() - cached.time > CATEGORIES_CACHE_DURATION;
@@ -1978,8 +1979,7 @@ router.get('/movies', async (req, res) => {
 
       let pageItems = (movieData?.results || []).map(i => ({
         ...i,
-        media_type: 'Movie',
-        ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+        media_type: 'Movie'
       }));
 
       if (String(genre) !== '16') {
@@ -2004,7 +2004,9 @@ router.get('/movies', async (req, res) => {
       const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement').catch(() => null);
       if (supResp?.ok) {
         const supData = await supResp.json();
-        const supItems = (supData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true }));
+        const supItems = (supData?.results || [])
+          .map(i => ({ ...i, media_type: 'Movie' }))
+          .filter(item => shouldShow(item, adminMode, filterOpts));
         for (const item of supItems) {
           if (finalItems.length >= (page === 1 ? 14 : limit)) break;
           if (!finalItems.some(existing => existing.id === item.id)) {
@@ -3858,5 +3860,19 @@ router.get('/scrape-embed', async (req, res) => {
     return res.status(500).send('Server error');
   }
 });
+
+async function deleteMongoCategoryCache() {
+  try {
+    const db = getDb();
+    if (!db) return;
+    await db.collection(CONTENT_CACHE_COLLECTION).deleteMany({ _id: { $regex: '^movies_page' } });
+  } catch {}
+}
+
+function clearCategoriesCache() {
+  categoriesCache.clear();
+  deleteMongoCategoryCache().catch(() => {});
+}
+router.clearCategoriesCache = clearCategoriesCache;
 
 module.exports = router;

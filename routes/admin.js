@@ -124,6 +124,12 @@ router.post('/preferences', authenticateToken, ensureAdmin, async (req, res) => 
         { _id: new ObjectId(req.user.userId) },
         { $set: { showAdult: nextValue, adminMode: nextMode, updatedAt: new Date() } }
       );
+    try {
+      const contentRouter = require('./content');
+      if (typeof contentRouter.clearCategoriesCache === 'function') {
+        contentRouter.clearCategoriesCache();
+      }
+    } catch {}
     res.json({ success: true, showAdult: nextValue, adminMode: nextMode });
   } catch (error) {
     console.error('Admin preferences error:', error);
@@ -389,6 +395,12 @@ router.post('/adult-criteria', authenticateToken, ensureAdmin, async (req, res) 
     const { tree } = req.body;
     if (!tree) return res.status(400).json({ error: 'Decision tree is required' });
     const saved = await saveAdultTree(tree);
+    try {
+      const contentRouter = require('./content');
+      if (typeof contentRouter.clearCategoriesCache === 'function') {
+        contentRouter.clearCategoriesCache();
+      }
+    } catch {}
     res.json({ success: true, tree: saved });
   } catch (err) {
     console.error('[Admin] save adult-criteria error:', err.message);
@@ -400,6 +412,12 @@ router.post('/adult-criteria', authenticateToken, ensureAdmin, async (req, res) 
 router.post('/adult-criteria/reset', authenticateToken, ensureAdmin, async (req, res) => {
   try {
     const reset = await resetAdultTree();
+    try {
+      const contentRouter = require('./content');
+      if (typeof contentRouter.clearCategoriesCache === 'function') {
+        contentRouter.clearCategoriesCache();
+      }
+    } catch {}
     res.json({ success: true, tree: reset });
   } catch (err) {
     console.error('[Admin] reset adult-criteria error:', err.message);
