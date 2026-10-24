@@ -95,7 +95,7 @@ export function PopularPage() {
 
   return (
     <section className="content-section">
-      <SectionHeader title="Popular Movies" />
+      <SectionHeader title="Popular Movies" large />
       {status === 'error' ? (
         <div className="app-error">
           <p>{error?.message || 'Unable to load popular titles.'}</p>

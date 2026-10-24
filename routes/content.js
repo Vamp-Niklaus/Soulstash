@@ -1969,6 +1969,7 @@ router.get('/movies', async (req, res) => {
     const sortParam = sortMap[sortBy] ? `&sort_by=${sortMap[sortBy]}.${sortOrder}` : '&sort_by=popularity.desc';
     const targetCount = page === 1 ? Math.max(limit, 14) : limit;
 
+    let finalItems = [];
     const isBollywood = String(genre).toLowerCase() === 'bollywood';
 
     if (isBollywood) {
@@ -2725,7 +2726,15 @@ router.get('/trending', trendingLimiter, async (req, res) => {
       }
     }
 
-    const finalItems = all.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    let finalItems = [];
+    if (adminMode === 2) {
+      all.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+    }
+    for (const item of all) {
+      if (!finalItems.some(existing => existing.id === item.id)) {
+        finalItems.push(item);
+      }
+    }
 
     if (!finalItems.length) {
       const fallbackCache = adminMode === 2 ? trendingCacheAdult : trendingCache;
