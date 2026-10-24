@@ -31,6 +31,7 @@ export function HomePage() {
       }
 
       const trending = Array.isArray(homeData?.trending) ? homeData.trending : [];
+      const popular = Array.isArray(homeData?.popular) ? homeData.popular : [];
       if (trending.length) {
         homeTrendingCache.data = trending;
         homeTrendingCache.expiresAt = Date.now() + HOME_TRENDING_TTL;
@@ -38,6 +39,7 @@ export function HomePage() {
 
       return {
         trending,
+        popular,
         genres: Array.isArray(homeData?.genres) ? homeData.genres : [],
         categoryData: homeData?.categories && typeof homeData.categories === 'object' ? homeData.categories : {},
         publishedCollections: Array.isArray(publishedData?.collections) ? publishedData.collections : []
@@ -46,6 +48,7 @@ export function HomePage() {
   });
 
   const trending = data?.trending || [];
+  const popular = data?.popular || [];
   const genres = data?.genres || [];
   const categoryData = data?.categoryData || {};
   const publishedCollections = data?.publishedCollections || [];
@@ -58,6 +61,9 @@ export function HomePage() {
     if (trending.length > 0) {
       preloadImages(trending.slice(0, homeShelfLimit).map(item => item.poster_path));
     }
+    if (popular.length > 0) {
+      preloadImages(popular.slice(0, homeShelfLimit).map(item => item.poster_path));
+    }
     
     // Preload first row for each pre-filled category
     Object.values(categoryData).forEach(movies => {
@@ -65,7 +71,7 @@ export function HomePage() {
         preloadImages(movies.slice(0, homeShelfLimit).map(item => item.poster_path));
       }
     });
-  }, [trending, categoryData, homeShelfLimit]);
+  }, [trending, popular, categoryData, homeShelfLimit]);
 
   const firstCardRef = useRef(null);
 
@@ -100,6 +106,17 @@ export function HomePage() {
           </div>
         ) : null}
       </section>
+
+      {popular.length > 0 && !loading && !error ? (
+        <section className="content-section">
+          <HomeShelfHeader title="Popular Movies" onViewAll={() => navigate('/popular')} />
+          <div className={HOME_GRID_CLASS}>
+            {popular.slice(0, homeShelfLimit).map((item) => (
+              <ContentCard key={`pop-${item.id}`} item={item} data-card />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {genres.map((genre) => (
         <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} preloadedMovies={categoryData[String(genre.id)]} />
