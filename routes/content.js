@@ -3,7 +3,7 @@ const rateLimit = require('express-rate-limit');
 const { ObjectId } = require('mongodb');
 const { getDb, SOURCE_CONFIGS_COLLECTION, MULTIMOVIES_CONFIG_DOC_ID } = require('../db');
 const { INDIAN_LANGS, normalize, computeFinalScore } = require('../util');
-const { evaluateAdultItem, loadAdultTree } = require('../util/adultDecisionTree');
+const { evaluateAdultItem, loadAdultTree, getAdultKeywordsParam, loadAdultKeywords } = require('../util/adultDecisionTree');
 const { METRICS_COLLECTION, RATINGS_COLLECTION, RATINGS_METRICS_DOC_ID, normalizeMediaType, resolveImdbRating, validVoteAverage } = require('../util/imdbRatings');
 const {
   PREFERRED_SERVER_ORDER,
@@ -796,7 +796,11 @@ async function attachCachedRatings(items = []) {
   });
 }
 
-const ADULT_KEYWORDS = '&with_keywords=190370|207767|256466|302868|281741|738|155477|170827|14794|3182|1326|286925|11034|2804';
+const ADULT_KEYWORDS = {
+  toString() {
+    return getAdultKeywordsParam();
+  }
+};
 const CONTENT_CACHE_COLLECTION = 'ContentCache';
 
 async function getMongoCache(key) {
@@ -1540,7 +1544,6 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     let totalResults = 0;
 
     const isBollywood = String(genre).toLowerCase() === 'bollywood';
-    const filterOpts = { ignoreIndian: isBollywood && adminMode === 2 };
     const today = new Date().toISOString().split('T')[0];
 
     while (finalItems.length < targetCount && currentPage <= page + 6) {
@@ -1566,12 +1569,13 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
 
       let pageItems = (movieData?.results || []).map(i => ({
         ...i,
-        media_type: 'Movie'
+        media_type: 'Movie',
+        ...(isBollywood ? { is_bollywood_endpoint: true } : {})
       }));
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
       }
-      pageItems = pageItems.filter(item => shouldShow(item, adminMode, filterOpts));
+      pageItems = pageItems.filter(item => shouldShow(item, adminMode));
 
       for (const item of pageItems) {
         if (!finalItems.some(existing => existing.id === item.id)) {
@@ -1589,8 +1593,8 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       if (supResp?.ok) {
         const supData = await supResp.json();
         const supItems = (supData?.results || [])
-          .map(i => ({ ...i, media_type: 'Movie' }))
-          .filter(item => shouldShow(item, adminMode, filterOpts));
+          .map(i => ({ ...i, media_type: 'Movie', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) }))
+          .filter(item => shouldShow(item, adminMode));
         for (const item of supItems) {
           if (finalItems.length >= (page === 1 ? 14 : limit)) break;
           if (!finalItems.some(existing => existing.id === item.id)) {
@@ -1949,7 +1953,6 @@ router.get('/movies', async (req, res) => {
     const targetCount = page === 1 ? Math.max(limit, 14) : limit;
 
     const isBollywood = String(genre).toLowerCase() === 'bollywood';
-    const filterOpts = { ignoreIndian: isBollywood && adminMode === 2 };
     const today = new Date().toISOString().split('T')[0];
 
     let finalItems = [];
@@ -1983,14 +1986,15 @@ router.get('/movies', async (req, res) => {
 
       let pageItems = (movieData?.results || []).map(i => ({
         ...i,
-        media_type: 'Movie'
+        media_type: 'Movie',
+        ...(isBollywood ? { is_bollywood_endpoint: true } : {})
       }));
 
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
       }
 
-      pageItems = pageItems.filter(item => shouldShow(item, adminMode, filterOpts));
+      pageItems = pageItems.filter(item => shouldShow(item, adminMode));
 
       for (const item of pageItems) {
         if (!finalItems.some(existing => existing.id === item.id)) {
@@ -2008,8 +2012,8 @@ router.get('/movies', async (req, res) => {
       if (supResp?.ok) {
         const supData = await supResp.json();
         const supItems = (supData?.results || [])
-          .map(i => ({ ...i, media_type: 'Movie' }))
-          .filter(item => shouldShow(item, adminMode, filterOpts));
+          .map(i => ({ ...i, media_type: 'Movie', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) }))
+          .filter(item => shouldShow(item, adminMode));
         for (const item of supItems) {
           if (finalItems.length >= (page === 1 ? 14 : limit)) break;
           if (!finalItems.some(existing => existing.id === item.id)) {
@@ -2841,9 +2845,11 @@ async function buildHomePayload(adminMode = 0) {
         if (!movieResp?.ok) break;
         const movieData = await movieResp.json();
 
+        const isBollywood = String(genre?.id).toLowerCase() === 'bollywood';
         let mItems = (movieData?.results || []).map(i => ({
           ...i,
           media_type: 'Movie',
+          ...(isBollywood ? { is_bollywood_endpoint: true } : {}),
           ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
         }));
 
@@ -2852,8 +2858,7 @@ async function buildHomePayload(adminMode = 0) {
           if (String(genre.id) !== '16') {
             mItems = mItems.filter(item => !isAnimeContent(item));
           }
-          const isBollywood = String(genre?.id).toLowerCase() === 'bollywood';
-          mItems = mItems.filter(item => shouldShow(item, adminMode, { ignoreIndian: isBollywood && adminMode === 2 }));
+          mItems = mItems.filter(item => shouldShow(item, adminMode));
         }
 
         for (const item of mItems) {
@@ -3879,5 +3884,7 @@ function clearCategoriesCache() {
   deleteMongoCategoryCache().catch(() => {});
 }
 router.clearCategoriesCache = clearCategoriesCache;
+router.tmdbFetch = tmdbFetch;
+router.tmdbHeaders = tmdbHeaders;
 
 module.exports = router;

@@ -9,7 +9,8 @@ const AVAILABLE_FIELDS = [
   { id: 'release_age_days', label: 'Release Age in Days (days since release)', type: 'number', defaultVal: 60 },
   { id: 'vote_count', label: 'TMDB Vote Count', type: 'number', defaultVal: 30 },
   { id: 'has_imdb', label: 'Has IMDb ID (item.imdb_id exists)', type: 'boolean' },
-  { id: 'is_indian', label: 'Is Indian Content (IN country or Indian language)', type: 'boolean' }
+  { id: 'is_indian', label: 'Is Indian Content (IN country or Indian language)', type: 'boolean' },
+  { id: 'is_bollywood_endpoint', label: 'Bollywood Endpoint / Feed', type: 'boolean' }
 ];
 
 const NUMERIC_OPS = [
@@ -230,6 +231,9 @@ export function AdultFilterTreePanel() {
 
   // Test Simulator State
   const [showSimulator, setShowSimulator] = useState(false);
+  const [importType, setImportType] = useState('movie');
+  const [importId, setImportId] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   const [testMovie, setTestMovie] = useState({
     title: 'Example Movie',
     adult: false,
@@ -237,9 +241,31 @@ export function AdultFilterTreePanel() {
     release_date: '2023-01-01',
     imdb_id: '',
     origin_country: ['US'],
-    original_language: 'en'
+    original_language: 'en',
+    is_bollywood_endpoint: false,
+    genres: [],
+    overview: ''
   });
   const [testResult, setTestResult] = useState(null);
+
+  // Adult Keywords Management State
+  const [showKeywordsPanel, setShowKeywordsPanel] = useState(false);
+  const [keywordsList, setKeywordsList] = useState([]);
+  const [newKeywordId, setNewKeywordId] = useState('');
+  const [newKeywordName, setNewKeywordName] = useState('');
+  const [keywordsModified, setKeywordsModified] = useState(false);
+
+  const { data: keywordsData } = useQuery({
+    queryKey: ['adminAdultKeywords'],
+    queryFn: () => apiFetch('/api/admin/adult-keywords')
+  });
+
+  useEffect(() => {
+    if (keywordsData?.keywords) {
+      setKeywordsList(keywordsData.keywords);
+      setKeywordsModified(false);
+    }
+  }, [keywordsData]);
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['adminAdultCriteria'],
@@ -364,6 +390,85 @@ export function AdultFilterTreePanel() {
     onSuccess: (resp) => setTestResult(resp),
     onError: (err) => toast(err.message, 'error')
   });
+
+  const saveKeywordsMutation = useMutation({
+    mutationFn: (kList) =>
+      apiFetch('/api/admin/adult-keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: kList })
+      }),
+    onSuccess: (resp) => {
+      queryClient.invalidateQueries({ queryKey: ['adminAdultKeywords'] });
+      if (resp?.keywords) setKeywordsList(resp.keywords);
+      setKeywordsModified(false);
+      toast('Adult keywords saved successfully');
+    },
+    onError: (err) => toast(err.message, 'error')
+  });
+
+  const resetKeywordsMutation = useMutation({
+    mutationFn: () =>
+      apiFetch('/api/admin/adult-keywords/reset', {
+        method: 'POST'
+      }),
+    onSuccess: (resp) => {
+      queryClient.invalidateQueries({ queryKey: ['adminAdultKeywords'] });
+      if (resp?.keywords) setKeywordsList(resp.keywords);
+      setKeywordsModified(false);
+      toast('Adult keywords reset to default');
+    },
+    onError: (err) => toast(err.message, 'error')
+  });
+
+  const handleAddKeyword = () => {
+    const id = newKeywordId.trim();
+    const name = newKeywordName.trim();
+    if (!id && !name) {
+      toast('Please enter a Keyword ID or Name', 'error');
+      return;
+    }
+    setKeywordsList((prev) => [...prev, { id, name }]);
+    setNewKeywordId('');
+    setNewKeywordName('');
+    setKeywordsModified(true);
+  };
+
+  const handleRemoveKeyword = (indexToRemove) => {
+    setKeywordsList((prev) => prev.filter((_, idx) => idx !== indexToRemove));
+    setKeywordsModified(true);
+  };
+
+  const handleImportDetails = async () => {
+    const id = importId.trim();
+    if (!id) {
+      toast('Please enter a TMDB ID to import', 'error');
+      return;
+    }
+    setIsImporting(true);
+    try {
+      const resp = await apiFetch(`/api/admin/adult-criteria/import/${importType}/${id}`);
+      if (resp?.item) {
+        setTestMovie({
+          title: resp.item.title || '',
+          adult: Boolean(resp.item.adult),
+          vote_count: Number(resp.item.vote_count || 0),
+          release_date: resp.item.release_date || '',
+          imdb_id: resp.item.imdb_id || '',
+          origin_country: resp.item.origin_country || [],
+          original_language: resp.item.original_language || '',
+          overview: resp.item.overview || '',
+          genres: resp.item.genres || [],
+          is_bollywood_endpoint: Boolean(resp.item.is_bollywood_endpoint)
+        });
+        toast(`Imported "${resp.item.title || id}" successfully!`);
+      }
+    } catch (err) {
+      toast(err.message || 'Failed to import movie details', 'error');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   // Canvas Pan (Drag background)
   const handleCanvasMouseDown = (e) => {
@@ -555,6 +660,19 @@ export function AdultFilterTreePanel() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
+            onClick={() => setShowKeywordsPanel((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
+              showKeywordsPanel
+                ? 'border-[#8f44f0] bg-[#8f44f0]/20 text-[#c296ff]'
+                : 'border-white/10 bg-white/5 text-[#a0a0a0] hover:text-white'
+            }`}
+          >
+            <span>🏷️</span>
+            {showKeywordsPanel ? 'Hide Adult Keywords' : 'Adult Keywords'}
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowSimulator((prev) => !prev)}
             className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all border ${
               showSimulator
@@ -590,6 +708,87 @@ export function AdultFilterTreePanel() {
           </button>
         </div>
       </div>
+
+      {/* Adult Keywords Management Panel */}
+      {showKeywordsPanel && (
+        <div className="rounded-2xl border border-purple-500/30 bg-purple-950/10 p-5 shadow-xl backdrop-blur-md">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-purple-500/20 pb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
+                <span>🏷️</span>
+                TMDB Adult Keywords Configuration
+              </h3>
+              <p className="mt-1 text-xs text-purple-200/70">
+                Configure TMDB keyword IDs and tags used for Discover queries and adult keyword detection.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={resetKeywordsMutation.isPending}
+                onClick={() => resetKeywordsMutation.mutate()}
+                className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-1.5 text-xs font-semibold text-yellow-300 hover:bg-yellow-500/20 transition-colors"
+              >
+                {resetKeywordsMutation.isPending ? 'Resetting...' : 'Reset to Default'}
+              </button>
+              <button
+                type="button"
+                disabled={!keywordsModified || saveKeywordsMutation.isPending}
+                onClick={() => saveKeywordsMutation.mutate(keywordsList)}
+                className="rounded-lg bg-[#8f44f0] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#7a34d6] disabled:opacity-50 transition-colors"
+              >
+                {saveKeywordsMutation.isPending ? 'Saving...' : 'Save Keywords'}
+              </button>
+            </div>
+          </div>
+
+          {/* Add Keyword Inputs */}
+          <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <input
+              type="text"
+              placeholder="Keyword ID (e.g. 190370)"
+              value={newKeywordId}
+              onChange={(e) => setNewKeywordId(e.target.value)}
+              className="sm:w-44 rounded-lg border border-white/10 bg-[#161616] px-3 py-1.5 text-xs text-white placeholder-white/40 outline-none focus:border-purple-400"
+            />
+            <input
+              type="text"
+              placeholder="Tag Name (e.g. erotic movie)"
+              value={newKeywordName}
+              onChange={(e) => setNewKeywordName(e.target.value)}
+              className="flex-1 rounded-lg border border-white/10 bg-[#161616] px-3 py-1.5 text-xs text-white placeholder-white/40 outline-none focus:border-purple-400"
+            />
+            <button
+              type="button"
+              onClick={handleAddKeyword}
+              className="rounded-lg border border-purple-500/50 bg-purple-500/20 px-4 py-1.5 text-xs font-semibold text-purple-200 hover:bg-purple-500/30 transition-colors whitespace-nowrap cursor-pointer"
+            >
+              + Add Keyword
+            </button>
+          </div>
+
+          {/* Keyword Badges */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {keywordsList.map((kw, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#171717] px-2.5 py-1 text-xs text-white/90 shadow-sm"
+              >
+                <span className="font-mono text-purple-400">{kw.id}</span>
+                {kw.name && <span className="text-white/60">({kw.name})</span>}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveKeyword(idx)}
+                  className="text-white/40 hover:text-red-400 text-sm ml-1 transition-colors"
+                  title="Remove keyword"
+                >
+                  &times;
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Reset Confirmation Dialog */}
       {showResetConfirm && (
@@ -636,15 +835,49 @@ export function AdultFilterTreePanel() {
               type="button"
               disabled={testMutation.isPending}
               onClick={() => testMutation.mutate({ tree: treeState, item: testMovie })}
-              className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 cursor-pointer"
+              className="rounded-lg bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 cursor-pointer transition-colors"
             >
               {testMutation.isPending ? 'Testing...' : 'Run Test'}
             </button>
           </div>
 
+          {/* TMDB Metadata Quick Import */}
+          <div className="mt-4 rounded-xl border border-white/10 bg-[#141416] p-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-purple-300 whitespace-nowrap">Import from Movie / Series ID:</span>
+                <select
+                  value={importType}
+                  onChange={(e) => setImportType(e.target.value)}
+                  className="rounded-lg border border-white/10 bg-[#1d1d20] px-2.5 py-1 text-xs text-white outline-none focus:border-purple-400"
+                >
+                  <option value="movie">Movie</option>
+                  <option value="tv">Series / TV</option>
+                </select>
+              </div>
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Paste TMDB ID (e.g. 149550)"
+                  value={importId}
+                  onChange={(e) => setImportId(e.target.value)}
+                  className="w-full rounded-lg border border-white/10 bg-[#1d1d20] px-3 py-1 text-xs text-white placeholder-white/40 outline-none focus:border-purple-400"
+                />
+                <button
+                  type="button"
+                  disabled={isImporting}
+                  onClick={handleImportDetails}
+                  className="rounded-lg bg-[#8f44f0] px-3.5 py-1 text-xs font-semibold text-white hover:bg-[#7a34d6] disabled:opacity-50 whitespace-nowrap cursor-pointer transition-colors"
+                >
+                  {isImporting ? 'Importing...' : 'Fetch & Import'}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <label className="text-[11px] uppercase tracking-wider text-purple-200/70">Movie Title</label>
+              <label className="text-[11px] uppercase tracking-wider text-purple-200/70">Movie / Series Title</label>
               <input
                 type="text"
                 value={testMovie.title}
@@ -670,26 +903,60 @@ export function AdultFilterTreePanel() {
                 className="mt-1 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-1.5 text-xs text-white outline-none focus:border-purple-400"
               />
             </div>
-            <div className="flex flex-col justify-end gap-2">
-              <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={testMovie.adult}
-                  onChange={(e) => setTestMovie({ ...testMovie, adult: e.target.checked })}
-                  className="rounded border-white/20 bg-[#171717] text-purple-600 focus:ring-0"
-                />
-                TMDB Adult = true
-              </label>
-              <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={Boolean(testMovie.imdb_id)}
-                  onChange={(e) => setTestMovie({ ...testMovie, imdb_id: e.target.checked ? 'tt1234567' : '' })}
-                  className="rounded border-white/20 bg-[#171717] text-purple-600 focus:ring-0"
-                />
-                Has IMDb ID
-              </label>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-purple-200/70">Original Language</label>
+              <input
+                type="text"
+                value={testMovie.original_language || ''}
+                placeholder="e.g. hi, en, ta"
+                onChange={(e) => setTestMovie({ ...testMovie, original_language: e.target.value })}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-1.5 text-xs text-white outline-none focus:border-purple-400"
+              />
             </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 pt-3 border-t border-purple-500/10">
+            <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
+              <input
+                type="checkbox"
+                checked={testMovie.adult}
+                onChange={(e) => setTestMovie({ ...testMovie, adult: e.target.checked })}
+                className="rounded border-white/20 bg-[#171717] text-purple-600 focus:ring-0"
+              />
+              TMDB Adult = true
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(testMovie.imdb_id)}
+                onChange={(e) => setTestMovie({ ...testMovie, imdb_id: e.target.checked ? 'tt1234567' : '' })}
+                className="rounded border-white/20 bg-[#171717] text-purple-600 focus:ring-0"
+              />
+              Has IMDb ID
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(testMovie.is_bollywood_endpoint)}
+                onChange={(e) => setTestMovie({ ...testMovie, is_bollywood_endpoint: e.target.checked })}
+                className="rounded border-white/20 bg-[#171717] text-purple-600 focus:ring-0"
+              />
+              Bollywood Endpoint / Feed
+            </label>
+            <label className="inline-flex items-center gap-2 text-xs text-white cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Array.isArray(testMovie.origin_country) && testMovie.origin_country.includes('IN')}
+                onChange={(e) => {
+                  const hasIn = e.target.checked;
+                  const current = Array.isArray(testMovie.origin_country) ? [...testMovie.origin_country] : [];
+                  const updated = hasIn ? Array.from(new Set([...current, 'IN'])) : current.filter((c) => c !== 'IN');
+                  setTestMovie({ ...testMovie, origin_country: updated });
+                }}
+                className="rounded border-white/20 bg-[#171717] text-purple-600 focus:ring-0"
+              />
+              Origin Country includes 'IN'
+            </label>
           </div>
 
           {testResult && (

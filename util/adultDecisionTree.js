@@ -2,6 +2,24 @@ const { getDb } = require('../db');
 
 const SETTINGS_COLLECTION = 'admin_setting_monolith';
 const DOC_ID = 'adult_criteria';
+const KEYWORDS_DOC_ID = 'adult_keywords_config';
+
+const DEFAULT_KEYWORDS = [
+  { id: '190370', name: 'erotic movie' },
+  { id: '207767', name: 'erotica' },
+  { id: '256466', name: 'erotic romance' },
+  { id: '302868', name: 'softcore' },
+  { id: '281741', name: 'sensual' },
+  { id: '738', name: 'sexuality' },
+  { id: '155477', name: 'softcore porn' },
+  { id: '170827', name: 'adult movie' },
+  { id: '14794', name: 'nudity' },
+  { id: '3182', name: 'sex' },
+  { id: '1326', name: 'infidelity' },
+  { id: '286925', name: 'taboo' },
+  { id: '11034', name: 'fetish' },
+  { id: '2804', name: 'passion' }
+];
 
 const DEFAULT_TREE = {
   id: 'node_root',
@@ -58,10 +76,16 @@ const DEFAULT_TREE = {
 };
 
 let activeTreeCache = JSON.parse(JSON.stringify(DEFAULT_TREE));
+let activeKeywordsCache = JSON.parse(JSON.stringify(DEFAULT_KEYWORDS));
 let isLoaded = false;
+let isKeywordsLoaded = false;
 
 function cloneTree(tree) {
   return JSON.parse(JSON.stringify(tree || DEFAULT_TREE));
+}
+
+function cloneKeywords(keywords) {
+  return JSON.parse(JSON.stringify(keywords || DEFAULT_KEYWORDS));
 }
 
 function evaluateCondition(node, item, options = {}) {
@@ -73,7 +97,14 @@ function evaluateCondition(node, item, options = {}) {
   }
 
   if (field === 'adult_keywords') {
-    const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore|hentai|nsfw|xxx)\b/i;
+    const defaultTerms = ['erotic', 'erotica', 'porn', 'porno', 'pornography', 'softcore', 'hentai', 'nsfw', 'xxx'];
+    const customTerms = (activeKeywordsCache || [])
+      .map(k => (k.name || '').trim())
+      .filter(t => t.length >= 3)
+      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const combinedTerms = Array.from(new Set([...defaultTerms, ...customTerms]));
+    const adultRegex = new RegExp(`\\b(${combinedTerms.join('|')})\\b`, 'i');
+
     let hasKw = adultRegex.test(item?.title || item?.name || '') || adultRegex.test(item?.overview || '');
     if (!hasKw && Array.isArray(item?.genres)) {
       for (const g of item.genres) {
@@ -93,12 +124,14 @@ function evaluateCondition(node, item, options = {}) {
   }
 
   if (field === 'is_indian') {
-    if (options && options.ignoreIndian) {
-      return operator === 'is_true' ? false : true;
-    }
     const isInd = (Array.isArray(item?.origin_country) && item.origin_country.includes('IN')) ||
       ['hi', 'ta', 'te', 'ml', 'kn', 'bn', 'mr', 'pa'].includes(item?.original_language);
     return operator === 'is_true' ? isInd : !isInd;
+  }
+
+  if (field === 'is_bollywood_endpoint') {
+    const isBw = Boolean(item?.is_bollywood_endpoint || item?.is_bollywood_feed);
+    return operator === 'is_true' ? isBw : !isBw;
   }
 
   if (field === 'vote_count') {
@@ -243,10 +276,105 @@ async function resetAdultTree() {
   return activeTreeCache;
 }
 
+async function loadAdultKeywords() {
+  try {
+    let db;
+    try {
+      db = getDb();
+    } catch {
+      return activeKeywordsCache;
+    }
+    if (!db) return activeKeywordsCache;
+    const doc = await db.collection(SETTINGS_COLLECTION).findOne({ _id: KEYWORDS_DOC_ID });
+    if (Array.isArray(doc?.keywords) && doc.keywords.length > 0) {
+      activeKeywordsCache = doc.keywords;
+    } else {
+      activeKeywordsCache = cloneKeywords(DEFAULT_KEYWORDS);
+      await db.collection(SETTINGS_COLLECTION).updateOne(
+        { _id: KEYWORDS_DOC_ID },
+        { $set: { keywords: activeKeywordsCache, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    }
+    isKeywordsLoaded = true;
+    return activeKeywordsCache;
+  } catch (err) {
+    console.error('[AdultDecisionTree] loadAdultKeywords error:', err.message);
+    return activeKeywordsCache;
+  }
+}
+
+async function saveAdultKeywords(keywords) {
+  if (!Array.isArray(keywords)) {
+    throw new Error('Keywords must be an array');
+  }
+  const sanitized = keywords
+    .filter(k => k && (k.id || k.name))
+    .map(k => ({
+      id: String(k.id || '').trim(),
+      name: String(k.name || '').trim()
+    }));
+  activeKeywordsCache = sanitized;
+  try {
+    let db;
+    try {
+      db = getDb();
+    } catch {
+      return activeKeywordsCache;
+    }
+    if (db) {
+      await db.collection(SETTINGS_COLLECTION).updateOne(
+        { _id: KEYWORDS_DOC_ID },
+        { $set: { keywords: activeKeywordsCache, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    }
+  } catch (err) {
+    console.error('[AdultDecisionTree] saveAdultKeywords error:', err.message);
+    throw err;
+  }
+  return activeKeywordsCache;
+}
+
+async function resetAdultKeywords() {
+  activeKeywordsCache = cloneKeywords(DEFAULT_KEYWORDS);
+  try {
+    let db;
+    try {
+      db = getDb();
+    } catch {
+      return activeKeywordsCache;
+    }
+    if (db) {
+      await db.collection(SETTINGS_COLLECTION).updateOne(
+        { _id: KEYWORDS_DOC_ID },
+        { $set: { keywords: activeKeywordsCache, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    }
+  } catch (err) {
+    console.error('[AdultDecisionTree] resetAdultKeywords error:', err.message);
+    throw err;
+  }
+  return activeKeywordsCache;
+}
+
+function getAdultKeywordsParam() {
+  if (!isKeywordsLoaded) {
+    loadAdultKeywords().catch(() => {});
+  }
+  const ids = (activeKeywordsCache || [])
+    .map(k => String(k.id || '').trim())
+    .filter(id => /^\d+$/.test(id));
+  return ids.length > 0 ? `&with_keywords=${ids.join('|')}` : '';
+}
+
 function evaluateAdultItem(item, trace = null, options = {}) {
   if (!isLoaded) {
-    // Asynchronously kick off DB load if not yet done
     loadAdultTree().catch(() => {});
+  }
+  if (!isKeywordsLoaded) {
+    loadAdultKeywords().catch(() => {});
   }
   return traverseTree(activeTreeCache, item, trace, options);
 }
@@ -259,12 +387,19 @@ function testTreeWithItem(tree, item, options = {}) {
 
 module.exports = {
   DEFAULT_TREE,
+  DEFAULT_KEYWORDS,
   SETTINGS_COLLECTION,
   DOC_ID,
+  KEYWORDS_DOC_ID,
   cloneTree,
+  cloneKeywords,
   loadAdultTree,
   saveAdultTree,
   resetAdultTree,
+  loadAdultKeywords,
+  saveAdultKeywords,
+  resetAdultKeywords,
+  getAdultKeywordsParam,
   evaluateAdultItem,
   testTreeWithItem
 };

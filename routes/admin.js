@@ -9,7 +9,11 @@ const {
   loadAdultTree,
   saveAdultTree,
   resetAdultTree,
-  testTreeWithItem
+  testTreeWithItem,
+  loadAdultKeywords,
+  saveAdultKeywords,
+  resetAdultKeywords,
+  DEFAULT_KEYWORDS
 } = require('../util/adultDecisionTree');
 
 const DEFAULT_MULTIMOVIES_BASE_URL = 'https://multimovies.fyi/';
@@ -435,6 +439,98 @@ router.post('/adult-criteria/test', authenticateToken, ensureAdmin, async (req, 
   } catch (err) {
     console.error('[Admin] test adult-criteria error:', err.message);
     res.status(500).json({ error: 'Failed to test adult criteria' });
+  }
+});
+
+// GET /api/admin/adult-criteria/import/:type/:id
+router.get('/adult-criteria/import/:type/:id', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const rawType = String(req.params.type || 'movie').toLowerCase();
+    const isSeries = rawType === 'tv' || rawType === 'series';
+    const tmdbType = isSeries ? 'tv' : 'movie';
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ error: 'TMDB ID is required' });
+
+    const contentRouter = require('./content');
+    const fetchFn = contentRouter.tmdbFetch || fetch;
+    const headers = contentRouter.tmdbHeaders ? contentRouter.tmdbHeaders() : { accept: 'application/json' };
+
+    const url = `https://api.themoviedb.org/3/${tmdbType}/${id}?language=en-US`;
+    const response = await fetchFn(url, { headers }, `Admin Import ${tmdbType} ${id}`);
+    if (!response || !response.ok) {
+      return res.status(404).json({ error: `Content not found on TMDB (${response ? response.status : 'network error'})` });
+    }
+
+    const data = await response.json();
+    const originCountries = Array.isArray(data.origin_country)
+      ? data.origin_country
+      : (Array.isArray(data.production_countries) ? data.production_countries.map(c => c.iso_3166_1).filter(Boolean) : []);
+
+    const importedItem = {
+      id: data.id,
+      title: data.title || data.name || '',
+      adult: Boolean(data.adult),
+      vote_count: Number(data.vote_count || 0),
+      release_date: data.release_date || data.first_air_date || '',
+      imdb_id: data.imdb_id || '',
+      origin_country: originCountries,
+      original_language: data.original_language || '',
+      overview: data.overview || '',
+      genres: data.genres || [],
+      is_bollywood_endpoint: false
+    };
+
+    res.json({ success: true, item: importedItem });
+  } catch (err) {
+    console.error('[Admin] import adult metadata error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to import metadata' });
+  }
+});
+
+// GET /api/admin/adult-keywords
+router.get('/adult-keywords', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const keywords = await loadAdultKeywords();
+    res.json({ keywords, defaultKeywords: DEFAULT_KEYWORDS });
+  } catch (err) {
+    console.error('[Admin] get adult-keywords error:', err.message);
+    res.status(500).json({ error: 'Failed to load adult keywords' });
+  }
+});
+
+// POST /api/admin/adult-keywords
+router.post('/adult-keywords', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const { keywords } = req.body;
+    if (!Array.isArray(keywords)) return res.status(400).json({ error: 'Keywords array required' });
+    const saved = await saveAdultKeywords(keywords);
+    try {
+      const contentRouter = require('./content');
+      if (typeof contentRouter.clearCategoriesCache === 'function') {
+        contentRouter.clearCategoriesCache();
+      }
+    } catch {}
+    res.json({ success: true, keywords: saved });
+  } catch (err) {
+    console.error('[Admin] save adult-keywords error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to save adult keywords' });
+  }
+});
+
+// POST /api/admin/adult-keywords/reset
+router.post('/adult-keywords/reset', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const reset = await resetAdultKeywords();
+    try {
+      const contentRouter = require('./content');
+      if (typeof contentRouter.clearCategoriesCache === 'function') {
+        contentRouter.clearCategoriesCache();
+      }
+    } catch {}
+    res.json({ success: true, keywords: reset });
+  } catch (err) {
+    console.error('[Admin] reset adult-keywords error:', err.message);
+    res.status(500).json({ error: 'Failed to reset adult keywords' });
   }
 });
 
