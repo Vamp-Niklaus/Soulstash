@@ -46,8 +46,13 @@ function OwnerCollectionsLayout() {
     let cancelled = false;
 
     if (bgPosterPath) {
-      // Use imageUrl exactly like DetailHero — w500 poster for the background image
-      document.body.style.setProperty('--collection-artwork-image', `url("${imageUrl(bgPosterPath, 'w500')}")`);
+      let fullUrl = bgPosterPath.startsWith('http')
+        ? bgPosterPath
+        : imageUrl(bgPosterPath, 'original');
+      if (fullUrl.includes('image.tmdb.org/t/p/')) {
+        fullUrl = fullUrl.replace(/\/t\/p\/(w780|w1280|w500)/, '/t/p/original');
+      }
+      document.body.style.setProperty('--collection-artwork-image', `url("${fullUrl}")`);
 
       // Sample dominant colour from thumbnail (same algorithm as DetailHero)
       const img = new Image();

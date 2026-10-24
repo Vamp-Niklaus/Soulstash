@@ -259,8 +259,24 @@ export function CollectionDetailPane({
       ) : (
         <div className="w-full aspect-[21/9] min-h-[200px] md:min-h-[156px] rounded-[26px] mb-0 relative overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
           <img alt="collection banner" className="absolute inset-0 h-full w-full object-cover"
-            src={collection.banner || FALLBACK_AVATAR}
-            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_AVATAR; }} />
+            src={
+              collection.banner
+                ? (collection.banner.includes('image.tmdb.org/t/p/')
+                    ? collection.banner.replace(/\/t\/p\/(w780|w1280|w500)/, '/t/p/original')
+                    : collection.banner)
+                : FALLBACK_AVATAR
+            }
+            onError={(event) => {
+              const src = event.currentTarget.src;
+              if (src.includes('/original/')) {
+                event.currentTarget.src = src.replace('/original/', '/w1280/');
+              } else if (src.includes('/w1280/')) {
+                event.currentTarget.src = src.replace('/w1280/', '/w780/');
+              } else {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = FALLBACK_AVATAR;
+              }
+            }} />
           <div className="absolute inset-0" aria-hidden="true" style={{ background: 'linear-gradient(180deg, rgba(8,8,8,0.02) 0%, rgba(8,8,8,0.12) 30%, rgba(8,8,8,0.42) 62%, rgba(8,8,8,0.78) 84%, rgba(8,8,8,0.96) 100%)' }}></div>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_left_center,rgba(150,123,255,0.08),transparent_30%)]"></div>
 

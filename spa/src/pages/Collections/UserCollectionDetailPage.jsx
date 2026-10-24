@@ -99,9 +99,12 @@ export function UserCollectionDetailPage() {
     let cancelled = false;
 
     if (singleCollectionBg) {
-      const fullUrl = singleCollectionBg.startsWith('http')
+      let fullUrl = singleCollectionBg.startsWith('http')
         ? singleCollectionBg
-        : `https://image.tmdb.org/t/p/w1280${singleCollectionBg.startsWith('/') ? '' : '/'}${singleCollectionBg}`;
+        : `https://image.tmdb.org/t/p/original${singleCollectionBg.startsWith('/') ? '' : '/'}${singleCollectionBg}`;
+      if (fullUrl.includes('image.tmdb.org/t/p/')) {
+        fullUrl = fullUrl.replace(/\/t\/p\/(w780|w1280|w500)/, '/t/p/original');
+      }
       document.body.style.setProperty('--collection-artwork-image', `url("${fullUrl}")`);
 
       let sampleUrl = '';

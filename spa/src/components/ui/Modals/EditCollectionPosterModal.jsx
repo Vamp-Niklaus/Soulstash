@@ -23,7 +23,11 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
   useEffect(() => {
     if (!open || !collection) return;
 
-    const currentBanner = collection.banner || FALLBACK_AVATAR;
+    const currentBanner = collection.banner
+      ? (collection.banner.includes('image.tmdb.org/t/p/')
+          ? collection.banner.replace(/\/t\/p\/(w780|w1280|w500)/, '/t/p/original')
+          : collection.banner)
+      : FALLBACK_AVATAR;
     const movies = Array.isArray(collection.movies) ? collection.movies : [];
     moviesRef.current = movies;
     fetchedIdsRef.current = new Set();
@@ -31,7 +35,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
     const initial = [currentBanner];
     for (const m of movies) {
       if (m?.backdrop_path) {
-        const url = imageUrl(m.backdrop_path, 'w780');
+        const url = imageUrl(m.backdrop_path, 'original');
         if (url && !initial.includes(url)) {
           initial.push(url);
           const id = m.id || m.movieId || m.seriesId;
@@ -75,7 +79,7 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
         const typeStr = movie.media_type === 'Series' || movie.seriesId ? 'series' : 'movies';
         const detail = await apiFetch(`/api/${typeStr}/${id}`);
         if (detail?.backdrop_path) {
-          return imageUrl(detail.backdrop_path, 'w780');
+          return imageUrl(detail.backdrop_path, 'original');
         }
       } catch {
         // Ignore single movie fetch errors
@@ -140,7 +144,16 @@ export function EditCollectionPosterModal({ open, onClose, collection, onSave })
             src={currentPoster}
             alt="Selected Banner"
             className="w-full h-full object-cover transition-opacity duration-200"
-            onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
+            onError={(e) => {
+              const src = e.currentTarget.src;
+              if (src.includes('/original/')) {
+                e.currentTarget.src = src.replace('/original/', '/w1280/');
+              } else if (src.includes('/w1280/')) {
+                e.currentTarget.src = src.replace('/w1280/', '/w780/');
+              } else {
+                e.currentTarget.src = FALLBACK_AVATAR;
+              }
+            }}
           />
 
           {/* Left Arrow */}

@@ -159,7 +159,7 @@ body.collection-artwork-theme {
       linear-gradient(rgb(var(--collection-tint) / 0.16), rgb(var(--collection-tint) / 0.16)),
       var(--collection-artwork-image, none),
       url('/images/dark-bg.png') !important;
-    background-size: 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
+    background-size: 100% 100%, 100% 100%, cover, auto !important;
     background-position: center top, center top, center top, center !important;
     background-attachment: fixed !important;
   }
@@ -1018,7 +1018,7 @@ body.detail-artwork-theme {
       linear-gradient(rgb(var(--detail-tint) / 0.16), rgb(var(--detail-tint) / 0.16)),
       var(--detail-artwork-image),
       url('/images/dark-bg.png') !important;
-    background-size: 100% 100%, 100% 100%, min(100vw, 1200px) auto, auto !important;
+    background-size: 100% 100%, 100% 100%, cover, auto !important;
     background-position: center top, center top, center top, center !important;
     background-attachment: fixed !important;
   }

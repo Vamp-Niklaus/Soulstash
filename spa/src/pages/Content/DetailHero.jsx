@@ -68,18 +68,37 @@ export function DetailHero({
   const [currentBackdropIndex, setCurrentBackdropIndex] = useState(0);
   const loadedSetRef = useRef(new Set([0]));
 
-  // Preload backdrops so they never appear half-loaded
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth >= 768;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Preload backdrops so they never appear half-loaded (priority 'original', fallback 'w1280')
   useEffect(() => {
     loadedSetRef.current = new Set([0]);
     setCurrentBackdropIndex(0);
     if (backdrops.length <= 1) return;
 
     backdrops.forEach((backdrop, idx) => {
-      const url = imageUrl(backdrop.file_path, 'w1280');
+      const origUrl = imageUrl(backdrop.file_path, 'original');
       const img = new Image();
-      img.src = url;
+      img.src = origUrl;
       img.onload = () => {
         loadedSetRef.current.add(idx);
+      };
+      img.onerror = () => {
+        const fallback = imageUrl(backdrop.file_path, 'w1280');
+        const img2 = new Image();
+        img2.src = fallback;
+        img2.onload = () => loadedSetRef.current.add(idx);
       };
     });
   }, [backdrops]);
@@ -108,15 +127,24 @@ export function DetailHero({
     : content.poster_path;
 
   const fallbackBackdropUrl = content?.backdrop_path
-    ? imageUrl(content.backdrop_path, 'w1280')
+    ? imageUrl(content.backdrop_path, 'original')
     : currentPosterPath
-    ? imageUrl(currentPosterPath, 'w780') || imageUrl(currentPosterPath, 'original')
+    ? imageUrl(currentPosterPath, 'original')
     : null;
 
-  useArtworkAtmosphere(
-    content?.poster_path ? imageUrl(content.poster_path, 'w500') : '',
-    content?.poster_path ? imageUrl(content.poster_path, 'w92') : ''
-  );
+  const landscapePath = content?.backdrop_path || backdrops?.[0]?.file_path;
+  const posterPath = content?.poster_path || posters?.[0]?.file_path;
+
+  // In desktop mode: use landscape as background image (with poster fallback).
+  // In mobile mode: use poster as background image (with landscape fallback).
+  const bgPath = isDesktop
+    ? (landscapePath || posterPath)
+    : (posterPath || landscapePath);
+
+  const backgroundUrl = bgPath ? imageUrl(bgPath, 'original') : '';
+  const sampleUrl = bgPath ? `${imageUrl(bgPath, 'w92')}?tint=1` : '';
+
+  useArtworkAtmosphere(backgroundUrl, sampleUrl);
 
   return (
     <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
@@ -128,13 +156,21 @@ export function DetailHero({
             return (
               <img
                 key={backdrop.file_path || index}
-                src={imageUrl(backdrop.file_path, 'w1280')}
+                src={imageUrl(backdrop.file_path, 'original')}
                 alt={`${title} backdrop ${index + 1}`}
                 decoding="async"
                 className={`absolute inset-0 h-full w-full object-cover object-[center_22%] transition-opacity duration-[1200ms] ease-in-out will-change-[opacity] ${
                   isCurrent ? 'opacity-100 z-[2]' : 'opacity-0 z-[1] pointer-events-none'
                 }`}
                 onLoad={() => loadedSetRef.current.add(index)}
+                onError={(e) => {
+                  const src = e.currentTarget.src;
+                  if (src.includes('/original/')) {
+                    e.currentTarget.src = src.replace('/original/', '/w1280/');
+                  } else if (src.includes('/w1280/')) {
+                    e.currentTarget.src = src.replace('/w1280/', '/w780/');
+                  }
+                }}
               />
             );
           })
@@ -144,8 +180,13 @@ export function DetailHero({
             alt={title}
             className={`absolute inset-0 h-full w-full object-cover ${content?.backdrop_path ? 'object-[center_22%]' : 'object-[center_35%]'}`}
             onError={(e) => {
-              if (currentPosterPath && e.currentTarget.src !== imageUrl(currentPosterPath, 'w780')) {
-                e.currentTarget.src = imageUrl(currentPosterPath, 'w780');
+              const src = e.currentTarget.src;
+              if (src.includes('/original/')) {
+                e.currentTarget.src = src.replace('/original/', '/w1280/');
+              } else if (src.includes('/w1280/')) {
+                e.currentTarget.src = src.replace('/w1280/', '/w780/');
+              } else if (currentPosterPath && !src.includes(currentPosterPath)) {
+                e.currentTarget.src = imageUrl(currentPosterPath, 'original');
                 e.currentTarget.className = "absolute inset-0 h-full w-full object-cover object-[center_35%]";
               } else {
                 e.currentTarget.src = FALLBACK_POSTER;

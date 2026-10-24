@@ -13,6 +13,25 @@ export function useArtworkAtmosphere(artworkUrl, sampleUrl = artworkUrl) {
       if (cancelled || !artwork.naturalHeight) return;
       body.style.setProperty('--detail-artwork-ratio', String(artwork.naturalWidth / artwork.naturalHeight));
     };
+    artwork.onerror = () => {
+      if (cancelled) return;
+      // If original fails, fallback to w1280, then w780
+      if (artworkUrl.includes('/original/')) {
+        const fallback1280 = artworkUrl.replace('/original/', '/w1280/');
+        body.style.setProperty('--detail-artwork-image', `url(${JSON.stringify(fallback1280)})`);
+        const fallbackImg = new Image();
+        fallbackImg.onload = () => {
+          if (cancelled || !fallbackImg.naturalHeight) return;
+          body.style.setProperty('--detail-artwork-ratio', String(fallbackImg.naturalWidth / fallbackImg.naturalHeight));
+        };
+        fallbackImg.onerror = () => {
+          if (cancelled) return;
+          const fallback780 = artworkUrl.replace('/original/', '/w780/');
+          body.style.setProperty('--detail-artwork-image', `url(${JSON.stringify(fallback780)})`);
+        };
+        fallbackImg.src = fallback1280;
+      }
+    };
     artwork.src = artworkUrl;
     const sample = new Image();
     sample.crossOrigin = 'anonymous';
