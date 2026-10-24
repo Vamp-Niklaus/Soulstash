@@ -43,6 +43,39 @@ import {
 } from '../../utils/formatters.js';
 import { createPlayerRequest, createEmptyCollectionDraft } from '../../utils/formatters.js';
 
+const GENRE_NAME_TO_ID = {
+  action: 28,
+  adventure: 12,
+  animation: 16,
+  comedy: 35,
+  crime: 80,
+  documentary: 99,
+  drama: 18,
+  family: 10751,
+  fantasy: 14,
+  history: 36,
+  horror: 27,
+  music: 10402,
+  mystery: 9648,
+  romance: 10749,
+  'science fiction': 878,
+  'sci-fi': 878,
+  'tv movie': 10770,
+  thriller: 53,
+  war: 10752,
+  western: 37,
+  'action & adventure': 10759,
+  kids: 10762,
+  news: 10763,
+  reality: 10764,
+  'sci-fi & fantasy': 10765,
+  soap: 10766,
+  talk: 10767,
+  'war & politics': 10768,
+  bollywood: 'bollywood',
+  'latest in india': 'bollywood'
+};
+
 export function DetailPage({ type }) {
   const { id } = useParams();
   const auth = useAuthSession();
@@ -173,7 +206,7 @@ export function DetailPage({ type }) {
       />
 
       {/* 2. Overview + genres */}
-      <section className="content-section">
+      <section className="content-section relative z-10">
         <div className="rounded-[28px] border border-white/8 bg-[rgba(12,12,12,0.72)] p-5 md:p-6">
           <SectionHeader title="Overview" />
           <p className="mt-4 text-[14px] leading-[22px] text-[#B3B3B3] md:text-[16px] md:leading-[26px]">
@@ -182,27 +215,17 @@ export function DetailPage({ type }) {
           {Array.isArray(content.genres) && content.genres.length > 0 && (
             <div className="mt-5 flex flex-wrap gap-2">
               {content.genres.map((genre) => {
-                const label = typeof genre === 'string' ? genre : genre?.name;
-                const genreId = genre?.id;
+                const label = typeof genre === 'string' ? genre : (genre?.name || '');
                 if (!label) return null;
-                if (genreId) {
-                  return (
-                    <Link
-                      key={label}
-                      to={`/genre/${genreId}/${encodeURIComponent(label)}`}
-                      className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-[#d8d8d8] hover:bg-white/[0.1] transition-colors"
-                    >
-                      {label}
-                    </Link>
-                  );
-                }
+                const genreId = genre?.id || GENRE_NAME_TO_ID[label.toLowerCase()] || label;
                 return (
-                  <span
+                  <Link
                     key={label}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm text-[#d8d8d8]"
+                    to={`/genre/${genreId}/${encodeURIComponent(label)}`}
+                    className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-sm text-[#d8d8d8] hover:border-white/25 hover:bg-white/[0.1] hover:text-white transition-all cursor-pointer select-none"
                   >
                     {label}
-                  </span>
+                  </Link>
                 );
               })}
             </div>

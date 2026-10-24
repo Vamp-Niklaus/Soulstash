@@ -757,9 +757,11 @@ async function attachImdbIds(items = [], mediaType) {
 }
 
 async function attachCachedRatings(items = []) {
-  const normalizedItems = (Array.isArray(items) ? items : []).filter(
-    (item) => item?.id && (item?.media_type === 'movie' || item?.media_type === 'tv')
-  );
+  const normalizedItems = (Array.isArray(items) ? items : []).filter((item) => {
+    if (!item?.id) return false;
+    const mt = String(item?.media_type || '').toLowerCase();
+    return mt === 'movie' || mt === 'tv' || mt === 'series';
+  });
 
   if (!normalizedItems.length) {
     return Array.isArray(items) ? items : [];
@@ -776,11 +778,12 @@ async function attachCachedRatings(items = []) {
   );
 
   return (Array.isArray(items) ? items : []).map((item) => {
-    if (!item?.id || (item?.media_type !== 'movie' && item?.media_type !== 'tv')) {
+    const mt = String(item?.media_type || '').toLowerCase();
+    if (!item?.id || (mt !== 'movie' && mt !== 'tv' && mt !== 'series')) {
       return item;
     }
 
-    const mediaType = item.media_type === 'tv' ? 'Series' : 'Movie';
+    const mediaType = (mt === 'tv' || mt === 'series') ? 'Series' : 'Movie';
     const match = ratingMap.get(`${mediaType}:${Number(item.id)}`);
     if (!match) {
       return item;
@@ -1523,12 +1526,32 @@ function mapMovieGenreToTvGenre(movieGenreId) {
     18: 18,    // Drama -> Drama
     10751: 10751, // Family -> Family
     14: 10765, // Fantasy -> Sci-Fi & Fantasy
+    36: 10768, // History -> War & Politics
     9648: 9648, // Mystery -> Mystery
     878: 10765, // Sci-Fi -> Sci-Fi & Fantasy
     10752: 10768, // War -> War & Politics
     37: 37,    // Western -> Western
+    // Native TV genres:
+    10759: 10759, 10762: 10762, 10763: 10763, 10764: 10764,
+    10765: 10765, 10766: 10766, 10767: 10767, 10768: 10768
   };
   return map[id] !== undefined ? map[id] : null;
+}
+
+function mapTvGenreToMovieGenre(genreId) {
+  if (!genreId) return null;
+  const id = parseInt(genreId, 10);
+  const map = {
+    28: '28', 12: '12', 16: '16', 35: '35', 80: '80', 99: '99', 18: '18',
+    10751: '10751', 14: '14', 36: '36', 27: '27', 10402: '10402', 9648: '9648',
+    10749: '10749', 878: '878', 10770: '10770', 53: '53', 10752: '10752', 37: '37',
+    10759: '28|12',
+    10765: '878|14',
+    10768: '10752|36',
+    10762: '10751',
+    10764: '99'
+  };
+  return map[id] !== undefined ? map[id] : String(genreId);
 }
 
 function getFourMonthWindow(windowIndex = 0) {
@@ -1567,32 +1590,56 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     const isBollywood = String(genre).toLowerCase() === 'bollywood';
 
     while (finalItems.length < targetCount && currentPage <= page + 6) {
-      let movieUrl = '';
+      let movieUrl = null;
+      let tvUrl = null;
       if (isBollywood) {
         const { gteDate, lteDate } = getFourMonthWindow(0);
         if (adminMode === 2) {
           movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&primary_release_date.gte=${gteDate}&primary_release_date.lte=${lteDate}&sort_by=popularity.desc`;
+          tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${currentPage}&include_adult=true${adultKeywords}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&first_air_date.gte=${gteDate}&first_air_date.lte=${lteDate}&sort_by=popularity.desc`;
         } else {
           movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&primary_release_date.gte=${gteDate}&primary_release_date.lte=${lteDate}&sort_by=popularity.desc`;
+          tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${currentPage}${adultFilter}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&first_air_date.gte=${gteDate}&first_air_date.lte=${lteDate}&sort_by=popularity.desc`;
         }
       } else {
         const voteCountFilter = adminMode === 2 ? '' : '&vote_count.gte=5';
-        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
-        if (genre) movieUrl += `&with_genres=${genre}`;
-        if (year)  movieUrl += `&primary_release_year=${year}`;
+        const movieGid = mapTvGenreToMovieGenre(genre);
+        const tvGid = mapMovieGenreToTvGenre(genre);
+        if (!genre || movieGid !== null) {
+          movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
+          if (movieGid) movieUrl += `&with_genres=${movieGid}`;
+          if (year)  movieUrl += `&primary_release_year=${year}`;
+        }
+        if (!genre || tvGid !== null) {
+          tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${currentPage}${adultFilter}${voteCountFilter}${adultKeywords}&sort_by=popularity.desc`;
+          if (tvGid) tvUrl += `&with_genres=${tvGid}`;
+          if (year)  tvUrl += `&first_air_date_year=${year}`;
+        }
       }
 
-      const movieResp = await tmdbFetch(movieUrl, opts, 'Discover Movies Bg').catch(() => null);
-      if (!movieResp?.ok) break;
-      const movieData = await movieResp.json();
-      totalPages = Math.max(Number(movieData?.total_pages) || 0, totalPages);
-      totalResults = Math.max(Number(movieData?.total_results) || 0, totalResults);
+      const [movieResp, tvResp] = await Promise.all([
+        movieUrl ? tmdbFetch(movieUrl, opts, 'Discover Movies Bg').catch(() => null) : null,
+        tvUrl ? tmdbFetch(tvUrl, opts, 'Discover TV Bg').catch(() => null) : null
+      ]);
+      if (!movieResp?.ok && !tvResp?.ok) break;
+      const movieData = movieResp?.ok ? await movieResp.json() : null;
+      const tvData = tvResp?.ok ? await tvResp.json() : null;
 
-      let pageItems = (movieData?.results || []).map(i => ({
+      totalPages = Math.max(Number(movieData?.total_pages) || 0, Number(tvData?.total_pages) || 0, totalPages);
+      totalResults = Math.max((Number(movieData?.total_results) || 0) + (Number(tvData?.total_results) || 0), totalResults);
+
+      const pageMovies = (movieData?.results || []).map(i => ({
         ...i,
         media_type: 'Movie',
         ...(isBollywood ? { is_bollywood_endpoint: true } : {})
       }));
+      const pageTv = (tvData?.results || []).map(i => ({
+        ...i,
+        media_type: 'Series',
+        ...(isBollywood ? { is_bollywood_endpoint: true } : {})
+      }));
+
+      let pageItems = [...pageMovies, ...pageTv].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
       }
@@ -1604,23 +1651,28 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
         }
       }
 
-      if (currentPage >= totalPages || (movieData?.results || []).length === 0) break;
+      if ((pageMovies.length === 0 && pageTv.length === 0) || currentPage >= totalPages) break;
       currentPage++;
     }
 
     if (adminMode === 2 && finalItems.length < (page === 1 ? 14 : limit)) {
-      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
-      const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement Bg').catch(() => null);
-      if (supResp?.ok) {
-        const supData = await supResp.json();
-        const supItems = (supData?.results || [])
-          .map(i => ({ ...i, media_type: 'Movie', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) }))
-          .filter(item => shouldShow(item, adminMode));
-        for (const item of supItems) {
-          if (finalItems.length >= (page === 1 ? 14 : limit)) break;
-          if (!finalItems.some(existing => existing.id === item.id)) {
-            finalItems.push(item);
-          }
+      const supMovieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      const supTvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      const [supMovieResp, supTvResp] = await Promise.all([
+        tmdbFetch(supMovieUrl, opts, 'Discover Adult Sup Movie Bg').catch(() => null),
+        tmdbFetch(supTvUrl, opts, 'Discover Adult Sup TV Bg').catch(() => null)
+      ]);
+      const supMovieData = supMovieResp?.ok ? await supMovieResp.json() : null;
+      const supTvData = supTvResp?.ok ? await supTvResp.json() : null;
+      const supItems = [
+        ...(supMovieData?.results || []).map(i => ({ ...i, media_type: 'Movie', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) })),
+        ...(supTvData?.results || []).map(i => ({ ...i, media_type: 'Series', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) }))
+      ].filter(item => shouldShow(item, adminMode));
+
+      for (const item of supItems) {
+        if (finalItems.length >= (page === 1 ? 14 : limit)) break;
+        if (!finalItems.some(existing => existing.id === item.id)) {
+          finalItems.push(item);
         }
       }
     }
@@ -1983,29 +2035,44 @@ router.get('/movies', async (req, res) => {
         const { gteDate, lteDate } = getFourMonthWindow(currentWindow);
 
         let movieUrl;
+        let tvUrl;
         if (adminMode === 2) {
           movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentTmdbPage}&include_adult=true${adultKeywords}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&primary_release_date.gte=${gteDate}&primary_release_date.lte=${lteDate}&sort_by=popularity.desc`;
+          tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${currentTmdbPage}&include_adult=true${adultKeywords}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&first_air_date.gte=${gteDate}&first_air_date.lte=${lteDate}&sort_by=popularity.desc`;
         } else {
           movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentTmdbPage}${adultFilter}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&primary_release_date.gte=${gteDate}&primary_release_date.lte=${lteDate}&sort_by=popularity.desc`;
+          tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${currentTmdbPage}${adultFilter}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&first_air_date.gte=${gteDate}&first_air_date.lte=${lteDate}&sort_by=popularity.desc`;
         }
 
-        const movieResp = await tmdbFetch(movieUrl, opts, `Bollywood W${currentWindow} P${currentTmdbPage}`).catch(() => null);
-        if (!movieResp?.ok) {
+        const [movieResp, tvResp] = await Promise.all([
+          tmdbFetch(movieUrl, opts, `Bollywood Movies W${currentWindow} P${currentTmdbPage}`).catch(() => null),
+          tmdbFetch(tvUrl, opts, `Bollywood TV W${currentWindow} P${currentTmdbPage}`).catch(() => null)
+        ]);
+
+        if (!movieResp?.ok && !tvResp?.ok) {
           currentWindow++;
           currentTmdbPage = 1;
           continue;
         }
 
-        const movieData = await movieResp.json();
-        const windowTotalPages = Number(movieData?.total_pages) || 1;
-        const rawResults = Array.isArray(movieData?.results) ? movieData.results : [];
+        const movieData = movieResp?.ok ? await movieResp.json() : null;
+        const tvData = tvResp?.ok ? await tvResp.json() : null;
 
-        let pageItems = rawResults.map(i => ({
+        const windowTotalPages = Math.max(Number(movieData?.total_pages) || 1, Number(tvData?.total_pages) || 1);
+        const rawMovies = (movieData?.results || []).map(i => ({
           ...i,
           media_type: 'Movie',
           is_bollywood_endpoint: true,
           ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
         }));
+        const rawTv = (tvData?.results || []).map(i => ({
+          ...i,
+          media_type: 'Series',
+          is_bollywood_endpoint: true,
+          ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
+        }));
+
+        let pageItems = [...rawMovies, ...rawTv].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
         pageItems = pageItems.filter(item => !isAnimeContent(item));
         pageItems = pageItems.filter(item => shouldShow(item, adminMode));
@@ -2052,21 +2119,49 @@ router.get('/movies', async (req, res) => {
 
     while (finalItems.length < targetCount && currentPage <= page + 6) {
       const voteCountFilter = adminMode === 2 ? '' : '&vote_count.gte=5';
-      let movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
-      if (genre) movieUrl += `&with_genres=${genre}`;
-      if (year)  movieUrl += `&primary_release_year=${year}`;
+      const movieGid = mapTvGenreToMovieGenre(genre);
+      const tvGid = mapMovieGenreToTvGenre(genre);
 
-      const movieResp = await tmdbFetch(movieUrl, opts, 'Discover Movies').catch(() => null);
-      if (!movieResp?.ok) break;
-      const movieData = await movieResp.json();
-      totalPages = Math.max(Number(movieData?.total_pages) || 0, totalPages);
-      totalResults = Math.max(Number(movieData?.total_results) || 0, totalResults);
+      let movieUrl = null;
+      let tvUrl = null;
 
-      let pageItems = (movieData?.results || []).map(i => ({
+      if (!genre || movieGid !== null) {
+        movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${currentPage}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
+        if (movieGid) movieUrl += `&with_genres=${movieGid}`;
+        if (year)  movieUrl += `&primary_release_year=${year}`;
+      }
+
+      if (!genre || tvGid !== null) {
+        tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${currentPage}${adultFilter}${voteCountFilter}${adultKeywords}${sortParam}`;
+        if (tvGid) tvUrl += `&with_genres=${tvGid}`;
+        if (year)  tvUrl += `&first_air_date_year=${year}`;
+      }
+
+      const [movieResp, tvResp] = await Promise.all([
+        movieUrl ? tmdbFetch(movieUrl, opts, 'Discover Movies').catch(() => null) : null,
+        tvUrl ? tmdbFetch(tvUrl, opts, 'Discover TV').catch(() => null) : null
+      ]);
+
+      if (!movieResp?.ok && !tvResp?.ok) break;
+
+      const movieData = movieResp?.ok ? await movieResp.json() : null;
+      const tvData = tvResp?.ok ? await tvResp.json() : null;
+
+      totalPages = Math.max(Number(movieData?.total_pages) || 0, Number(tvData?.total_pages) || 0, totalPages);
+      totalResults = Math.max((Number(movieData?.total_results) || 0) + (Number(tvData?.total_results) || 0), totalResults);
+
+      const pageMovies = (movieData?.results || []).map(i => ({
         ...i,
         media_type: 'Movie',
         ...(isBollywood ? { is_bollywood_endpoint: true } : {})
       }));
+      const pageTv = (tvData?.results || []).map(i => ({
+        ...i,
+        media_type: 'Series',
+        ...(isBollywood ? { is_bollywood_endpoint: true } : {})
+      }));
+
+      let pageItems = [...pageMovies, ...pageTv].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
@@ -2080,23 +2175,28 @@ router.get('/movies', async (req, res) => {
         }
       }
 
-      if (currentPage >= totalPages || (movieData?.results || []).length === 0) break;
+      if ((pageMovies.length === 0 && pageTv.length === 0) || currentPage >= totalPages) break;
       currentPage++;
     }
 
     if (adminMode === 2 && finalItems.length < (page === 1 ? 14 : limit)) {
-      const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
-      const supResp = await tmdbFetch(supUrl, opts, 'Discover Adult Supplement').catch(() => null);
-      if (supResp?.ok) {
-        const supData = await supResp.json();
-        const supItems = (supData?.results || [])
-          .map(i => ({ ...i, media_type: 'Movie', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) }))
-          .filter(item => shouldShow(item, adminMode));
-        for (const item of supItems) {
-          if (finalItems.length >= (page === 1 ? 14 : limit)) break;
-          if (!finalItems.some(existing => existing.id === item.id)) {
-            finalItems.push(item);
-          }
+      const supMovieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      const supTvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${page}&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+      const [supMovieResp, supTvResp] = await Promise.all([
+        tmdbFetch(supMovieUrl, opts, 'Discover Adult Supplement Movie').catch(() => null),
+        tmdbFetch(supTvUrl, opts, 'Discover Adult Supplement TV').catch(() => null)
+      ]);
+      const supMovieData = supMovieResp?.ok ? await supMovieResp.json() : null;
+      const supTvData = supTvResp?.ok ? await supTvResp.json() : null;
+      const supItems = [
+        ...(supMovieData?.results || []).map(i => ({ ...i, media_type: 'Movie', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) })),
+        ...(supTvData?.results || []).map(i => ({ ...i, media_type: 'Series', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) }))
+      ].filter(item => shouldShow(item, adminMode));
+
+      for (const item of supItems) {
+        if (finalItems.length >= (page === 1 ? 14 : limit)) break;
+        if (!finalItems.some(existing => existing.id === item.id)) {
+          finalItems.push(item);
         }
       }
     }
@@ -2308,7 +2408,7 @@ router.get('/series/:id', async (req, res) => {
       first_air_date: s.first_air_date,
       last_air_date: s.last_air_date,
       release_date: s.first_air_date,
-      genres: s.genres ? s.genres.map(g => (typeof g === 'object' && g.name ? g.name : g)) : ['Drama'],
+      genres: Array.isArray(s.genres) && s.genres.length ? s.genres : [{ id: 18, name: 'Drama' }],
       runtime: s.episode_run_time?.[0] || 60,
       episode_run_time: s.episode_run_time,
       number_of_episodes: s.number_of_episodes,
@@ -3033,68 +3133,99 @@ async function buildHomePayload(adminMode = 0) {
       let finalItems = [];
       let pageNum = 1;
       const maxPages = adminMode === 2 ? 4 : 3;
+      const isBollywood = String(genre?.id).toLowerCase() === 'bollywood';
 
       while (finalItems.length < 14 && pageNum <= maxPages) {
-        let movieUrl;
+        let movieUrl = null;
+        let tvUrl = null;
         if (adminMode === 2) {
-          if (genre.id === 'bollywood') {
+          if (isBollywood) {
             const { gteDate, lteDate } = getFourMonthWindow(0);
             movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&primary_release_date.gte=${gteDate}&primary_release_date.lte=${lteDate}&sort_by=popularity.desc`;
+            tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&first_air_date.gte=${gteDate}&first_air_date.lte=${lteDate}&sort_by=popularity.desc`;
           } else {
-            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_genres=${genre.id}&sort_by=popularity.desc`;
+            const movieGid = mapTvGenreToMovieGenre(genre.id);
+            const tvGid = mapMovieGenreToTvGenre(genre.id);
+            if (movieGid) movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_genres=${movieGid}&sort_by=popularity.desc`;
+            if (tvGid) tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${pageNum}&include_adult=true${ADULT_KEYWORDS}&with_genres=${tvGid}&sort_by=popularity.desc`;
           }
         } else {
           const strictRatingFilter = '&certification_country=US&certification.lte=R&vote_average.gte=0.1&vote_count.gte=5';
-          if (genre && genre.id === 'bollywood') {
+          if (isBollywood) {
             const { gteDate, lteDate } = getFourMonthWindow(0);
             movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=false&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&primary_release_date.gte=${gteDate}&primary_release_date.lte=${lteDate}&sort_by=popularity.desc`;
+            tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${pageNum}&include_adult=false&with_origin_country=IN&with_original_language=hi|ta|te|ml|kn|bn|mr|pa&first_air_date.gte=${gteDate}&first_air_date.lte=${lteDate}&sort_by=popularity.desc`;
           } else {
-            movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=false${strictRatingFilter}&sort_by=popularity.desc`;
-            if (genre) movieUrl += `&with_genres=${genre.id}`;
+            const movieGid = mapTvGenreToMovieGenre(genre.id);
+            const tvGid = mapMovieGenreToTvGenre(genre.id);
+            if (movieGid) movieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=${pageNum}&include_adult=false${strictRatingFilter}&sort_by=popularity.desc&with_genres=${movieGid}`;
+            if (tvGid) tvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=${pageNum}&include_adult=false&vote_count.gte=5&sort_by=popularity.desc&with_genres=${tvGid}`;
           }
         }
 
-        const movieResp = await tmdbFetch(movieUrl, opts, `Home Genre ${genre.name} P${pageNum}`).catch(() => null);
-        if (!movieResp?.ok) break;
-        const movieData = await movieResp.json();
+        const [movieResp, tvResp] = await Promise.all([
+          movieUrl ? tmdbFetch(movieUrl, opts, `Home Genre ${genre.name} Movie P${pageNum}`).catch(() => null) : null,
+          tvUrl ? tmdbFetch(tvUrl, opts, `Home Genre ${genre.name} TV P${pageNum}`).catch(() => null) : null
+        ]);
 
-        const isBollywood = String(genre?.id).toLowerCase() === 'bollywood';
+        if (!movieResp?.ok && !tvResp?.ok) break;
+
+        const movieData = movieResp?.ok ? await movieResp.json() : null;
+        const tvData = tvResp?.ok ? await tvResp.json() : null;
+
         let mItems = (movieData?.results || []).map(i => ({
           ...i,
           media_type: 'Movie',
           ...(isBollywood ? { is_bollywood_endpoint: true } : {}),
           ...(adminMode === 2 ? { adult: true, _isAdultDiscover: true } : {})
         }));
+        let tItems = (tvData?.results || []).map(i => ({
+          ...i,
+          media_type: 'Series',
+          ...(isBollywood ? { is_bollywood_endpoint: true } : {})
+        }));
 
         if (adminMode !== 2) {
           mItems = (await attachImdbIds(mItems, 'Movie')).filter((item) => String(item?.imdb_id || '').trim());
+          tItems = (await attachImdbIds(tItems, 'Series')).filter((item) => String(item?.imdb_id || '').trim());
           if (String(genre.id) !== '16') {
             mItems = mItems.filter(item => !isAnimeContent(item));
+            tItems = tItems.filter(item => !isAnimeContent(item));
           }
           mItems = mItems.filter(item => shouldShow(item, adminMode));
+          tItems = tItems.filter(item => shouldShow(item, adminMode));
         }
 
-        for (const item of mItems) {
+        let combined = [...mItems, ...tItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+        for (const item of combined) {
           if (!finalItems.some(x => x.id === item.id)) {
             finalItems.push(item);
           }
         }
 
-        if (pageNum >= (movieData?.total_pages || 1) || (movieData?.results || []).length === 0) break;
+        const maxTotalP = Math.max(Number(movieData?.total_pages) || 1, Number(tvData?.total_pages) || 1);
+        if (pageNum >= maxTotalP || (mItems.length === 0 && tItems.length === 0)) break;
         pageNum++;
       }
 
       if (adminMode === 2 && finalItems.length < 14) {
-        const supUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
-        const supResp = await tmdbFetch(supUrl, opts, `Home Adult Sup ${genre.name}`).catch(() => null);
-        if (supResp?.ok) {
-          const supData = await supResp.json();
-          const supItems = (supData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true }));
-          for (const item of supItems) {
-            if (finalItems.length >= 14) break;
-            if (!finalItems.some(x => x.id === item.id)) {
-              finalItems.push(item);
-            }
+        const supMovieUrl = `https://api.themoviedb.org/3/discover/movie?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+        const supTvUrl = `https://api.themoviedb.org/3/discover/tv?language=en-US&page=1&include_adult=true${ADULT_KEYWORDS}&sort_by=popularity.desc`;
+        const [supMovieResp, supTvResp] = await Promise.all([
+          tmdbFetch(supMovieUrl, opts, `Home Adult Sup Movie ${genre.name}`).catch(() => null),
+          tmdbFetch(supTvUrl, opts, `Home Adult Sup TV ${genre.name}`).catch(() => null)
+        ]);
+        const supMovieData = supMovieResp?.ok ? await supMovieResp.json() : null;
+        const supTvData = supTvResp?.ok ? await supTvResp.json() : null;
+        const supItems = [
+          ...(supMovieData?.results || []).map(i => ({ ...i, media_type: 'Movie', adult: true, _isAdultDiscover: true })),
+          ...(supTvData?.results || []).map(i => ({ ...i, media_type: 'Series', adult: true, _isAdultDiscover: true }))
+        ];
+        for (const item of supItems) {
+          if (finalItems.length >= 14) break;
+          if (!finalItems.some(x => x.id === item.id)) {
+            finalItems.push(item);
           }
         }
       }
