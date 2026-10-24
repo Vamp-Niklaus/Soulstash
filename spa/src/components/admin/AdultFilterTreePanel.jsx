@@ -275,50 +275,42 @@ export function AdultFilterTreePanel() {
     }
   }, [data, hasChanges]);
 
+  // On-wheel listener ref
+  const onWheelListenerRef = useRef(null);
+  onWheelListenerRef.current = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.87;
+    setZoom((prevZoom) => Math.min(2.5, Math.max(0.25, Number((prevZoom * zoomFactor).toFixed(3)))));
+  };
+
+  const onWheelHandler = useCallback((e) => {
+    if (onWheelListenerRef.current) {
+      onWheelListenerRef.current(e);
+    }
+  }, []);
+
+  // Callback ref guarantees the native non-passive listener is attached whenever DOM node mounts
+  const setCanvasViewportRef = useCallback((node) => {
+    if (canvasViewportRef.current) {
+      canvasViewportRef.current.removeEventListener('wheel', onWheelHandler);
+    }
+    canvasViewportRef.current = node;
+    if (node) {
+      node.addEventListener('wheel', onWheelHandler, { passive: false });
+      if (node.clientWidth) {
+        setPan({ x: node.clientWidth / 2, y: 60 });
+      }
+    }
+  }, [onWheelHandler]);
+
   // Center view on canvas
   const centerView = useCallback(() => {
     if (!canvasViewportRef.current) return;
     const { clientWidth } = canvasViewportRef.current;
     setZoom(0.85);
     setPan({ x: clientWidth / 2, y: 60 });
-  }, []);
-
-  useEffect(() => {
-    centerView();
-  }, [centerView]);
-
-  // Native non-passive wheel listener to strictly prevent page scrolling
-  useEffect(() => {
-    const el = canvasViewportRef.current;
-    if (!el) return;
-
-    const handleNativeWheel = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const rect = el.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
-
-      setZoom((prevZoom) => {
-        const nextZoom = Math.min(2.5, Math.max(0.25, prevZoom * zoomFactor));
-        setPan((prevPan) => {
-          const worldX = (mouseX - prevPan.x) / prevZoom;
-          const worldY = (mouseY - prevPan.y) / prevZoom;
-          return {
-            x: mouseX - worldX * nextZoom,
-            y: mouseY - worldY * nextZoom
-          };
-        });
-        return nextZoom;
-      });
-    };
-
-    el.addEventListener('wheel', handleNativeWheel, { passive: false });
-    return () => {
-      el.removeEventListener('wheel', handleNativeWheel);
-    };
   }, []);
 
   // Auto-Tidy button (re-aligns tree cleanly without overlap)
@@ -778,7 +770,7 @@ export function AdultFilterTreePanel() {
 
         {/* Viewport Area */}
         <div
-          ref={canvasViewportRef}
+          ref={setCanvasViewportRef}
           onMouseDown={handleCanvasMouseDown}
           onMouseMove={handleCanvasMouseMove}
           onMouseUp={handleCanvasMouseUp}
