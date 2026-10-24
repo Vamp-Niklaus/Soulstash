@@ -3470,7 +3470,7 @@ router.get('/search', async (req, res) => {
         .slice(0, Number(limit))
         .map(normalizeUser);
 
-      const responseData = { query: q, results };
+      const responseData = { query: q, results, page: batchPage, hasMore: endTmdbPage < maxTmdbPagesFound };
       lastSearchResults.set(requestId, { data: responseData, timestamp: Date.now() });
       return res.json(responseData);
     }
@@ -3501,25 +3501,53 @@ router.get('/search', async (req, res) => {
       const writeEvent = (payload) => {
         if (!clientClosed && !res.writableEnded) res.write(`${JSON.stringify(payload)}\n`);
       };
-      const normalizeChunk = (items, mediaType) => {
+      const batchPage = Math.max(Number(req.query.page) || 1, 1);
+      const PAGES_PER_BATCH = 2;
+      const startTmdbPage = (batchPage - 1) * PAGES_PER_BATCH + 1;
+      const endTmdbPage = startTmdbPage + PAGES_PER_BATCH - 1;
+      let maxTmdbPagesFound = 1;
+
+      const isContentAdultSafe = (item) => {
+        if (adminMode === 0) {
+          return item?.adult !== true && !item?._isAdultDiscover;
+        }
+        return shouldShow(item, adminMode);
+      };
+
+      const isTitleMatchOrAboveScore = (item, qStr, baseScore) => {
+        const t1 = (item.title || item.name || '').toLowerCase();
+        const t2 = (item.originalTitle || item.original_name || '').toLowerCase();
+        const qLower = (qStr || '').toLowerCase().trim();
+        if (qLower && (t1.startsWith(qLower) || t2.startsWith(qLower) || t1 === qLower || t2 === qLower)) {
+          return true;
+        }
+        return baseScore > 25;
+      };
+
+      const normalizeChunk = (items, mediaType, batchNum = 1) => {
         return (Array.isArray(items) ? items : [])
-          .filter(item => item?.id && (mediaType === 'person' || shouldShow(item, adminMode)))
+          .filter(item => item?.id && (mediaType === 'person' || isContentAdultSafe(item)))
           .map(item => {
             if (mediaType === 'person') {
               return {
                 ...normalizePerson(item, adminMode),
+                batch: batchNum,
                 _isIndian: isIndianPerson(item),
                 _popularity: Number(item?.popularity || 0)
               };
             }
             const normalized = normalize(item, mediaType);
+            const rawScore = computeFinalScore(normalized, hasYear ? altered_query : q, year_query);
+            const batchPenalty = (Number(batchNum) - 1) * 1000;
             return {
               ...normalized,
-              score: computeFinalScore(normalized, hasYear ? altered_query : q, year_query),
+              batch: batchNum,
+              _rawScore: rawScore,
+              score: rawScore - batchPenalty,
               isIndian: INDIAN_LANGS.has(normalized.originalLanguage) || normalized.originCountry.includes('IN')
             };
           })
-          .filter(item => mediaType === 'person' || item.score > 25)
+          .filter(item => mediaType === 'person' || isTitleMatchOrAboveScore(item, q, item._rawScore ?? item.score))
           .sort((a, b) => {
             if (mediaType === 'person') {
               if (a._isIndian !== b._isIndian) return a._isIndian ? -1 : 1;
@@ -3536,16 +3564,19 @@ router.get('/search', async (req, res) => {
             }
             return b.score - a.score;
           })
-          .map(({ _isIndian, _popularity, ...item }) => item);
+          .map(({ _isIndian, _popularity, _rawScore, ...item }) => item);
       };
-      const fetchPage = async (tmdbType, query, page, year = null) => {
+      const fetchPage = async (tmdbType, query, page, year = null, batchNum = 1) => {
         if (clientClosed) return;
         const shouldIncludeAdult = tmdbType === 'person' ? true : (adminMode !== 0);
         const url = `https://api.themoviedb.org/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${shouldIncludeAdult ? 'true' : 'false'}&language=en-US&page=${page}${year ? `&year=${year}` : ''}`;
         try {
           const response = await tmdbFetch(url, { headers }, `TMDB stream ${tmdbType} "${query}" p${page}`);
           const data = response.ok ? await response.json() : { results: [] };
-          const items = normalizeChunk(data.results, tmdbType)
+          if (data?.total_pages && data.total_pages > maxTmdbPagesFound) {
+            maxTmdbPagesFound = data.total_pages;
+          }
+          const items = normalizeChunk(data.results, tmdbType, batchNum)
             .filter(item => {
               const key = `${item.media_type}:${item.id}`;
               if (seen.has(key)) return false;
@@ -3553,50 +3584,66 @@ router.get('/search', async (req, res) => {
               return true;
             })
             .slice(0, maxResults);
-          if (items.length) writeEvent({ type: 'results', query: q, page, source: tmdbType, results: items });
+          if (items.length) {
+            writeEvent({
+              type: 'results',
+              query: q,
+              page: batchNum,
+              tmdbPage: page,
+              source: tmdbType,
+              results: items,
+              total_pages: data?.total_pages || 1
+            });
+          }
         } catch {
-          writeEvent({ type: 'page-error', query: q, page, source: tmdbType });
+          writeEvent({ type: 'page-error', query: q, page: batchNum, tmdbPage: page, source: tmdbType });
         }
       };
 
-      writeEvent({ type: 'start', query: q });
+      writeEvent({ type: 'start', query: q, page: batchPage });
       if (type === 'content' || type === 'all') {
-        const mainPages = hasYear ? 3 : 7;
-        for (let page = 1; page <= mainPages; page++) {
+        for (let tmdbP = startTmdbPage; tmdbP <= endTmdbPage; tmdbP++) {
           if (clientClosed) break;
           await Promise.all([
-            fetchPage('movie', base_query, page),
-            fetchPage('tv', base_query, page)
+            fetchPage('movie', base_query, tmdbP, null, batchPage),
+            fetchPage('tv', base_query, tmdbP, null, batchPage)
           ]);
         }
-        if (hasYear && altered_query.length >= 2) {
-          for (let page = 1; page <= 2; page++) {
-            if (clientClosed) break;
-            await Promise.all([
-              fetchPage('movie', altered_query, page, year_query),
-              fetchPage('tv', altered_query, page, year_query)
-            ]);
-          }
+        if (hasYear && altered_query.length >= 2 && batchPage === 1) {
+          await Promise.all([
+            fetchPage('movie', altered_query, 1, year_query, batchPage),
+            fetchPage('tv', altered_query, 1, year_query, batchPage)
+          ]);
         }
       }
       if (type === 'cast' || type === 'all') {
-        for (let page = 1; page <= 3; page++) {
+        for (let tmdbP = startTmdbPage; tmdbP <= endTmdbPage; tmdbP++) {
           if (clientClosed) break;
-          await fetchPage('person', base_query, page);
+          await fetchPage('person', base_query, tmdbP, null, batchPage);
         }
       }
-      writeEvent({ type: 'done', query: q });
+      const hasMore = endTmdbPage < maxTmdbPagesFound;
+      writeEvent({ type: 'done', query: q, page: batchPage, hasMore });
       return res.end();
     }
 
-    const queuePages = (type, query, maxPages, year = null) => {
-      for (let page = 1; page <= maxPages; page++) {
+    const batchPage = Math.max(Number(req.query.page) || 1, 1);
+    const PAGES_PER_BATCH = 2;
+    const startTmdbPage = (batchPage - 1) * PAGES_PER_BATCH + 1;
+    const endTmdbPage = startTmdbPage + PAGES_PER_BATCH - 1;
+    let maxTmdbPagesFound = 1;
+
+    const queuePages = (type, query, startPage, endPage, year = null) => {
+      for (let page = startPage; page <= endPage; page++) {
         const shouldIncludeAdult = type === 'person' ? true : (adminMode !== 0);
         const url = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(query)}&include_adult=${shouldIncludeAdult ? 'true' : 'false'}&language=en-US&page=${page}${year ? `&year=${year}` : ''}`;
         promises.push(
           tmdbFetch(url, { headers }, `TMDB ${type} "${query}" p${page}`)
             .then(r => r.ok ? r.json() : { results: [] })
             .then(data => {
+              if (data?.total_pages && data.total_pages > maxTmdbPagesFound) {
+                maxTmdbPagesFound = data.total_pages;
+              }
               if (type === 'movie') {
                 allMovies.push(...data.results);
               } else if (type === 'tv') {
@@ -3611,37 +3658,56 @@ router.get('/search', async (req, res) => {
     };
 
     if (type === 'content' || type === 'all') {
-      if (!hasYear) {
-        queuePages('movie', base_query, 7);
-        queuePages('tv', base_query, 7);
-      } else {
-        queuePages('movie', base_query, 3);
-        queuePages('tv', base_query, 3);
-        if (altered_query.length >= 2) {
-          queuePages('movie', altered_query, 2, year_query);
-          queuePages('tv', altered_query, 2, year_query);
-        }
+      queuePages('movie', base_query, startTmdbPage, endTmdbPage);
+      queuePages('tv', base_query, startTmdbPage, endTmdbPage);
+      if (hasYear && altered_query.length >= 2 && batchPage === 1) {
+        queuePages('movie', altered_query, 1, 1, year_query);
+        queuePages('tv', altered_query, 1, 1, year_query);
       }
     }
 
     if (type === 'cast' || type === 'all') {
-      queuePages('person', base_query, 3);
+      queuePages('person', base_query, startTmdbPage, endTmdbPage);
     }
 
     await Promise.all(promises);
 
     let results = [];
     if (type === 'content' || type === 'all') {
+      const isContentAdultSafe = (item) => {
+        if (adminMode === 0) {
+          return item?.adult !== true && !item?._isAdultDiscover;
+        }
+        return shouldShow(item, adminMode);
+      };
+
+      const isTitleMatchOrAboveScore = (item, qStr, baseScore) => {
+        const t1 = (item.title || item.name || '').toLowerCase();
+        const t2 = (item.originalTitle || item.original_name || '').toLowerCase();
+        const qLower = (qStr || '').toLowerCase().trim();
+        if (qLower && (t1.startsWith(qLower) || t2.startsWith(qLower) || t1 === qLower || t2 === qLower)) {
+          return true;
+        }
+        return baseScore > 25;
+      };
+
+      const batchPenalty = (batchPage - 1) * 1000;
       let scored = [
-        ...allMovies.filter(item => shouldShow(item, adminMode)).map(m => normalize(m, 'movie')),
-        ...allTv.filter(item => shouldShow(item, adminMode)).map(t => normalize(t, 'tv'))
+        ...allMovies.filter(isContentAdultSafe).map(m => normalize(m, 'movie')),
+        ...allTv.filter(isContentAdultSafe).map(t => normalize(t, 'tv'))
       ]
-        .map(item => ({
-          ...item,
-          score: computeFinalScore(item, hasYear ? altered_query : q, year_query),
-          isIndian: INDIAN_LANGS.has(item.originalLanguage) || item.originCountry.includes('IN')
-        }))
-        .filter(item => item.score > 25);
+        .map(item => {
+          const rawScore = computeFinalScore(item, hasYear ? altered_query : q, year_query);
+          return {
+            ...item,
+            batch: batchPage,
+            _rawScore: rawScore,
+            score: rawScore - batchPenalty,
+            isIndian: INDIAN_LANGS.has(item.originalLanguage) || item.originCountry.includes('IN')
+          };
+        })
+        .filter(item => isTitleMatchOrAboveScore(item, q, item._rawScore ?? item.score))
+        .map(({ _rawScore, ...item }) => item);
 
       if (!allowMissingImdb) {
         const candidateItems = scored.slice(0, Math.max(Number(limit) * 3, 24));
@@ -3701,7 +3767,7 @@ router.get('/search', async (req, res) => {
       results = [...results.slice(0, primarySlots), ...supplementalResults].slice(0, Number(limit));
     }
 
-    const responseData = { query: q, results };
+    const responseData = { query: q, results, page: batchPage, hasMore: endTmdbPage < maxTmdbPagesFound };
     lastSearchResults.set(requestId, { data: responseData, timestamp: Date.now() });
     searchRequests.delete(requestId);
     res.json(responseData);

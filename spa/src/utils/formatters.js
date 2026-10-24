@@ -483,17 +483,12 @@ export function saveSearchHistoryItem(item) {
  * and sorts by relevance/score.
  * @param {number} adminMode - 0=filter adult, 1=show all, 2=adult only (only applies to Movie/Series, not People)
  */
-export function mergeSearchResults(currentResults, incomingResults, limit = 40, adminMode = 0) {
+export function mergeSearchResults(currentResults, incomingResults, limit = 400, adminMode = 0) {
   const mergedMap = new Map();
 
-  // Deduplicate and filter bad data
+  // Deduplicate items
   for (const item of [...currentResults, ...incomingResults]) {
     if (!item) continue;
-    
-    const isContent = ['Movie', 'Series', 'tv', 'movie'].includes(item.media_type);
-
-    if (isContent && Number(item.score || 0) <= 25) continue;
-    
     const key = `${item.media_type}:${item.id || item.username || item.title}`;
     if (!mergedMap.has(key)) mergedMap.set(key, item);
   }
@@ -507,8 +502,8 @@ export function mergeSearchResults(currentResults, incomingResults, limit = 40, 
       // Prioritize Content over People/Users
       if (aIsContent !== bIsContent) return aIsContent ? -1 : 1;
       
-      // Sort by score or popularity
-      return (Number(b.score || b.popularity || 0)) - (Number(a.score || a.popularity || 0));
+      // Sort by score (which includes batch separation penalty of -1000 per page) or popularity
+      return (Number(b.score ?? b.popularity ?? 0)) - (Number(a.score ?? a.popularity ?? 0));
     })
     .slice(0, limit);
 }

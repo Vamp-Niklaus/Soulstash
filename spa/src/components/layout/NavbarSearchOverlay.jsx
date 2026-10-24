@@ -6,10 +6,45 @@ import { imageUrl, yearFrom, mediaRoute } from '../../utils/formatters.js';
 import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { useOverlaySearchKeyboardNav } from '../../hooks/useOverlaySearchKeyboardNav.js';
 
-export function NavbarSearchOverlay({ open, onClose, query, setQuery, results, loading, tab, setTab, navigate }) {
+export function NavbarSearchOverlay({
+  open,
+  onClose,
+  query,
+  setQuery,
+  results,
+  loading,
+  tab,
+  setTab,
+  navigate,
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage
+}) {
   const overlayInputRef = useRef(null);
   const resultsScrollerRef = useRef(null);
   const clearBtnRef = useRef(null);
+  const sentinelRef = useRef(null);
+
+  // Sentinel observer to trigger next batch on scroll
+  useEffect(() => {
+    const node = sentinelRef.current;
+    const scroller = resultsScrollerRef.current;
+    if (!node || !scroller || !hasNextPage || isFetchingNextPage || !open) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage?.();
+        }
+      },
+      { root: scroller, rootMargin: '350px' }
+    );
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, open, results?.length]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -106,7 +141,8 @@ export function NavbarSearchOverlay({ open, onClose, query, setQuery, results, l
             {loading ? (
               <SearchResultSkeletonGrid columns="grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4" count={8} />
             ) : activeResults.length ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {activeResults.map((item, index) => {
                   const title = item.title || item.name || item.username || 'Unknown';
                   const image = item.media_type === 'User' ? (item.avatar || item.poster_path) : item.poster_path || item.profile_path;
@@ -141,6 +177,23 @@ export function NavbarSearchOverlay({ open, onClose, query, setQuery, results, l
                   );
                 })}
               </div>
+
+              {/* Sentinel observer element for infinite scroll */}
+              {query.trim().length >= 1 && hasNextPage && (
+                <div ref={sentinelRef} className="load-more-zone min-h-[48px] flex items-center justify-center py-4">
+                  {isFetchingNextPage && (
+                    <div className="load-more-indicator" role="status" aria-live="polite">
+                      <span className="load-more-indicator__spinner" aria-hidden="true" />
+                      <span>Loading more</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {query.trim().length >= 1 && !hasNextPage && activeResults.length >= 10 && (
+                <p className="mt-6 pb-4 text-center text-xs text-white/30">All titles loaded</p>
+              )}
+            </>
             ) : (
               <div className="flex flex-col items-center justify-center p-8 text-center">
                 <div className="mb-4 rounded-full bg-[#171717] p-4">

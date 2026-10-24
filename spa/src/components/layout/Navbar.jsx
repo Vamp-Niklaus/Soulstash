@@ -19,7 +19,13 @@ export function ReactNavbar() {
   const [searchTab, setSearchTab] = useState('content');
   const navRef = useRef(null);
 
-  const { searchResults, searchLoading } = useSearchAutocomplete(
+  const {
+    searchResults,
+    searchLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage
+  } = useSearchAutocomplete(
     searchQuery,
     searchTab,
     searchOpen,
@@ -196,6 +202,9 @@ export function ReactNavbar() {
         tab={searchTab}
         setTab={setSearchTab}
         navigate={navigate}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        fetchNextPage={fetchNextPage}
       />
     </>
   );
