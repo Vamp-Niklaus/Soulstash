@@ -4,6 +4,13 @@ const router = require('express').Router();
 const { ObjectId } = require('mongodb');
 const { getDb, SOURCE_CONFIGS_COLLECTION, MULTIMOVIES_CONFIG_DOC_ID } = require('../db');
 const { authenticateToken } = require('../middleware/auth');
+const {
+  DEFAULT_TREE,
+  loadAdultTree,
+  saveAdultTree,
+  resetAdultTree,
+  testTreeWithItem
+} = require('../util/adultDecisionTree');
 
 const DEFAULT_MULTIMOVIES_BASE_URL = 'https://multimovies.fyi/';
 const DEFAULT_MULTIMOVIES_ROOT_URL = 'https://multimovies.fyi/';
@@ -362,6 +369,54 @@ router.post('/users/:username/avatar', authenticateToken, ensureAdmin, upload.si
   } catch (err) {
     console.error('[Admin] updateAvatar error:', err.message);
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /api/admin/adult-criteria
+router.get('/adult-criteria', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const tree = await loadAdultTree();
+    res.json({ tree, defaultTree: DEFAULT_TREE });
+  } catch (err) {
+    console.error('[Admin] get adult-criteria error:', err.message);
+    res.status(500).json({ error: 'Failed to load adult criteria' });
+  }
+});
+
+// POST /api/admin/adult-criteria
+router.post('/adult-criteria', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const { tree } = req.body;
+    if (!tree) return res.status(400).json({ error: 'Decision tree is required' });
+    const saved = await saveAdultTree(tree);
+    res.json({ success: true, tree: saved });
+  } catch (err) {
+    console.error('[Admin] save adult-criteria error:', err.message);
+    res.status(500).json({ error: err.message || 'Failed to save adult criteria' });
+  }
+});
+
+// POST /api/admin/adult-criteria/reset
+router.post('/adult-criteria/reset', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const reset = await resetAdultTree();
+    res.json({ success: true, tree: reset });
+  } catch (err) {
+    console.error('[Admin] reset adult-criteria error:', err.message);
+    res.status(500).json({ error: 'Failed to reset adult criteria' });
+  }
+});
+
+// POST /api/admin/adult-criteria/test
+router.post('/adult-criteria/test', authenticateToken, ensureAdmin, async (req, res) => {
+  try {
+    const { tree, item } = req.body;
+    const testItem = item || {};
+    const result = testTreeWithItem(tree, testItem);
+    res.json(result);
+  } catch (err) {
+    console.error('[Admin] test adult-criteria error:', err.message);
+    res.status(500).json({ error: 'Failed to test adult criteria' });
   }
 });
 

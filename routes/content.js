@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const { ObjectId } = require('mongodb');
 const { getDb, SOURCE_CONFIGS_COLLECTION, MULTIMOVIES_CONFIG_DOC_ID } = require('../db');
 const { INDIAN_LANGS, normalize, computeFinalScore } = require('../util');
+const { evaluateAdultItem, loadAdultTree } = require('../util/adultDecisionTree');
 const { METRICS_COLLECTION, RATINGS_COLLECTION, RATINGS_METRICS_DOC_ID, normalizeMediaType, resolveImdbRating, validVoteAverage } = require('../util/imdbRatings');
 const {
   PREFERRED_SERVER_ORDER,
@@ -828,20 +829,7 @@ async function setMongoCache(key, data, ttlMs = 10 * 60 * 1000) {
 }
 
 function isAdult(item) {
-  if (item?._isAdultDiscover) return true;
-  if (item?.adult === true) return true;
-
-  const adultRegex = /\b(erotic|erotica|porn|porno|pornography|softcore|hentai|nsfw|xxx)\b/i;
-  if (adultRegex.test(item?.title || item?.name || '') || adultRegex.test(item?.overview || '')) {
-    return true;
-  }
-  if (Array.isArray(item?.genres)) {
-    for (const g of item.genres) {
-      const name = typeof g === 'string' ? g : (g?.name || '');
-      if (adultRegex.test(name)) return true;
-    }
-  }
-  return false;
+  return evaluateAdultItem(item);
 }
 
 function shouldShow(item, adminMode) {

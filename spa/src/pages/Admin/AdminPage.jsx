@@ -8,6 +8,7 @@ import { FALLBACK_AVATAR } from '../../utils/constants.js';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { TrafficPanel } from '../../components/admin/TrafficPanel.jsx';
+import { AdultFilterTreePanel } from '../../components/admin/AdultFilterTreePanel.jsx';
 
 // Quick inline component if it was missing before, or just keep it as is if it was working
 function DetailStat({ label, value }) {
@@ -145,9 +146,21 @@ export function AdminPage() {
               >
                 Traffic Analytics
               </button>
+              <button
+                className={`pb-3 text-2xl md:text-3xl font-semibold transition-colors ${
+                  activeTab === 'adultFilter' ? 'text-white border-b-2 border-[#8f44f0]' : 'text-[#a6a6a6] hover:text-white'
+                }`}
+                onClick={() => setActiveTab('adultFilter')}
+              >
+                Adult Criteria
+              </button>
             </div>
             <p className="text-[#b7b7b7] mt-4 max-w-2xl">
-              {activeTab === 'users' ? 'Admin-only dashboard. Password hashes are still hidden.' : 'Real-time API traffic and usage analytics.'}
+              {activeTab === 'users'
+                ? 'Admin-only dashboard. Password hashes are still hidden.'
+                : activeTab === 'traffic'
+                ? 'Real-time API traffic and usage analytics.'
+                : 'Customizable decision tree rule engine for classifying adult and low-vote spam content.'}
             </p>
           </div>
           <div className="flex w-full flex-col gap-3 lg:w-auto lg:items-end">
@@ -301,6 +314,10 @@ export function AdminPage() {
 
       {activeTab === 'traffic' && (
         <TrafficPanel />
+      )}
+
+      {activeTab === 'adultFilter' && (
+        <AdultFilterTreePanel />
       )}
     </div>
   );
