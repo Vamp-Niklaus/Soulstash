@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
 import { toast } from '../../utils/toast.js';
@@ -25,8 +25,145 @@ const BOOLEAN_OPS = [
   { id: 'is_false', label: 'Is False (No)' }
 ];
 
+const DECISION_WIDTH = 340;
+const DECISION_HEIGHT = 175;
+const RESULT_WIDTH = 250;
+const RESULT_HEIGHT = 135;
+const HORIZONTAL_GAP = 70;
+const VERTICAL_GAP = 110;
+
 function generateId() {
   return 'node_' + Math.random().toString(36).substring(2, 9);
+}
+
+function getNodeDimensions(node) {
+  if (node.type === 'result') {
+    return { width: RESULT_WIDTH, height: RESULT_HEIGHT };
+  }
+  return { width: DECISION_WIDTH, height: DECISION_HEIGHT };
+}
+
+function getSubtreeBoundingWidth(node) {
+  if (!node) return 0;
+  const selfW = getNodeDimensions(node).width;
+  if (node.type === 'result') {
+    return selfW + HORIZONTAL_GAP;
+  }
+  const yesW = getSubtreeBoundingWidth(node.yesNode);
+  const noW = getSubtreeBoundingWidth(node.noNode);
+  return Math.max(selfW + HORIZONTAL_GAP, yesW + noW);
+}
+
+// Hierarchical collision-free layout
+function calculateTreeLayout(rootNode, originX = 0, originY = 60) {
+  const positions = {};
+  const edges = [];
+
+  function traverse(node, centerX, topY) {
+    if (!node) return;
+    const { width, height } = getNodeDimensions(node);
+    positions[node.id] = {
+      x: centerX,
+      y: topY,
+      width,
+      height
+    };
+
+    if (node.type === 'decision') {
+      const yesW = getSubtreeBoundingWidth(node.yesNode);
+      const noW = getSubtreeBoundingWidth(node.noNode);
+      const totalW = yesW + noW;
+
+      const yesCenter = centerX - (totalW / 2) + (yesW / 2);
+      const noCenter = centerX + (totalW / 2) - (noW / 2);
+      const childY = topY + height + VERTICAL_GAP;
+
+      if (node.yesNode) {
+        edges.push({
+          fromId: node.id,
+          toId: node.yesNode.id,
+          type: 'yes',
+          label: 'IF YES'
+        });
+        traverse(node.yesNode, yesCenter, childY);
+      }
+
+      if (node.noNode) {
+        edges.push({
+          fromId: node.id,
+          toId: node.noNode.id,
+          type: 'no',
+          label: 'IF NO'
+        });
+        traverse(node.noNode, noCenter, childY);
+      }
+    }
+  }
+
+  traverse(rootNode, originX, originY);
+  return { positions, edges };
+}
+
+// Physics relaxation solver with minimal shift
+function resolveCollisions(positions, lockedNodeId = null, iterations = 8) {
+  const updated = { ...positions };
+  const nodeIds = Object.keys(updated);
+  const PADDING = 35;
+
+  for (let iter = 0; iter < iterations; iter++) {
+    let hadCollision = false;
+
+    for (let i = 0; i < nodeIds.length; i++) {
+      for (let j = i + 1; j < nodeIds.length; j++) {
+        const idA = nodeIds[i];
+        const idB = nodeIds[j];
+        const a = updated[idA];
+        const b = updated[idB];
+        if (!a || !b) continue;
+
+        const minDistanceX = (a.width + b.width) / 2 + PADDING;
+        const minDistanceY = (a.height + b.height) / 2 + PADDING;
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+
+        const overlapX = minDistanceX - Math.abs(dx);
+        const overlapY = minDistanceY - Math.abs(dy);
+
+        if (overlapX > 0 && overlapY > 0) {
+          hadCollision = true;
+
+          if (overlapX < overlapY) {
+            const sign = dx >= 0 ? 1 : -1;
+            const shift = overlapX / 2;
+            if (idA === lockedNodeId) {
+              updated[idB] = { ...b, x: b.x + sign * overlapX };
+            } else if (idB === lockedNodeId) {
+              updated[idA] = { ...a, x: a.x - sign * overlapX };
+            } else {
+              updated[idA] = { ...a, x: a.x - sign * shift };
+              updated[idB] = { ...b, x: b.x + sign * shift };
+            }
+          } else {
+            const sign = dy >= 0 ? 1 : -1;
+            const shift = overlapY / 2;
+            if (idA === lockedNodeId) {
+              updated[idB] = { ...b, y: b.y + sign * overlapY };
+            } else if (idB === lockedNodeId) {
+              updated[idA] = { ...a, y: a.y - sign * overlapY };
+            } else {
+              updated[idA] = { ...a, y: a.y - sign * shift };
+              updated[idB] = { ...b, y: b.y + sign * shift };
+            }
+          }
+        }
+      }
+    }
+
+    if (!hadCollision) break;
+  }
+
+  return updated;
 }
 
 function updateNodeInTree(root, targetId, updater) {
@@ -59,14 +196,40 @@ function replaceNodeInTree(root, targetId, newNode) {
   return root;
 }
 
+function flattenTreeNodes(root) {
+  const map = {};
+  function walk(node) {
+    if (!node) return;
+    map[node.id] = node;
+    if (node.type === 'decision') {
+      walk(node.yesNode);
+      walk(node.noNode);
+    }
+  }
+  walk(root);
+  return map;
+}
+
 export function AdultFilterTreePanel() {
   const queryClient = useQueryClient();
   const [treeState, setTreeState] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // Canvas Pan & Zoom State
+  const [zoom, setZoom] = useState(0.85);
+  const [pan, setPan] = useState({ x: 300, y: 40 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef({ x: 0, y: 0, startPanX: 0, startPanY: 0 });
+  const canvasViewportRef = useRef(null);
+
+  // Node Positions (stored for smooth physics drag & drop)
+  const [nodePositions, setNodePositions] = useState({});
+  const [activeDragNode, setActiveDragNode] = useState(null);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, nodeX: 0, nodeY: 0 });
+
   // Test Simulator State
-  const [showSimulator, setShowSimulator] = useState(true);
+  const [showSimulator, setShowSimulator] = useState(false);
   const [testMovie, setTestMovie] = useState({
     title: 'Example Movie',
     adult: false,
@@ -83,11 +246,55 @@ export function AdultFilterTreePanel() {
     queryFn: () => apiFetch('/api/admin/adult-criteria')
   });
 
+  // Calculate layout from current tree
+  const { positions: autoPositions, edges } = useMemo(() => {
+    if (!treeState) return { positions: {}, edges: [] };
+    return calculateTreeLayout(treeState, 0, 40);
+  }, [treeState]);
+
+  // Sync positions when tree loads or changes structure
+  useEffect(() => {
+    if (Object.keys(autoPositions).length) {
+      setNodePositions((prev) => {
+        // Merge existing node coordinates if they were manually shifted, but provide new ones for new nodes
+        const merged = { ...autoPositions };
+        for (const [id, pos] of Object.entries(prev)) {
+          if (merged[id]) {
+            merged[id] = { ...merged[id], x: pos.x, y: pos.y };
+          }
+        }
+        return resolveCollisions(merged);
+      });
+    }
+  }, [autoPositions]);
+
+  // Initialize tree data
   useEffect(() => {
     if (data?.tree && !hasChanges) {
       setTreeState(data.tree);
     }
   }, [data, hasChanges]);
+
+  // Center view on canvas
+  const centerView = useCallback(() => {
+    if (!canvasViewportRef.current) return;
+    const { clientWidth } = canvasViewportRef.current;
+    setZoom(0.85);
+    setPan({ x: clientWidth / 2, y: 60 });
+  }, []);
+
+  useEffect(() => {
+    centerView();
+  }, [centerView]);
+
+  // Auto-Tidy button (re-aligns tree cleanly without overlap)
+  const autoTidyLayout = () => {
+    if (treeState) {
+      const fresh = calculateTreeLayout(treeState, 0, 40);
+      setNodePositions(resolveCollisions(fresh.positions));
+      toast('Tree layout automatically organized and aligned');
+    }
+  };
 
   const saveMutation = useMutation({
     mutationFn: (tree) => apiFetch('/api/admin/adult-criteria', {
@@ -112,6 +319,8 @@ export function AdultFilterTreePanel() {
       setTreeState(resp.tree);
       setHasChanges(false);
       setShowResetConfirm(false);
+      const fresh = calculateTreeLayout(resp.tree, 0, 40);
+      setNodePositions(resolveCollisions(fresh.positions));
       queryClient.setQueryData(['adminAdultCriteria'], (old) => ({ ...old, tree: resp.tree }));
       queryClient.invalidateQueries({ queryKey: ['home'] });
       queryClient.invalidateQueries({ queryKey: ['trending'] });
@@ -129,6 +338,80 @@ export function AdultFilterTreePanel() {
     onSuccess: (resp) => setTestResult(resp),
     onError: (err) => toast(err.message, 'error')
   });
+
+  // Canvas Pan (Drag background)
+  const handleCanvasMouseDown = (e) => {
+    // Only drag canvas if clicking directly on background, not on cards or buttons
+    if (e.target.closest('.interactive-node') || e.target.closest('.canvas-control-button')) return;
+    setIsPanning(true);
+    panStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      startPanX: pan.x,
+      startPanY: pan.y
+    };
+  };
+
+  const handleCanvasMouseMove = (e) => {
+    if (isPanning) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      setPan({
+        x: panStartRef.current.startPanX + dx,
+        y: panStartRef.current.startPanY + dy
+      });
+      return;
+    }
+
+    if (activeDragNode) {
+      const dx = (e.clientX - dragStartRef.current.mouseX) / zoom;
+      const dy = (e.clientY - dragStartRef.current.mouseY) / zoom;
+      const nextX = dragStartRef.current.nodeX + dx;
+      const nextY = dragStartRef.current.nodeY + dy;
+
+      setNodePositions((prev) => {
+        const nextPositions = {
+          ...prev,
+          [activeDragNode]: {
+            ...prev[activeDragNode],
+            x: nextX,
+            y: nextY
+          }
+        };
+        // Run collision solver with physics shifting for other nodes!
+        return resolveCollisions(nextPositions, activeDragNode);
+      });
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsPanning(false);
+    if (activeDragNode) {
+      setActiveDragNode(null);
+      // Final relaxation pass
+      setNodePositions((prev) => resolveCollisions(prev));
+    }
+  };
+
+  // Zoom with mouse wheel
+  const handleCanvasWheel = (e) => {
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+    setZoom((prev) => Math.min(2.5, Math.max(0.3, prev * zoomFactor)));
+  };
+
+  // Start dragging a node
+  const handleNodeDragStart = (nodeId, e) => {
+    e.stopPropagation();
+    setActiveDragNode(nodeId);
+    const currentPos = nodePositions[nodeId] || { x: 0, y: 0 };
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      nodeX: currentPos.x,
+      nodeY: currentPos.y
+    };
+  };
 
   const handleNodeFieldChange = (nodeId, newField) => {
     const fieldDef = AVAILABLE_FIELDS.find((f) => f.id === newField);
@@ -221,13 +504,7 @@ export function AdultFilterTreePanel() {
     });
   };
 
-  const runSimulation = () => {
-    if (!treeState) return;
-    testMutation.mutate({
-      tree: treeState,
-      item: testMovie
-    });
-  };
+  const flatNodes = useMemo(() => flattenTreeNodes(treeState), [treeState]);
 
   if (isPending) {
     return <div className="app-loading py-12">Loading adult decision criteria from admin_setting_monolith...</div>;
@@ -238,7 +515,7 @@ export function AdultFilterTreePanel() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 select-none">
       {/* Top Header Card */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-white/10 bg-[#141414] p-5 shadow-lg">
         <div>
@@ -252,7 +529,7 @@ export function AdultFilterTreePanel() {
             <h2 className="text-xl font-bold text-white">Adult & Spam Decision Tree Criteria</h2>
           </div>
           <p className="mt-1 text-xs text-[#a0a0a0]">
-            Database Collection: <span className="font-mono text-[#c296ff]">admin_setting_monolith</span> &bull; Evaluated dynamically for all content, feeds, and searches.
+            Database Collection: <span className="font-mono text-[#c296ff]">admin_setting_monolith</span> &bull; Pan & zoom canvas &bull; Zero-overlap physics shifting.
           </p>
         </div>
 
@@ -328,7 +605,7 @@ export function AdultFilterTreePanel() {
         </div>
       )}
 
-      {/* Interactive Simulator Card */}
+      {/* Interactive Simulator */}
       {showSimulator && (
         <div className="rounded-2xl border border-purple-500/30 bg-purple-950/10 p-5">
           <div className="flex items-center justify-between border-b border-purple-500/20 pb-3">
@@ -339,7 +616,7 @@ export function AdultFilterTreePanel() {
             <button
               type="button"
               disabled={testMutation.isPending}
-              onClick={runSimulation}
+              onClick={() => testMutation.mutate({ tree: treeState, item: testMovie })}
               className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 cursor-pointer"
             >
               {testMutation.isPending ? 'Testing...' : 'Run Test'}
@@ -430,222 +707,347 @@ export function AdultFilterTreePanel() {
         </div>
       )}
 
-      {/* Main Visual Decision Tree */}
-      <div className="rounded-2xl border border-white/10 bg-[#101010] p-6 overflow-x-auto shadow-2xl">
-        <div className="min-w-[680px]">
-          {treeState ? (
-            <TreeNodeView
-              node={treeState}
-              isRoot={true}
-              onFieldChange={handleNodeFieldChange}
-              onOperatorChange={handleNodeOperatorChange}
-              onValueChange={handleNodeValueChange}
-              onToggleResult={handleToggleResult}
-              onAddDecision={handleAddDecision}
-              onRemoveDecision={handleRemoveDecision}
-            />
-          ) : (
-            <p className="text-sm text-[#777]">No decision tree available.</p>
-          )}
+      {/* Infinite Canvas Container with Zoom & Pan */}
+      <div className="relative rounded-2xl border border-white/10 bg-[#0d0d0e] overflow-hidden shadow-2xl">
+        {/* Floating Canvas Controls Overlay */}
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-2 rounded-xl border border-white/10 bg-[#171717]/90 px-3 py-1.5 backdrop-blur-md shadow-lg">
+          <button
+            type="button"
+            onClick={() => setZoom((z) => Math.min(2.5, z + 0.15))}
+            className="canvas-control-button h-7 w-7 flex items-center justify-center rounded-lg text-white hover:bg-white/10 text-sm font-bold"
+            title="Zoom In"
+          >
+            +
+          </button>
+          <span className="text-xs font-mono text-[#a0a0a0] min-w-[45px] text-center">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => setZoom((z) => Math.max(0.3, z - 0.15))}
+            className="canvas-control-button h-7 w-7 flex items-center justify-center rounded-lg text-white hover:bg-white/10 text-sm font-bold"
+            title="Zoom Out"
+          >
+            -
+          </button>
+          <div className="h-4 w-px bg-white/15 mx-1"></div>
+          <button
+            type="button"
+            onClick={centerView}
+            className="canvas-control-button px-2.5 py-1 text-[11px] rounded-lg text-[#ccc] hover:text-white hover:bg-white/10"
+            title="Center View"
+          >
+            Center
+          </button>
+          <button
+            type="button"
+            onClick={autoTidyLayout}
+            className="canvas-control-button px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#8f44f0]/20 text-[#c296ff] hover:bg-[#8f44f0]/30 border border-[#8f44f0]/40"
+            title="Auto-organize layout with zero overlap"
+          >
+            Auto-Align
+          </button>
+        </div>
+
+        {/* Viewport Area */}
+        <div
+          ref={canvasViewportRef}
+          onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onWheel={handleCanvasWheel}
+          className={`relative h-[680px] w-full overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+          style={{
+            backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.08) 1.5px, transparent 1.5px)',
+            backgroundSize: '28px 28px'
+          }}
+        >
+          {/* Scaled & Translated World */}
+          <div
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: '0 0',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none'
+            }}
+          >
+            {/* SVG Connecting Curves */}
+            <svg
+              className="absolute overflow-visible pointer-events-none"
+              style={{ top: 0, left: 0, width: '1px', height: '1px' }}
+            >
+              <defs>
+                <linearGradient id="curve-glow-yes" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.8" />
+                </linearGradient>
+                <linearGradient id="curve-glow-no" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.4" />
+                  <stop offset="100%" stopColor="#f43f5e" stopOpacity="0.8" />
+                </linearGradient>
+              </defs>
+
+              {edges.map((edge, idx) => {
+                const fromPos = nodePositions[edge.fromId];
+                const toPos = nodePositions[edge.toId];
+                if (!fromPos || !toPos) return null;
+
+                const startX = fromPos.x;
+                const startY = fromPos.y + fromPos.height;
+                const endX = toPos.x;
+                const endY = toPos.y;
+
+                const deltaY = endY - startY;
+                const cpY1 = startY + Math.max(35, deltaY * 0.45);
+                const cpY2 = endY - Math.max(35, deltaY * 0.45);
+
+                const pathD = `M ${startX} ${startY} C ${startX} ${cpY1}, ${endX} ${cpY2}, ${endX} ${endY}`;
+                const midX = (startX + endX) / 2;
+                const midY = (startY + endY) / 2;
+                const isYes = edge.type === 'yes';
+
+                return (
+                  <g key={`${edge.fromId}-${edge.toId}-${idx}`}>
+                    {/* Shadow / Glow Line */}
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke={isYes ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)'}
+                      strokeWidth="8"
+                      strokeLinecap="round"
+                    />
+                    {/* Core Line */}
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke={isYes ? '#10b981' : '#f43f5e'}
+                      strokeWidth="2.5"
+                      strokeDasharray={isYes ? 'none' : '4 3'}
+                    />
+                    {/* Floating Pill on Midpoint */}
+                    <g transform={`translate(${midX}, ${midY})`}>
+                      <rect
+                        x="-38"
+                        y="-11"
+                        width="76"
+                        height="22"
+                        rx="11"
+                        fill={isYes ? '#064e3b' : '#881337'}
+                        stroke={isYes ? '#10b981' : '#f43f5e'}
+                        strokeWidth="1.5"
+                      />
+                      <text
+                        x="0"
+                        y="4"
+                        textAnchor="middle"
+                        fill={isYes ? '#a7f3d0' : '#fecdd3'}
+                        fontSize="10"
+                        fontWeight="700"
+                        fontFamily="ui-sans-serif, system-ui"
+                      >
+                        {isYes ? '✔ IF YES' : '✖ IF NO'}
+                      </text>
+                    </g>
+                  </g>
+                );
+              })}
+            </svg>
+
+            {/* Interactive Nodes */}
+            {Object.entries(flatNodes).map(([nodeId, node]) => {
+              const pos = nodePositions[nodeId];
+              if (!pos) return null;
+
+              const isRoot = treeState?.id === nodeId;
+              const isBeingDragged = activeDragNode === nodeId;
+
+              return (
+                <div
+                  key={nodeId}
+                  className="interactive-node absolute pointer-events-auto"
+                  style={{
+                    left: `${pos.x - pos.width / 2}px`,
+                    top: `${pos.y}px`,
+                    width: `${pos.width}px`,
+                    // Spring physics transition when shifted, but no transition on the node actively being dragged
+                    transition: isBeingDragged
+                      ? 'none'
+                      : 'all 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.25)',
+                    zIndex: isBeingDragged ? 50 : 10
+                  }}
+                >
+                  {node.type === 'decision' ? (
+                    <DecisionCard
+                      node={node}
+                      isRoot={isRoot}
+                      onDragStart={(e) => handleNodeDragStart(node.id, e)}
+                      onFieldChange={handleNodeFieldChange}
+                      onOperatorChange={handleNodeOperatorChange}
+                      onValueChange={handleNodeValueChange}
+                      onRemoveDecision={handleRemoveDecision}
+                    />
+                  ) : (
+                    <ResultCard
+                      node={node}
+                      onDragStart={(e) => handleNodeDragStart(node.id, e)}
+                      onToggleResult={handleToggleResult}
+                      onAddDecision={handleAddDecision}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function TreeNodeView({
+function DecisionCard({
   node,
   isRoot,
-  branchLabel,
-  branchType,
+  onDragStart,
   onFieldChange,
   onOperatorChange,
   onValueChange,
-  onToggleResult,
-  onAddDecision,
   onRemoveDecision
 }) {
-  if (!node) return null;
-
-  if (node.type === 'result') {
-    const isAdult = Boolean(node.isAdult);
-    return (
-      <div className="flex flex-col items-center">
-        {branchLabel && <BranchPill label={branchLabel} type={branchType} />}
-        <div
-          className={`relative rounded-xl border p-4 shadow-md transition-all ${
-            isAdult
-              ? 'border-red-500/40 bg-red-950/20 text-red-300 shadow-red-950/50'
-              : 'border-emerald-500/40 bg-emerald-950/20 text-emerald-300 shadow-emerald-950/50'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-xl">{isAdult ? '🔞' : '✅'}</span>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider">
-                {isAdult ? 'Mark as Adult' : 'Mark as Safe / Allowed'}
-              </p>
-              <p className="text-[11px] text-white/60">
-                {isAdult ? 'Filtered out for public/guest users' : 'Visible to public/guest users'}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-2.5">
-            <button
-              type="button"
-              onClick={() => onToggleResult(node.id)}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition-colors ${
-                isAdult
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                  : 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
-              }`}
-            >
-              Switch to {isAdult ? 'Safe' : 'Adult'}
-            </button>
-            <button
-              type="button"
-              onClick={() => onAddDecision(node.id)}
-              className="rounded-lg border border-[#8f44f0]/40 bg-[#8f44f0]/10 px-2.5 py-1 text-[11px] font-semibold text-[#c296ff] hover:bg-[#8f44f0]/20 transition-colors"
-            >
-              + Add Decision Diamond
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const currentFieldDef = AVAILABLE_FIELDS.find((f) => f.id === node.field) || AVAILABLE_FIELDS[0];
   const isNumeric = currentFieldDef.type === 'number';
 
   return (
-    <div className="flex flex-col items-center">
-      {branchLabel && <BranchPill label={branchLabel} type={branchType} />}
+    <div className="rounded-2xl border border-white/20 bg-[#161616] p-4 shadow-2xl backdrop-blur-md hover:border-purple-500/60 transition-colors">
+      {/* Draggable Header */}
+      <div
+        onMouseDown={onDragStart}
+        className="flex items-center justify-between border-b border-white/10 pb-2 cursor-move hover:text-purple-300"
+      >
+        <div className="flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#8f44f0]/30 text-[#d4b3ff] text-xs font-bold rotate-45">
+            <span className="-rotate-45">◆</span>
+          </span>
+          <span className="text-xs font-bold uppercase tracking-wider text-white">
+            {isRoot ? 'Root Condition' : 'Decision Diamond'}
+          </span>
+        </div>
 
-      {/* Decision Card / Diamond Header */}
-      <div className="relative w-full max-w-xl rounded-2xl border border-white/15 bg-[#181818] p-4 shadow-xl">
-        <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-          <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#8f44f0]/30 text-[#d4b3ff] text-xs font-bold rotate-45">
-              <span className="-rotate-45">◆</span>
-            </span>
-            <span className="text-xs font-bold uppercase tracking-wider text-white">
-              {isRoot ? 'Root Decision Condition' : 'Decision Diamond'}
-            </span>
-          </div>
-
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-white/40 cursor-move">⋮⋮ drag</span>
           {!isRoot && (
             <button
               type="button"
               onClick={() => onRemoveDecision(node.id, false)}
-              className="text-xs text-red-400 hover:text-red-300 transition-colors"
+              className="text-xs text-red-400 hover:text-red-300 transition-colors ml-1"
               title="Remove this decision and make it a result leaf"
             >
-              &times; Remove
+              &times;
             </button>
-          )}
-        </div>
-
-        {/* Inputs */}
-        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          <div className="sm:col-span-1">
-            <label className="text-[10px] uppercase font-semibold text-[#888]">Check Field</label>
-            <select
-              value={node.field}
-              onChange={(e) => onFieldChange(node.id, e.target.value)}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-[#121212] px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#8f44f0]"
-            >
-              {AVAILABLE_FIELDS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="sm:col-span-1">
-            <label className="text-[10px] uppercase font-semibold text-[#888]">Operator</label>
-            <select
-              value={node.operator}
-              onChange={(e) => onOperatorChange(node.id, e.target.value)}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-[#121212] px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#8f44f0]"
-            >
-              {(isNumeric ? NUMERIC_OPS : BOOLEAN_OPS).map((op) => (
-                <option key={op.id} value={op.id}>
-                  {op.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {isNumeric && (
-            <div className="sm:col-span-1">
-              <label className="text-[10px] uppercase font-semibold text-[#888]">Target Value</label>
-              <input
-                type="number"
-                value={node.value ?? ''}
-                onChange={(e) => onValueChange(node.id, Number(e.target.value))}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#121212] px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#8f44f0]"
-              />
-            </div>
           )}
         </div>
       </div>
 
-      {/* Visual Connecting Line */}
-      <div className="h-6 w-0.5 bg-white/20"></div>
-
-      {/* Two Child Branches: YES and NO */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full pt-1 border-t border-dashed border-white/10">
-        {/* YES Branch */}
-        <div className="flex flex-col items-center">
-          <TreeNodeView
-            node={node.yesNode}
-            branchLabel="IF YES (Condition Met)"
-            branchType="yes"
-            onFieldChange={onFieldChange}
-            onOperatorChange={onOperatorChange}
-            onValueChange={onValueChange}
-            onToggleResult={onToggleResult}
-            onAddDecision={onAddDecision}
-            onRemoveDecision={onRemoveDecision}
-          />
+      {/* Control Inputs */}
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="sm:col-span-1">
+          <label className="text-[9px] uppercase font-bold text-[#888]">Check Field</label>
+          <select
+            value={node.field}
+            onChange={(e) => onFieldChange(node.id, e.target.value)}
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[#111] px-2 py-1.5 text-xs text-white outline-none focus:border-[#8f44f0]"
+          >
+            {AVAILABLE_FIELDS.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* NO Branch */}
-        <div className="flex flex-col items-center">
-          <TreeNodeView
-            node={node.noNode}
-            branchLabel="IF NO (Otherwise)"
-            branchType="no"
-            onFieldChange={onFieldChange}
-            onOperatorChange={onOperatorChange}
-            onValueChange={onValueChange}
-            onToggleResult={onToggleResult}
-            onAddDecision={onAddDecision}
-            onRemoveDecision={onRemoveDecision}
-          />
+        <div className="sm:col-span-1">
+          <label className="text-[9px] uppercase font-bold text-[#888]">Operator</label>
+          <select
+            value={node.operator}
+            onChange={(e) => onOperatorChange(node.id, e.target.value)}
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[#111] px-2 py-1.5 text-xs text-white outline-none focus:border-[#8f44f0]"
+          >
+            {(isNumeric ? NUMERIC_OPS : BOOLEAN_OPS).map((op) => (
+              <option key={op.id} value={op.id}>
+                {op.label}
+              </option>
+            ))}
+          </select>
         </div>
+
+        {isNumeric && (
+          <div className="sm:col-span-1">
+            <label className="text-[9px] uppercase font-bold text-[#888]">Target Value</label>
+            <input
+              type="number"
+              value={node.value ?? ''}
+              onChange={(e) => onValueChange(node.id, Number(e.target.value))}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-[#111] px-2 py-1.5 text-xs text-white outline-none focus:border-[#8f44f0]"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function BranchPill({ label, type }) {
-  const isYes = type === 'yes';
+function ResultCard({ node, onDragStart, onToggleResult, onAddDecision }) {
+  const isAdult = Boolean(node.isAdult);
+
   return (
-    <div className="mb-2 flex flex-col items-center">
-      <span
-        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
-          isYes
-            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-            : 'border-rose-500/40 bg-rose-500/10 text-rose-400'
-        }`}
+    <div
+      className={`rounded-2xl border p-4 shadow-xl backdrop-blur-md transition-all ${
+        isAdult
+          ? 'border-red-500/50 bg-[#1f0d0e] text-red-300 shadow-red-950/60'
+          : 'border-emerald-500/50 bg-[#0d1f15] text-emerald-300 shadow-emerald-950/60'
+      }`}
+    >
+      {/* Draggable Header */}
+      <div
+        onMouseDown={onDragStart}
+        className="flex items-center justify-between border-b border-white/10 pb-2 cursor-move"
       >
-        <span>{isYes ? '✔' : '✖'}</span> {label}
-      </span>
-      <div className="h-2 w-0.5 bg-white/20"></div>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{isAdult ? '🔞' : '✅'}</span>
+          <span className="text-xs font-bold uppercase tracking-wider">
+            {isAdult ? 'Mark as Adult' : 'Mark as Safe'}
+          </span>
+        </div>
+        <span className="text-[10px] text-white/40 cursor-move">⋮⋮ drag</span>
+      </div>
+
+      <p className="mt-2 text-[11px] text-white/60">
+        {isAdult ? 'Filtered out for public/guest users' : 'Visible to public/guest users'}
+      </p>
+
+      <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-2.5">
+        <button
+          type="button"
+          onClick={() => onToggleResult(node.id)}
+          className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition-colors ${
+            isAdult
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+              : 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+          }`}
+        >
+          Switch to {isAdult ? 'Safe' : 'Adult'}
+        </button>
+        <button
+          type="button"
+          onClick={() => onAddDecision(node.id)}
+          className="rounded-lg border border-[#8f44f0]/40 bg-[#8f44f0]/10 px-2.5 py-1 text-[11px] font-semibold text-[#c296ff] hover:bg-[#8f44f0]/20 transition-colors"
+        >
+          + Add Decision
+        </button>
+      </div>
     </div>
   );
 }
