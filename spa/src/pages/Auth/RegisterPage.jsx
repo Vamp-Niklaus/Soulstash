@@ -21,6 +21,7 @@ export function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [usernameState, setUsernameState] = useState({ checking: false, available: null, message: '' });
+  const [emailState, setEmailState] = useState({ checking: false, available: null, message: '' });
   const [otpStage, setOtpStage] = useSessionState('auth:register:otpStage', false);
   const [otpDigits, setOtpDigits] = useSessionState('auth:register:otpDigits', ['', '', '', '', '', '']);
   const [otpError, setOtpError] = useState('');
@@ -32,6 +33,9 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const usernameCheckTimerRef = useRef(null);
+  const emailCheckTimerRef = useRef(null);
+  const usernameCheckSequenceRef = useRef(0);
+  const emailCheckSequenceRef = useRef(0);
   const otpInputsRef = useRef([]);
 
   useEffect(() => {
@@ -55,12 +59,13 @@ export function RegisterPage() {
 
   useEffect(() => {
     const trimmed = username.trim();
+    const sequence = ++usernameCheckSequenceRef.current;
     if (usernameCheckTimerRef.current) {
       window.clearTimeout(usernameCheckTimerRef.current);
     }
 
-    if (trimmed.length < 3) {
-      setUsernameState({ checking: false, available: null, message: '' });
+    if (trimmed.length < 3 || trimmed.length > 30) {
+      setUsernameState({ checking: false, available: null, message: trimmed.length > 30 ? 'Username must be 30 characters or fewer' : '' });
       return undefined;
     }
 
@@ -69,13 +74,17 @@ export function RegisterPage() {
       try {
         const response = await fetch(`${API_BASE_URL}/api/auth/check-username?username=${encodeURIComponent(trimmed)}`);
         const payload = await response.json().catch(() => ({}));
+        if (sequence !== usernameCheckSequenceRef.current) return;
+        if (!response.ok) throw new Error(payload.message || 'Unable to check username');
         setUsernameState({
           checking: false,
           available: Boolean(payload.available),
-          message: payload.message || ''
+          message: payload.message || (payload.available ? 'Username is available' : 'Username is already taken')
         });
       } catch {
-        setUsernameState({ checking: false, available: null, message: '' });
+        if (sequence === usernameCheckSequenceRef.current) {
+          setUsernameState({ checking: false, available: null, message: 'Unable to check username. Try again.' });
+        }
       }
     }, 500);
 
@@ -85,6 +94,41 @@ export function RegisterPage() {
       }
     };
   }, [username]);
+
+  useEffect(() => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const sequence = ++emailCheckSequenceRef.current;
+    if (emailCheckTimerRef.current) {
+      window.clearTimeout(emailCheckTimerRef.current);
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setEmailState({ checking: false, available: null, message: '' });
+      return undefined;
+    }
+
+    setEmailState((current) => ({ ...current, checking: true, message: '' }));
+    emailCheckTimerRef.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/check-email?email=${encodeURIComponent(normalizedEmail)}`);
+        const payload = await response.json().catch(() => ({}));
+        if (sequence !== emailCheckSequenceRef.current) return;
+        if (!response.ok) throw new Error(payload.message || 'Unable to check email');
+        setEmailState({
+          checking: false,
+          available: Boolean(payload.available),
+          message: payload.message || (payload.available ? 'Email is available' : 'Email is already registered')
+        });
+      } catch {
+        if (sequence === emailCheckSequenceRef.current) {
+          setEmailState({ checking: false, available: null, message: 'Unable to check email. Try again.' });
+        }
+      }
+    }, 500);
+
+    return () => {
+      if (emailCheckTimerRef.current) window.clearTimeout(emailCheckTimerRef.current);
+    };
+  }, [email]);
 
   useEffect(() => {
     if (!resendCountdown) return undefined;
@@ -107,11 +151,32 @@ export function RegisterPage() {
     setOtpSending(true);
     setError('');
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const [usernameResponse, emailResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/auth/check-username?username=${encodeURIComponent(username.trim())}`),
+        fetch(`${API_BASE_URL}/api/auth/check-email?email=${encodeURIComponent(normalizedEmail)}`)
+      ]);
+      const [usernameAvailability, emailAvailability] = await Promise.all([
+        usernameResponse.json().catch(() => ({})),
+        emailResponse.json().catch(() => ({}))
+      ]);
+      if (!usernameResponse.ok || !emailResponse.ok) {
+        throw new Error('Unable to verify username and email availability. Please try again.');
+      }
+      setUsernameState({ checking: false, available: Boolean(usernameAvailability.available), message: usernameAvailability.message || '' });
+      setEmailState({ checking: false, available: Boolean(emailAvailability.available), message: emailAvailability.message || '' });
+      if (!usernameAvailability.available) {
+        throw new Error(usernameAvailability.message || 'Username is already taken');
+      }
+      if (!emailAvailability.available) {
+        throw new Error(emailAvailability.message || 'Email is already registered');
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(),
+          email: normalizedEmail,
           username: username.trim(),
           fullName: `${firstName.trim()} ${lastName.trim()}`.trim()
         })
@@ -125,7 +190,9 @@ export function RegisterPage() {
       setResendCountdown(30);
       toast(payload.message || 'OTP sent successfully');
     } catch (submitError) {
-      setError(submitError.message || 'Failed to send OTP');
+      const message = submitError.message || 'Failed to send verification email. Please try again later.';
+      if (otpStage) setOtpError(message);
+      else setError(message);
     } finally {
       setOtpSending(false);
     }
@@ -139,12 +206,12 @@ export function RegisterPage() {
       setError('Please fill in all fields');
       return;
     }
-    if (usernameState.available === false) {
-      setError('Username is already taken');
-      return;
-    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError('Please enter a valid email address');
+      return;
+    }
+    if (usernameState.available !== true || emailState.available !== true) {
+      setError('Please wait for both username and email to be verified as available.');
       return;
     }
     if (password !== confirmPassword) {
@@ -189,7 +256,7 @@ export function RegisterPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(),
+          email: email.trim().toLowerCase(),
           username: username.trim(),
           password,
           otp,
@@ -276,17 +343,26 @@ export function RegisterPage() {
               {!usernameState.checking && usernameState.available === false ? <span className="text-[#ef4444] text-lg">{"\u2717"}</span> : null}
             </div>
           </div>
+          {usernameState.message ? <p className={`mt-1 text-xs ${usernameState.available === false ? 'text-red-400' : usernameState.available === true ? 'text-emerald-400' : 'text-amber-300'}`}>{usernameState.message}</p> : null}
         </div>
         <div>
           <label className="mb-2 block text-sm font-medium text-[#d7d7d7]">Email</label>
-          <input
-            autoComplete="email"
-            className="h-11 w-full rounded-2xl border border-white/10 bg-[#181818] px-4 text-white outline-none transition-colors placeholder:text-[#6f6f6f] focus:border-white/20"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="Enter your email"
-            type="email"
-          />
+          <div className="relative">
+            <input
+              autoComplete="email"
+              className="h-11 w-full rounded-2xl border border-white/10 bg-[#181818] px-4 pr-11 text-white outline-none transition-colors placeholder:text-[#6f6f6f] focus:border-white/20"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="Enter your email"
+              type="email"
+            />
+            <div className="absolute inset-y-0 right-3 flex items-center">
+              {emailState.checking ? <span className="inline-block h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin"></span> : null}
+              {!emailState.checking && emailState.available === true ? <span className="text-[#22c55e] text-lg">{"\u2713"}</span> : null}
+              {!emailState.checking && emailState.available === false ? <span className="text-[#ef4444] text-lg">{"\u2717"}</span> : null}
+            </div>
+          </div>
+          {emailState.message ? <p className={`mt-1 text-xs ${emailState.available === false ? 'text-red-400' : emailState.available === true ? 'text-emerald-400' : 'text-amber-300'}`}>{emailState.message}</p> : null}
         </div>
         <div>
           <label className="mb-2 block text-sm font-medium text-[#d7d7d7]">Password</label>
@@ -369,7 +445,7 @@ export function RegisterPage() {
         {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div> : null}
         <button
           type="submit"
-          disabled={loading || usernameState.available === false || usernameState.checking || !termsAgreement}
+          disabled={loading || usernameState.available !== true || emailState.available !== true || usernameState.checking || emailState.checking || !termsAgreement}
           className="inline-flex h-11 w-full items-center justify-center rounded-full bg-white text-[15px] font-semibold text-black transition-colors hover:bg-[#e5e5e5] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading || otpSending ? 'Sending OTP...' : 'Create Account'}

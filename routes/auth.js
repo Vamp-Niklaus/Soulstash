@@ -8,8 +8,15 @@ const { authenticateToken, upload, JWT_SECRET } = require('../middleware/auth');
 // In-memory OTP store (keyed by email, expires after 10-15 min)
 const otpStore = new Map();
 
+function escapedRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ── Brevo email helper ────────────────────────────────────────────────────────
 const sendBrevoEmail = async (recipientEmail, recipientName, subject, htmlContent) => {
+  if (!process.env.BREVO_API_KEY) {
+    throw new Error('Brevo API key is not configured');
+  }
   const emailData = {
     sender: { name: 'Soulstash', email: 'soulstash.onrender@gmail.com' },
     to: [{ email: recipientEmail, name: recipientName || 'User' }],
@@ -49,11 +56,11 @@ function splitFullName(fullName = '') {
 // GET /api/auth/check-username
 router.get('/check-username', async (req, res) => {
   try {
-    const { username } = req.query;
-    if (!username || username.length < 3)
-      return res.json({ available: false, message: 'Username must be at least 3 characters' });
+    const username = String(req.query.username || '').trim();
+    if (username.length < 3 || username.length > 30)
+      return res.json({ available: false, message: 'Username must be between 3 and 30 characters' });
     const existing = await getDb().collection('users').findOne({
-      username: { $regex: new RegExp(`^${username}$`, 'i') }
+      username: { $regex: new RegExp(`^${escapedRegex(username)}$`, 'i') }
     });
     res.json({ available: !existing, message: existing ? 'Username is already taken' : 'Username is available' });
   } catch (err) {
@@ -62,10 +69,27 @@ router.get('/check-username', async (req, res) => {
   }
 });
 
+router.get('/check-email', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.json({ available: false, message: 'Please enter a valid email address' });
+    }
+    const existing = await getDb().collection('users').findOne({
+      email: { $regex: new RegExp(`^${escapedRegex(email)}$`, 'i') }
+    });
+    res.json({ available: !existing, message: existing ? 'Email is already registered' : 'Email is available' });
+  } catch (err) {
+    console.error('Email check error:', err.message || err);
+    res.status(500).json({ available: false, message: 'Unable to check email availability' });
+  }
+});
+
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, fullName } = req.body;
+    const { username: rawUsername, password, fullName } = req.body;
+    const username = String(rawUsername || '').trim();
     if (!username || !password || !fullName)
       return res.status(400).json({ error: 'Name, username and password are required' });
     if (username.length < 3 || username.length > 30)
@@ -74,6 +98,11 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Please enter your full name' });
     if (password.length < 6)
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+    const existing = await getDb().collection('users').findOne({
+      username: { $regex: new RegExp(`^${escapedRegex(username)}$`, 'i') }
+    });
+    if (existing) return res.status(409).json({ error: 'Username is already taken' });
 
     const nameParts = splitFullName(fullName);
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -113,15 +142,17 @@ router.post('/register', async (req, res) => {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password)
+    const { username: rawIdentifier, password } = req.body;
+    const identifier = String(rawIdentifier || '').trim();
+    if (!identifier || !password)
       return res.status(400).json({ error: 'Email/Username and password are required' });
 
     const col = getDb().collection('users');
-    const isEmail = username.includes('@');
+    const isEmail = identifier.includes('@');
+    const identifierRegex = { $regex: new RegExp(`^${escapedRegex(identifier)}$`, 'i') };
     let user = isEmail
-      ? (await col.findOne({ email: username })) || (await col.findOne({ username }))
-      : await col.findOne({ username });
+      ? (await col.findOne({ email: identifierRegex })) || (await col.findOne({ username: identifierRegex }))
+      : await col.findOne({ username: identifierRegex });
 
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
@@ -249,7 +280,10 @@ router.post('/update-profile', authenticateToken, upload.single('avatar'), async
 // POST /api/auth/send-otp
 router.post('/send-otp', async (req, res) => {
   try {
-    const { email, username, fullName } = req.body;
+    const { email: rawEmail, username: rawUsername, fullName: rawFullName } = req.body;
+    const email = String(rawEmail || '').trim().toLowerCase();
+    const username = String(rawUsername || '').trim();
+    const fullName = String(rawFullName || '').trim();
     if (!email || !username || !fullName)
       return res.status(400).json({ error: 'Name, email and username are required' });
     if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))
@@ -259,8 +293,11 @@ router.post('/send-otp', async (req, res) => {
     if (fullName.trim().length < 2)
       return res.status(400).json({ error: 'Please enter your full name' });
 
-    const existing = await getDb().collection('users').findOne({ username });
-    if (existing) return res.status(409).json({ error: 'Username already exists' });
+    const users = getDb().collection('users');
+    const existingUsername = await users.findOne({ username: { $regex: new RegExp(`^${escapedRegex(username)}$`, 'i') } });
+    if (existingUsername) return res.status(409).json({ error: 'Username is already taken' });
+    const existingEmail = await users.findOne({ email: { $regex: new RegExp(`^${escapedRegex(email)}$`, 'i') } });
+    if (existingEmail) return res.status(409).json({ error: 'Email is already registered' });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     otpStore.set(email, { email, username, fullName, otp, createdAt: new Date(), expiresAt: new Date(Date.now() + 10 * 60 * 1000) });
@@ -354,12 +391,19 @@ router.post('/reset-password', async (req, res) => {
 // POST /api/auth/verify-otp-and-register
 router.post('/verify-otp-and-register', async (req, res) => {
   try {
-    const { email, username, password, otp, fullName } = req.body;
-    if (!email || !username || !password || !otp || !fullName)
+    const { email: rawEmail, username: rawUsername, password, otp, fullName: rawFullName } = req.body;
+    const email = String(rawEmail || '').trim().toLowerCase();
+    const username = String(rawUsername || '').trim();
+    const normalizedFullName = String(rawFullName || '').trim();
+    if (!email || !username || !password || !otp || !normalizedFullName)
       return res.status(400).json({ error: 'All fields are required' });
     if (password.length < 6)
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    if (fullName.trim().length < 2)
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return res.status(400).json({ error: 'Please enter a valid email address' });
+    if (username.length < 3 || username.length > 30)
+      return res.status(400).json({ error: 'Username must be between 3 and 30 characters' });
+    if (normalizedFullName.length < 2)
       return res.status(400).json({ error: 'Please enter your full name' });
 
     const otpData = otpStore.get(email);
@@ -369,28 +413,46 @@ router.post('/verify-otp-and-register', async (req, res) => {
       return res.status(400).json({ error: 'OTP has expired' });
     }
     if (otpData.otp !== otp) return res.status(400).json({ error: 'Invalid OTP' });
-    if (otpData.email !== email || otpData.username !== username || otpData.fullName !== fullName)
+    if (otpData.email !== email || otpData.username !== username || otpData.fullName !== normalizedFullName)
       return res.status(400).json({ error: 'Invalid request data' });
 
-    const existing = await getDb().collection('users').findOne({ username });
-    if (existing) {
+    const users = getDb().collection('users');
+    const existingUsername = await users.findOne({ username: { $regex: new RegExp(`^${escapedRegex(username)}$`, 'i') } });
+    if (existingUsername) {
       otpStore.delete(email);
-      return res.status(409).json({ error: 'Username already exists' });
+      return res.status(409).json({ error: 'Username is already taken' });
+    }
+    const existingEmail = await users.findOne({ email: { $regex: new RegExp(`^${escapedRegex(email)}$`, 'i') } });
+    if (existingEmail) {
+      otpStore.delete(email);
+      return res.status(409).json({ error: 'Email is already registered' });
     }
 
-    const nameParts = splitFullName(fullName);
+    const nameParts = splitFullName(normalizedFullName);
     const hashed = await bcrypt.hash(password, 10);
-    const result = await getDb().collection('users').insertOne({
-      username, email, password: hashed,
-      fullName: nameParts.fullName,
-      firstName: nameParts.firstName,
-      lastName: nameParts.lastName,
-      collections: defaultCollections(),
-      admin: false,
-      showAdult: false,
-      collectionVersion: 1,
-      createdAt: new Date(), updatedAt: new Date()
-    });
+    let result;
+    try {
+      result = await users.insertOne({
+        username, email, password: hashed,
+        fullName: nameParts.fullName,
+        firstName: nameParts.firstName,
+        lastName: nameParts.lastName,
+        collections: defaultCollections(),
+        admin: false,
+        showAdult: false,
+        collectionVersion: 1,
+        createdAt: new Date(), updatedAt: new Date()
+      });
+    } catch (insertErr) {
+      if (insertErr.code === 11000) {
+        otpStore.delete(email);
+        if (insertErr.keyPattern?.email || insertErr.keyValue?.email) {
+          return res.status(409).json({ error: 'Email is already registered' });
+        }
+        return res.status(409).json({ error: 'Username is already taken' });
+      }
+      throw insertErr;
+    }
     otpStore.delete(email);
 
     const token = jwt.sign({ userId: result.insertedId, username }, JWT_SECRET, { expiresIn: '7d' });

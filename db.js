@@ -43,6 +43,22 @@ async function initializeDatabase() {
       { unique: true, name: 'username_unique_index' }
     );
 
+    // Signup availability checks are case-insensitive, so keep database-level
+    // uniqueness consistent and prevent duplicate emails across concurrent requests.
+    await usersCollection.createIndex(
+      { username: 1 },
+      { unique: true, name: 'username_case_insensitive_unique_index', collation: { locale: 'en', strength: 2 } }
+    ).catch((error) => console.error('Case-insensitive username index initialization failed:', error.message));
+    await usersCollection.createIndex(
+      { email: 1 },
+      {
+        unique: true,
+        name: 'email_case_insensitive_unique_index',
+        collation: { locale: 'en', strength: 2 },
+        partialFilterExpression: { email: { $type: 'string', $gt: '' } }
+      }
+    ).catch((error) => console.error('Case-insensitive email index initialization failed:', error.message));
+
     // Primary lookup: tmdbID + mediaType (unique — one record per title)
     await ratingsCollection.createIndex(
       { tmdbID: 1, mediaType: 1 },

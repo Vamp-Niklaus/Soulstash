@@ -32,7 +32,7 @@ export function LoginPage() {
     event.preventDefault();
     setError('');
     if (!username.trim() || !password) {
-      setError('Please enter username and password');
+      setError('Please enter your username or email and password');
       return;
     }
 
@@ -55,7 +55,8 @@ export function LoginPage() {
       // so fetch the profile right away and patch localStorage.
       try {
         const { apiFetch: fetchApi } = await import('../../api/client.js');
-        const profileResponse = await fetchApi(`/api/user/profile/${encodeURIComponent(username.trim())}`);
+        const profileUsername = payload.user?.username || username.trim();
+        const profileResponse = await fetchApi(`/api/user/profile/${encodeURIComponent(profileUsername)}`);
         // This endpoint returns { user }, unlike the self-profile endpoint.
         // Merge the complete record immediately so the navbar never renders a
         // stale fallback avatar after navigation.
@@ -93,12 +94,12 @@ export function LoginPage() {
     >
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div>
-          <label className="mb-2 block text-sm font-medium text-[#d7d7d7]">Username</label>
+          <label className="mb-2 block text-sm font-medium text-[#d7d7d7]">Username or email</label>
           <input
             className="h-11 w-full rounded-2xl border border-white/10 bg-[#181818] px-4 text-white outline-none transition-colors placeholder:text-[#6f6f6f] focus:border-white/20"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            placeholder="Enter your username"
+            placeholder="Enter your username or email"
           />
         </div>
         <div>
