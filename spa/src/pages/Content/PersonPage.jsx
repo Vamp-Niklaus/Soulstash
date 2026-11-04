@@ -653,10 +653,8 @@ export function PersonPage() {
         onAddFavorite={addFavoriteMutation.mutate}
         onRemoveFavorite={removeFavoriteMutation.mutate}
         onImageClick={() => {
-          if (personImages.length > 0) {
-            setCurrentImageIndex(0);
-            setViewerOpen(true);
-          }
+          setCurrentImageIndex(0);
+          setViewerOpen(true);
         }}
       />
 
@@ -713,9 +711,9 @@ export function PersonPage() {
       </section>
 
       <ZoomablePosterModal
-        open={viewerOpen && personImages.length > 0}
+        open={viewerOpen}
         onClose={() => setViewerOpen(false)}
-        images={personImages}
+        images={personImages.length > 0 ? personImages : [person?.profile_path || FALLBACK_AVATAR]}
         currentIndex={currentImageIndex}
         onIndexChange={setCurrentImageIndex}
         alt={person?.name || 'Person profile'}

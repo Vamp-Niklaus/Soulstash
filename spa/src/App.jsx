@@ -5,7 +5,6 @@ import { Routes, Route, Navigate, Outlet, useParams, useLocation, useNavigate, m
 // 2. The Layout & Global UI
 import { ReactNavbar } from './components/layout/Navbar.jsx';
 import { SmartFooter } from './components/layout/SmartFooter.jsx';
-import { ScreenRotationPrompt } from './components/ui/Misc/ScreenRotationPrompt.jsx';
 
 // 3. Authentication & State
 import { getToken, getCurrentUsername } from './api/client.js';
@@ -142,7 +141,6 @@ export function AppShell() {
         </div>
         <SmartFooter />
       </main>
-      <ScreenRotationPrompt />
     </div>
   );
 }

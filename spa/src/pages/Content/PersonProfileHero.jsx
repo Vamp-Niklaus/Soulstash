@@ -20,6 +20,18 @@ export function PersonProfileHero({ person, bioExpanded, onToggleBiography, isFa
 
   return (
     <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(135deg,rgba(15,15,15,0.98),rgba(10,10,10,0.95))] p-6 md:p-8 lg:p-10 overflow-hidden relative">
+      {/* Zoomed avatar backdrop to fit widescreen hero container when no standalone landscape is provided */}
+      {person?.profile_path && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
+          <img
+            src={imageUrl(person.profile_path, 'w1280')}
+            alt=""
+            className="w-full h-full object-cover scale-125 object-[center_28%] blur-[2px]"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
+        </div>
+      )}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,113,86,0.18),transparent_24%),radial-gradient(circle_at_left_center,rgba(143,68,240,0.18),transparent_30%)]" />
       <div className="relative z-10 space-y-6">
         <div className="flex items-start gap-4 sm:gap-6 md:gap-8">

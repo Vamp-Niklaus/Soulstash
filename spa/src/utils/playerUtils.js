@@ -40,7 +40,8 @@ export const SUBBED_ORDER = [
   'vidfast',
   'VidSrc PM',
   'AutoEmbed',
-  '2Embed'
+  '2Embed',
+  'YouTube'
 ];
 
 export function sourceKeyText(source = {}) {
@@ -84,6 +85,11 @@ export function getSourceGroup(source = {}) {
   const lowerLabel = label.toLowerCase();
   const id = String(source.id || '').trim().toLowerCase();
   const key = String(source.key || '').trim().toLowerCase();
+
+  // YouTube always belongs to Subbed / Original
+  if (id === 'youtube' || key === 'youtube' || lowerLabel === 'youtube' || lowerLabel.includes('youtube')) {
+    return 'subbed';
+  }
 
   // 1. Hindi group
   if (
@@ -164,7 +170,8 @@ export const SUBBED_SOURCE_SLOTS = [
   { id: 'vidfast', match: (s) => sourceKeyText(s).includes('vidfast'), label: 'vidfast' },
   { id: 'vidsrc-pm', match: (s) => sourceKeyText(s).includes('vidsrc-pm'), label: 'VidSrc PM' },
   { id: 'autoembed', match: (s) => sourceKeyText(s).includes('autoembed'), label: 'AutoEmbed' },
-  { id: '2embed', match: (s) => sourceKeyText(s).includes('2embed'), label: '2Embed' }
+  { id: '2embed', match: (s) => sourceKeyText(s).includes('2embed'), label: '2Embed' },
+  { id: 'youtube', match: (s) => sourceKeyText(s).includes('youtube') || sourceKeyText(s).includes('youtu.be') || s.id === 'youtube' || s.key === 'youtube', label: 'YouTube' }
 ];
 
 // Backwards compatibility aliases
@@ -224,7 +231,7 @@ export function buildPlayerSourceSlots(
 
     const url = firstPlayableUrl(found);
     const isMissing = !url;
-    const isScrapedSlot = /^(h1|h2|h3|h4|h5)$/i.test(slot.id);
+    const isScrapedSlot = /^(h1|h2|h3|h4|h5|youtube)$/i.test(slot.id);
     const isPending = Boolean(found?.pending) || (isLoading && isMissing && isScrapedSlot);
     const isFailed = Boolean(url && failedUrls.has(url));
     const isWorking = Boolean(url && verifiedUrls.has(url));

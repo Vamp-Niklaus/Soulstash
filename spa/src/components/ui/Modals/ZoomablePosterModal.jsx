@@ -33,20 +33,28 @@ export function ZoomablePosterModal({
     isPinching: false,
     swipeStartX: 0,
     swipeStartY: 0,
+    swipeLastX: 0,
+    swipeLastY: 0,
     isSwiping: false
   });
 
-  const normalizedImages = useMemo(() => {
-    if (!Array.isArray(images) || images.length === 0) return [];
-    return images.map((item) => {
+  const effectiveImages = useMemo(() => {
+    const list = (Array.isArray(images) ? images : []).map((item) => {
       if (typeof item === 'string') return item;
       return item?.file_path || item?.url || '';
     }).filter(Boolean);
-  }, [images]);
+    if (list.length === 0) {
+      return [fallbackImage || FALLBACK_POSTER];
+    }
+    return list;
+  }, [images, fallbackImage]);
 
-  const count = normalizedImages.length;
-  const activePath = count > 0 ? normalizedImages[currentIndex % count] : '';
-  const currentUrl = activePath.startsWith('http') ? activePath : imageUrl(activePath, 'original');
+  const count = effectiveImages.length;
+  const safeIndex = count > 0 ? ((currentIndex % count) + count) % count : 0;
+  const activePath = effectiveImages[safeIndex] || fallbackImage || FALLBACK_POSTER;
+  const currentUrl = activePath.startsWith('http') || activePath.startsWith('data:')
+    ? activePath
+    : imageUrl(activePath, 'original');
 
   const isPushedRef = useRef(false);
 
@@ -94,17 +102,23 @@ export function ZoomablePosterModal({
     };
   }, [open, count, currentIndex, onClose, onIndexChange]);
 
-  if (!open || !activePath) return null;
+  if (!open) return null;
 
   const handlePrev = (e) => {
-    e.stopPropagation();
+    if (e) {
+      e.stopPropagation();
+      if (e.cancelable && e.type === 'touchend') e.preventDefault();
+    }
     if (count > 1 && onIndexChange) {
       onIndexChange((currentIndex - 1 + count) % count);
     }
   };
 
   const handleNext = (e) => {
-    e.stopPropagation();
+    if (e) {
+      e.stopPropagation();
+      if (e.cancelable && e.type === 'touchend') e.preventDefault();
+    }
     if (count > 1 && onIndexChange) {
       onIndexChange((currentIndex + 1) % count);
     }
@@ -130,9 +144,17 @@ export function ZoomablePosterModal({
       };
       setIsAnimatingBack(false);
     } else if (e.touches.length === 1) {
-      touchStateRef.current.swipeStartX = e.touches[0].clientX;
-      touchStateRef.current.swipeStartY = e.touches[0].clientY;
-      touchStateRef.current.isSwiping = true;
+      touchStateRef.current = {
+        ...touchStateRef.current,
+        initialDist: 0,
+        initialScale: transform.scale,
+        isPinching: false,
+        swipeStartX: e.touches[0].clientX,
+        swipeStartY: e.touches[0].clientY,
+        swipeLastX: e.touches[0].clientX,
+        swipeLastY: e.touches[0].clientY,
+        isSwiping: true
+      };
     }
   };
 
@@ -152,32 +174,54 @@ export function ZoomablePosterModal({
       const dy = midY - touchStateRef.current.initialMidY;
 
       setTransform({ scale: newScale, x: dx, y: dy });
+    } else if (e.touches.length === 1 && touchStateRef.current.isSwiping) {
+      touchStateRef.current.swipeLastX = e.touches[0].clientX;
+      touchStateRef.current.swipeLastY = e.touches[0].clientY;
+      const deltaX = e.touches[0].clientX - touchStateRef.current.swipeStartX;
+      const deltaY = e.touches[0].clientY - touchStateRef.current.swipeStartY;
+      // Prevent browser default scroll/bounce when swiping horizontally
+      if (Math.abs(deltaX) > 15 && Math.abs(deltaX) > Math.abs(deltaY) && e.cancelable) {
+        e.preventDefault();
+      }
     }
   };
 
   const handleTouchEnd = (e) => {
-    if (touchStateRef.current.isPinching) {
-      touchStateRef.current.isPinching = false;
+    const s = touchStateRef.current;
+    if (s.isPinching) {
+      s.isPinching = false;
+      s.isSwiping = false;
       // Smoothly animate back to normal 1.0x scale and centered coordinates on release
       setIsAnimatingBack(true);
       setTransform({ scale: 1, x: 0, y: 0 });
       return;
     }
 
-    if (touchStateRef.current.isSwiping && e.changedTouches.length === 1 && transform.scale <= 1.05) {
-      const deltaX = e.changedTouches[0].clientX - touchStateRef.current.swipeStartX;
-      const deltaY = e.changedTouches[0].clientY - touchStateRef.current.swipeStartY;
-      touchStateRef.current.isSwiping = false;
+    if (s.isSwiping) {
+      s.isSwiping = false;
+      if (transform.scale <= 1.15) {
+        const endX = e.changedTouches?.[0]?.clientX ?? s.swipeLastX;
+        const endY = e.changedTouches?.[0]?.clientY ?? s.swipeLastY;
+        const deltaX = endX - s.swipeStartX;
+        const deltaY = endY - s.swipeStartY;
 
-      // Horizontal swipe threshold 45px
-      if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
-        if (deltaX < 0 && count > 1 && onIndexChange) {
-          onIndexChange((currentIndex + 1) % count);
-        } else if (deltaX > 0 && count > 1 && onIndexChange) {
-          onIndexChange((currentIndex - 1 + count) % count);
+        // Horizontal swipe threshold 30px
+        if (Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY)) {
+          if (deltaX < 0 && count > 1 && onIndexChange) {
+            onIndexChange((currentIndex + 1) % count);
+          } else if (deltaX > 0 && count > 1 && onIndexChange) {
+            onIndexChange((currentIndex - 1 + count) % count);
+          }
         }
       }
     }
+  };
+
+  const handleTouchCancel = () => {
+    touchStateRef.current.isPinching = false;
+    touchStateRef.current.isSwiping = false;
+    setIsAnimatingBack(true);
+    setTransform({ scale: 1, x: 0, y: 0 });
   };
 
   const modalContent = (
@@ -186,31 +230,35 @@ export function ZoomablePosterModal({
       style={{
         background: 'radial-gradient(circle at center, rgba(16, 18, 22, 0.96) 0%, rgba(6, 7, 9, 0.99) 75%, black 100%)'
       }}
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
     >
       {/* Previous Button */}
       {count > 1 && (
         <button
           type="button"
-          className="absolute left-3 sm:left-6 z-20 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-black/60 text-white/90 hover:bg-black/80 hover:text-white transition-all active:scale-95"
+          className="absolute left-3 sm:left-6 z-[50] flex h-12 w-12 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-lg select-none"
           onClick={handlePrev}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={handlePrev}
           aria-label="Previous image"
         >
-          <i className="fas fa-chevron-left text-sm" />
+          <i className="fas fa-chevron-left text-base" />
         </button>
       )}
 
       {/* Main Image with mobile pinch-zoom and bounce-back animation */}
       <div
-        className="relative z-10 flex items-center justify-center max-w-[92vw] max-h-[86vh]"
-        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 flex items-center justify-center max-w-[92vw] max-h-[86vh] pointer-events-none select-none"
       >
         <img
-          key={currentUrl}
           src={currentUrl}
           alt={alt}
           draggable={false}
@@ -230,7 +278,7 @@ export function ZoomablePosterModal({
               e.currentTarget.src = fallbackImage || FALLBACK_AVATAR;
             }
           }}
-          className="relative max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_90px_rgba(0,0,0,0.85)] animate-in fade-in zoom-in-95 duration-200 pointer-events-auto"
+          className="relative max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_90px_rgba(0,0,0,0.85)] pointer-events-auto touch-none select-none"
         />
       </div>
 
@@ -238,26 +286,30 @@ export function ZoomablePosterModal({
       {count > 1 && (
         <button
           type="button"
-          className="absolute right-3 sm:right-6 z-20 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-black/60 text-white/90 hover:bg-black/80 hover:text-white transition-all active:scale-95"
+          className="absolute right-3 sm:right-6 z-[50] flex h-12 w-12 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-lg select-none"
           onClick={handleNext}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={handleNext}
           aria-label="Next image"
         >
-          <i className="fas fa-chevron-right text-sm" />
+          <i className="fas fa-chevron-right text-base" />
         </button>
       )}
 
       {/* Bottom Counter Indicator */}
       {count > 1 && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 rounded-full bg-black/60 px-4 py-1 text-xs sm:text-sm font-medium text-white/90 backdrop-blur-md">
-          {currentIndex + 1} / {count}
+          {safeIndex + 1} / {count}
         </div>
       )}
 
       {/* Preload adjacent images */}
       {count > 1 && [-2, -1, 1, 2].map((offset) => {
-        const idx = (currentIndex + offset + count) % count;
-        const preloadPath = normalizedImages[idx];
-        const preloadUrl = preloadPath.startsWith('http') ? preloadPath : imageUrl(preloadPath, 'original');
+        const idx = ((safeIndex + offset) % count + count) % count;
+        const preloadPath = effectiveImages[idx];
+        const preloadUrl = preloadPath.startsWith('http') || preloadPath.startsWith('data:')
+          ? preloadPath
+          : imageUrl(preloadPath, 'original');
         return (
           <img
             key={`preload-${idx}`}

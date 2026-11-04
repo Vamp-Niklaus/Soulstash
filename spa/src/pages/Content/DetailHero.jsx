@@ -75,7 +75,10 @@ export function DetailHero({
   // Combined vertical posters and landscape backdrops for full gallery viewer
   const viewerImages = useMemo(() => {
     const all = [...posters, ...backdrops];
-    return all.length > 0 ? all : (content?.poster_path ? [content.poster_path] : (content?.backdrop_path ? [content.backdrop_path] : []));
+    if (all.length > 0) return all;
+    if (content?.poster_path) return [content.poster_path];
+    if (content?.backdrop_path) return [content.backdrop_path];
+    return [FALLBACK_POSTER];
   }, [posters, backdrops, content?.poster_path, content?.backdrop_path]);
 
   // Instantly preload the full-resolution first image so tapping the poster displays instantly with zero wait
@@ -181,7 +184,7 @@ export function DetailHero({
     ? imageUrl(landscapePath, 'w1280')
     : currentPosterPath
     ? imageUrl(currentPosterPath, 'w780')
-    : null;
+    : FALLBACK_POSTER;
 
   return (
     <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
@@ -218,7 +221,11 @@ export function DetailHero({
             alt={title}
             fetchPriority="high"
             decoding="sync"
-            className={`absolute inset-0 h-full w-full object-cover ${landscapePath ? 'object-[center_22%]' : 'object-[center_35%]'}`}
+            className={`absolute inset-0 h-full w-full object-cover ${
+              landscapePath
+                ? 'object-[center_22%]'
+                : 'scale-125 object-[center_28%] blur-[0.5px] sm:blur-none transition-transform duration-700'
+            }`}
             onError={(e) => {
               const src = e.currentTarget.src;
               if (src.includes('/w1280/')) {
@@ -227,7 +234,7 @@ export function DetailHero({
                 e.currentTarget.src = src.replace('/original/', '/w780/');
               } else if (currentPosterPath && !src.includes(currentPosterPath)) {
                 e.currentTarget.src = imageUrl(currentPosterPath, 'w780');
-                e.currentTarget.className = "absolute inset-0 h-full w-full object-cover object-[center_35%]";
+                e.currentTarget.className = "absolute inset-0 h-full w-full object-cover scale-125 object-[center_28%]";
               } else {
                 e.currentTarget.src = FALLBACK_POSTER;
               }

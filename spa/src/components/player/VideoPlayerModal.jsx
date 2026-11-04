@@ -406,7 +406,14 @@ export function VideoPlayerModal({ request, onClose }) {
 
     if (Capacitor.isNativePlatform()) {
       try {
-        ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+        const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
+        if (rot === 'sensor') {
+          ScreenOrientation.unlock().catch(() => {});
+        } else if (rot === 'portrait') {
+          ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+        } else if (rot === 'landscape') {
+          ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
+        }
       } catch (e) {}
     }
 
@@ -442,7 +449,14 @@ export function VideoPlayerModal({ request, onClose }) {
         isClosingRef.current = true;
         if (Capacitor.isNativePlatform()) {
           try {
-            ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+            const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
+            if (rot === 'sensor') {
+              ScreenOrientation.unlock().catch(() => {});
+            } else if (rot === 'portrait') {
+              ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+            } else if (rot === 'landscape') {
+              ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
+            }
           } catch (e) {}
         }
         if (onCloseRef.current) onCloseRef.current();
