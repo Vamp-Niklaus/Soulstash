@@ -1,7 +1,8 @@
 import { imageUrl } from '../../utils/formatters.js';
-import { useAuthSession } from '../../hooks/index.js';
+import { useAuthSession, useLiveCollections } from '../../hooks/index.js';
 import { getToken, clearAuthSession, apiFetch, emitAuthChange } from '../../api/client.js';
-import { collectionItemCount, normalizeCollections } from '../../utils/collectionsCache.js';
+import { collectionItemCount, normalizeCollections, getCachedUserCollections } from '../../utils/collectionsCache.js';
+import { loadUserCollections } from '../../utils/collectionsApi.js';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -74,12 +75,13 @@ export function UserProfilePage() {
   const removeFavoriteMutation = useMutation({
     mutationFn: (id) => apiFetch('/api/user/favorites/remove', {
       method: 'POST',
-      body: JSON.stringify({ id })
+      body: JSON.stringify({ id, personId: id })
     }),
     onSuccess: () => {
       toast('Removed from favorites');
       setFavoriteRemoveTarget(null);
-      queryClient.invalidateQueries({ queryKey: ['profile', username] });
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['favorites'] });
     },
     onError: (err) => {
       toast(err.message, 'error');
@@ -120,6 +122,15 @@ export function UserProfilePage() {
   const isOwner = auth.isLoggedIn && auth.username === username && (
     profilePayload?.isOwner === true || verifiedUser?.username === username
   );
+
+  const { collections: liveUserCollections } = useLiveCollections();
+
+  useEffect(() => {
+    if (isOwner && (!liveUserCollections || !liveUserCollections.length) && getToken()) {
+      loadUserCollections().catch(() => {});
+    }
+  }, [isOwner, liveUserCollections?.length]);
+
   useEffect(() => {
     if (!isOwner || !profileUser) return;
     try {
@@ -147,7 +158,13 @@ export function UserProfilePage() {
   const isFollowedBy = Boolean(profilePayload.isFollowedBy);
   const favoritePeople = Array.isArray(user.favoritePeople) ? user.favoritePeople : [];
 
-  const collections = normalizeCollections(Array.isArray(user.collections) ? user.collections : []);
+  const rawCollections = isOwner && Array.isArray(liveUserCollections) && liveUserCollections.length
+    ? liveUserCollections
+    : (Array.isArray(user.collections) && user.collections.length
+        ? user.collections
+        : (isOwner ? getCachedUserCollections() : []));
+
+  const collections = normalizeCollections(rawCollections);
   const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.fullName || user.username;
   const watched = collections.find((collection) => collection.name === 'Watched');
   const watchlist = collections.find((collection) => collection.name === 'Watchlist');

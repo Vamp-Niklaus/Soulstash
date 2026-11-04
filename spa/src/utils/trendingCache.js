@@ -18,7 +18,7 @@ export async function loadTrendingHome(force = false) {
 
   const request = apiFetch('/api/trending?limit=18', { signal: controller.signal })
     .then((data) => {
-      const arr = Array.isArray(data?.movies) ? data.movies : Array.isArray(data) ? data : [];
+      const arr = Array.isArray(data?.results) ? data.results : (Array.isArray(data?.movies) ? data.movies : (Array.isArray(data) ? data : []));
       homeTrendingCache.data = arr;
       homeTrendingCache.expiresAt = Date.now() + HOME_TRENDING_TTL;
       return arr;

@@ -19,14 +19,15 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
     staleTime: 1000 * 60 * 30, // 30 minutes
   });
 
-  const movies = preloadedMovies?.length ? preloadedMovies : (fetchedMovies?.movies || []);
+  const fetchedList = fetchedMovies?.results || fetchedMovies?.movies || (Array.isArray(fetchedMovies) ? fetchedMovies : []);
+  const movies = preloadedMovies?.length ? preloadedMovies : fetchedList;
   
   // Preload images for dynamically fetched shelves
   useEffect(() => {
-    if (!preloadedMovies?.length && fetchedMovies?.movies?.length > 0) {
-      preloadImages(fetchedMovies.movies.slice(0, displayLimit).map(item => item.poster_path));
+    if (!preloadedMovies?.length && movies.length > 0) {
+      preloadImages(movies.slice(0, displayLimit).map(item => item.poster_path));
     }
-  }, [fetchedMovies, preloadedMovies, displayLimit]);
+  }, [movies, preloadedMovies, displayLimit]);
 
   const loading = (!preloadedMovies || preloadedMovies.length === 0) && isLoading;
 

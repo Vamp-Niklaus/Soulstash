@@ -71,18 +71,22 @@ export async function fetchUserCollectionsWithVersion(cached) {
     throw error;
   }
 
-    const data = await response.json();
+  const data = await response.json();
   const versionHeader = response.headers.get('x-collection-version');
   const version = Number.isFinite(Number(versionHeader))
     ? Number(versionHeader)
     : ((cached?.version || 0) + 1);
 
-  if (Array.isArray(data)) {
-    writeCollectionsCache(data, version);
-    broadcastCollections(data, version);
+  const collectionsList = Array.isArray(data)
+    ? data
+    : (Array.isArray(data?.collections) ? data.collections : []);
+
+  if (collectionsList.length || Array.isArray(data)) {
+    writeCollectionsCache(collectionsList, version);
+    broadcastCollections(collectionsList, version);
   }
 
-  return { collections: data, version };
+  return { collections: collectionsList, version };
 }
 
 // ---------------------------------------------------------------------------

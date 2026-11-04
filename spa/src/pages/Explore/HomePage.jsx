@@ -19,9 +19,10 @@ export function HomePage() {
   const { data, isLoading: loading, error: queryError, refetch } = useQuery({
     queryKey: ['homePageData'],
     queryFn: async () => {
-      const [homeData, publishedData] = await Promise.all([
+      const [homeData, publishedData, genresData] = await Promise.all([
         apiFetch('/api/home').catch(() => ({ trending: [], genres: [], categories: {} })),
-        apiFetch('/api/collections/published').catch(() => ({ collections: [] }))
+        apiFetch('/api/collections/published').catch(() => []),
+        apiFetch('/api/genres').catch(() => ({ genres: [] }))
       ]);
 
       // Collections warm-up
@@ -30,19 +31,31 @@ export function HomePage() {
         loadUserCollections().catch(() => {});
       }
 
-      const trending = Array.isArray(homeData?.trending) ? homeData.trending : [];
-      const popular = Array.isArray(homeData?.popular) ? homeData.popular : [];
+      const trendingRaw = homeData?.trending?.results || homeData?.trending || [];
+      const trending = Array.isArray(trendingRaw) ? trendingRaw : [];
+
+      const popularRaw = homeData?.popular?.results || homeData?.popular || homeData?.popularMovies?.results || [];
+      const popular = Array.isArray(popularRaw) ? popularRaw : [];
+
       if (trending.length) {
         homeTrendingCache.data = trending;
         homeTrendingCache.expiresAt = Date.now() + HOME_TRENDING_TTL;
       }
 
+      const rawPublished = Array.isArray(publishedData)
+        ? publishedData
+        : (Array.isArray(publishedData?.collections) ? publishedData.collections : []);
+
+      const rawGenres = Array.isArray(genresData?.genres) && genresData.genres.length
+        ? genresData.genres
+        : (Array.isArray(homeData?.genres) ? homeData.genres : []);
+
       return {
         trending,
         popular,
-        genres: Array.isArray(homeData?.genres) ? homeData.genres : [],
+        genres: rawGenres,
         categoryData: homeData?.categories && typeof homeData.categories === 'object' ? homeData.categories : {},
-        publishedCollections: Array.isArray(publishedData?.collections) ? publishedData.collections : []
+        publishedCollections: rawPublished
       };
     }
   });

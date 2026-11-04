@@ -27,11 +27,12 @@ export function PopularPage() {
     queryFn: fetchPopular,
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages, lastPageParam) => {
-      if (!Array.isArray(lastPage?.movies) || lastPage.movies.length === 0) {
+      const pageList = Array.isArray(lastPage?.results) ? lastPage.results : (Array.isArray(lastPage?.movies) ? lastPage.movies : (Array.isArray(lastPage) ? lastPage : []));
+      if (!pageList.length) {
         return undefined;
       }
       const currentPageNum = Number(lastPageParam) || allPages.length;
-      const reportedPages = Number(lastPage?.pagination?.pages);
+      const reportedPages = Number(lastPage?.total_pages || lastPage?.pagination?.pages);
       const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
       if (currentPageNum < totalPages) {
         return currentPageNum + 1;
@@ -49,7 +50,7 @@ export function PopularPage() {
     const seen = new Set();
     const deduped = [];
     for (const page of data.pages) {
-      const list = Array.isArray(page?.movies) ? page.movies : (Array.isArray(page) ? page : []);
+      const list = Array.isArray(page?.results) ? page.results : (Array.isArray(page?.movies) ? page.movies : (Array.isArray(page) ? page : []));
       for (const item of list) {
         const itemId = Number(item?.id || item?.movieId || item?.seriesId);
         if (itemId && !seen.has(itemId)) {

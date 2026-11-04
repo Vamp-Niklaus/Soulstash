@@ -128,7 +128,26 @@ export async function apiFetch(path, options = {}) {
     await handleApiError(response);
   }
 
-  return response.json();
+  const data = await response.json();
+
+  // Automatic compatibility normalization between Go backend and SPA:
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    // If response has results array (like /api/movies, /api/trending, /api/popular, /api/search), provide .movies alias
+    if (Array.isArray(data.results) && !Array.isArray(data.movies)) {
+      data.movies = data.results;
+    }
+    // If /api/home returned nested results objects
+    if (data.trending && typeof data.trending === 'object' && Array.isArray(data.trending.results)) {
+      data.trending = data.trending.results;
+    }
+    if (data.popularMovies && typeof data.popularMovies === 'object' && Array.isArray(data.popularMovies.results)) {
+      if (!data.popular) {
+        data.popular = data.popularMovies.results;
+      }
+    }
+  }
+
+  return data;
 }
 
 /**

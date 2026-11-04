@@ -314,10 +314,14 @@ export function PersonPage() {
   const addFavoriteMutation = useMutation({
     mutationFn: (data) => apiFetch('/api/user/favorites/add', {
       method: 'POST',
-      body: JSON.stringify(data)
+      body: JSON.stringify({
+        ...data,
+        personId: data?.id || data?.personId
+      })
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
       toast('Added to favorites');
     },
     onError: (err) => {
@@ -332,10 +336,11 @@ export function PersonPage() {
   const removeFavoriteMutation = useMutation({
     mutationFn: (personId) => apiFetch('/api/user/favorites/remove', {
       method: 'POST',
-      body: JSON.stringify({ id: personId })
+      body: JSON.stringify({ id: personId, personId })
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
       toast('Removed from favorites');
     },
     onError: (err) => {
@@ -385,34 +390,55 @@ export function PersonPage() {
       setCreditsError('');
       try {
         let creditsResolved = false;
-        await streamApiFetch(`/api/person/${id}/credits`, {
-          method: 'GET',
-          signal: controller.signal,
-          cache: 'no-store',
-          onEvent(event) {
-            if (ignore) return;
-            if (event?.type === 'credits') {
-              const rawCredits = [...(event.cast || []), ...(event.crew || [])]
-                .filter((item) => item.media_type === 'movie' || item.media_type === 'tv');
-              const uniqueCredits = [];
-              const seenCredits = new Set();
 
-              for (const item of rawCredits) {
-                const key = `${item.media_type}:${item.id}`;
-                if (seenCredits.has(key)) continue;
-                seenCredits.add(key);
-                uniqueCredits.push(item);
-              }
+        const handleCreditsData = (data) => {
+          if (!data) return;
+          const castList = Array.isArray(data.cast) ? data.cast : [];
+          const crewList = Array.isArray(data.crew) ? data.crew : [];
+          if (!castList.length && !crewList.length) return;
 
-              setCredits(uniqueCredits);
-              setUserCollections(normalizeCollections(getCachedUserCollections()));
-              setCreditsLoading(false);
-              creditsResolved = true;
-            } else if (event?.type === 'ratings' && Array.isArray(event.items)) {
-              setCredits((current) => mergeImdbRatings(current, event.items));
-            }
+          const rawCredits = [...castList, ...crewList]
+            .filter((item) => item.media_type === 'movie' || item.media_type === 'tv');
+          const uniqueCredits = [];
+          const seenCredits = new Set();
+
+          for (const item of rawCredits) {
+            const key = `${item.media_type}:${item.id}`;
+            if (seenCredits.has(key)) continue;
+            seenCredits.add(key);
+            uniqueCredits.push(item);
           }
-        });
+
+          setCredits(uniqueCredits);
+          setUserCollections(normalizeCollections(getCachedUserCollections()));
+          setCreditsLoading(false);
+          creditsResolved = true;
+        };
+
+        // Standard REST fetch for Go backend / TMDB combined credits
+        const directCredits = await apiFetch(`/api/person/${id}/credits`, { signal: controller.signal })
+          .catch(() => null);
+
+        if (directCredits && (Array.isArray(directCredits.cast) || Array.isArray(directCredits.crew))) {
+          if (!ignore) {
+            handleCreditsData(directCredits);
+          }
+        } else {
+          // Fallback to streaming for Node backend
+          await streamApiFetch(`/api/person/${id}/credits`, {
+            method: 'GET',
+            signal: controller.signal,
+            cache: 'no-store',
+            onEvent(event) {
+              if (ignore) return;
+              if (event?.type === 'credits' || Array.isArray(event?.cast) || Array.isArray(event?.crew)) {
+                handleCreditsData(event);
+              } else if (event?.type === 'ratings' && Array.isArray(event.items)) {
+                setCredits((current) => mergeImdbRatings(current, event.items));
+              }
+            }
+          });
+        }
 
         if (!ignore && !creditsResolved) setCreditsLoading(false);
       } catch (error) {

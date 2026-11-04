@@ -49,12 +49,12 @@ export function GenrePage() {
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages, lastPageParam) => {
       const currentPageNum = Number(lastPageParam) || allPages.length;
-      const reportedPages = Number(lastPage?.pagination?.pages);
+      const reportedPages = Number(lastPage?.total_pages || lastPage?.pagination?.pages);
       const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
       if (currentPageNum < totalPages) {
         if (allPages.length >= 2) {
-          const lastOne = allPages[allPages.length - 1]?.movies || [];
-          const secondLast = allPages[allPages.length - 2]?.movies || [];
+          const lastOne = allPages[allPages.length - 1]?.results || allPages[allPages.length - 1]?.movies || [];
+          const secondLast = allPages[allPages.length - 2]?.results || allPages[allPages.length - 2]?.movies || [];
           if (lastOne.length === 0 && secondLast.length === 0) {
             return undefined;
           }
@@ -70,7 +70,7 @@ export function GenrePage() {
     const seen = new Set();
     const deduped = [];
     for (const page of data.pages) {
-      const list = Array.isArray(page?.movies) ? page.movies : [];
+      const list = Array.isArray(page?.results) ? page.results : (Array.isArray(page?.movies) ? page.movies : []);
       for (const item of list) {
         const itemId = Number(item?.id || item?.movieId || item?.seriesId);
         if (itemId && !seen.has(itemId)) {
