@@ -35,6 +35,27 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
       setPage(1);
       setHasMore(totalPages > 1 || similar.length === 20);
       preloadImages(initialItems.map(item => item.poster_path));
+
+      // Advance load next 2 pages (page 2 & 3)
+      if (totalPages > 1 || similar.length >= 10) {
+        const ep2 = type === 'series' ? `/api/series/${id}/similar?page=2` : `/api/movies/${id}/similar?page=2`;
+        const ep3 = type === 'series' ? `/api/series/${id}/similar?page=3` : `/api/movies/${id}/similar?page=3`;
+        Promise.allSettled([apiFetch(ep2), apiFetch(ep3)]).then(([r2, r3]) => {
+          const advResults = [];
+          if (r2.status === 'fulfilled' && r2.value?.results) advResults.push(...r2.value.results);
+          if (r3.status === 'fulfilled' && r3.value?.results) advResults.push(...r3.value.results);
+          if (advResults.length) {
+            const currentIdNum = Number(id);
+            const seen = new Set(initialItems.map(i => Number(i.id)));
+            const extra = advResults.filter(it => it?.id && !seen.has(Number(it.id)) && Number(it.id) !== currentIdNum && it.poster_path);
+            if (extra.length) {
+              preloadImages(extra.map(i => i.poster_path));
+              setItems(prev => [...prev, ...extra]);
+              setPage(3);
+            }
+          }
+        }).catch(() => {});
+      }
     } else if (id) {
       let ignore = false;
       setLoading(true);
@@ -60,6 +81,28 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
           setPage(1);
           setHasMore((data?.total_pages || 1) > 1 && results.length > 0);
           preloadImages(initialItems.map(item => item.poster_path));
+
+          // Advance load next 2 pages (page 2 & 3)
+          if ((data?.total_pages || 1) > 1) {
+            const ep2 = type === 'series' ? `/api/series/${id}/similar?page=2` : `/api/movies/${id}/similar?page=2`;
+            const ep3 = type === 'series' ? `/api/series/${id}/similar?page=3` : `/api/movies/${id}/similar?page=3`;
+            Promise.allSettled([apiFetch(ep2), apiFetch(ep3)]).then(([r2, r3]) => {
+              if (ignore) return;
+              const advResults = [];
+              if (r2.status === 'fulfilled' && r2.value?.results) advResults.push(...r2.value.results);
+              if (r3.status === 'fulfilled' && r3.value?.results) advResults.push(...r3.value.results);
+              if (advResults.length) {
+                const currentIdNum = Number(id);
+                const seenSet = new Set(initialItems.map(i => Number(i.id)));
+                const extra = advResults.filter(it => it?.id && !seenSet.has(Number(it.id)) && Number(it.id) !== currentIdNum && it.poster_path);
+                if (extra.length) {
+                  preloadImages(extra.map(i => i.poster_path));
+                  setItems(prev => [...prev, ...extra]);
+                  setPage(3);
+                }
+              }
+            }).catch(() => {});
+          }
         })
         .catch(err => {
           console.warn('Failed to fetch similar content:', err);

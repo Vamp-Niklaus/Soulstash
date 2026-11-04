@@ -291,6 +291,17 @@ export function PersonPage() {
     return person?.profile_path ? [person.profile_path] : [];
   }, [personImagesData, person?.profile_path]);
 
+  // Instantly preload the person's photo on mount so clicking the photo displays instantly with 0 delay
+  useEffect(() => {
+    const firstImg = personImages[0] || person?.profile_path;
+    if (firstImg) {
+      const fullUrl = imageUrl(firstImg, 'original');
+      const img = new Image();
+      if ('fetchPriority' in img) img.fetchPriority = 'high';
+      img.src = fullUrl;
+    }
+  }, [personImages, person?.profile_path]);
+
   // Textured background poster for Cast page
   const personPoster = person?.profile_path || personImages?.[0];
   const knownForCredit = credits?.find((c) => c.backdrop_path || c.poster_path);

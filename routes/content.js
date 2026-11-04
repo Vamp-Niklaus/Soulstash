@@ -2231,8 +2231,8 @@ router.get(['/movies/:id', '/movie/:id'], async (req, res) => {
     const mediaType = isSeries ? 'Series' : 'Movie';
 
     const detailUrl = isSeries
-      ? `https://api.themoviedb.org/3/tv/${id}?append_to_response=videos,similar,images&language=en-US`
-      : `https://api.themoviedb.org/3/movie/${id}?append_to_response=videos,similar,images&language=en-US`;
+      ? `https://api.themoviedb.org/3/tv/${id}?append_to_response=videos,similar,images&include_image_language=en,null&language=en-US`
+      : `https://api.themoviedb.org/3/movie/${id}?append_to_response=videos,similar,images&include_image_language=en,null&language=en-US`;
     const certificationUrl = isSeries
       ? `https://api.themoviedb.org/3/tv/${id}/content_ratings`
       : `https://api.themoviedb.org/3/movie/${id}/release_dates`;
@@ -2363,7 +2363,7 @@ router.get('/series/:id', async (req, res) => {
     const id = parseInt(req.params.id);
     const [resp, ratingsResp] = await Promise.all([
       tmdbFetch(
-        `https://api.themoviedb.org/3/tv/${id}?append_to_response=videos,similar,images&language=en-US`,
+        `https://api.themoviedb.org/3/tv/${id}?append_to_response=videos,similar,images&include_image_language=en,null&language=en-US`,
         { method: 'GET', headers: tmdbHeaders() },
         `TV Series ${id}`
       ),

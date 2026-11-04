@@ -658,7 +658,15 @@ export function VideoPlayerModal({ request, onClose }) {
     }
   }, [displayedSources, failedUrls]);
 
-  // Race every available stream once across displayed sources; the first host that answers wins.
+  const isVidboltSource = (s) => {
+    if (!s) return false;
+    const lowerKey = String(s.key || s.id || '').toLowerCase();
+    const lowerLabel = String(s.label || s.name || '').toLowerCase();
+    const url = String(s.url || '').toLowerCase();
+    return lowerKey.includes('vidbolt') || lowerLabel.includes('vidbolt') || url.includes('vidbolt');
+  };
+
+  // Race every available stream once across displayed sources; VidBolt is prioritized as default player!
   // Importantly, switching categories or viewing sources does NOT switch or interrupt the playing stream!
   const raceTokenRef = useRef(0);
   const playableKey = displayedSources.filter((s) => s.url && !failedUrls.has(s.url)).map((s) => s.url).join('|');
@@ -671,6 +679,14 @@ export function VideoPlayerModal({ request, onClose }) {
 
     const playable = displayedSources.filter((s) => s.url && !failedUrls.has(s.url));
     if (!playable.length) return undefined;
+
+    // Prioritize VidBolt as default player if available
+    const vidboltSource = playable.find(isVidboltSource);
+    if (vidboltSource && !failedUrls.has(vidboltSource.url)) {
+      setActiveUrl(vidboltSource.url);
+      setVerifiedUrls((prev) => new Set(prev).add(vidboltSource.url));
+      return undefined;
+    }
 
     const token = ++raceTokenRef.current;
     const controllers = [];
@@ -707,7 +723,11 @@ export function VideoPlayerModal({ request, onClose }) {
     };
   }, [playableKey, activeUrl, failedUrls, displayedSources]);
 
-  const defaultSource = displayedSources.find((source) => source.url && !source.failed) || displayedSources.find((source) => source.url) || displayedSources[0];
+  const defaultSource =
+    displayedSources.find((s) => s.url && !s.failed && isVidboltSource(s)) ||
+    displayedSources.find((source) => source.url && !source.failed) ||
+    displayedSources.find((source) => source.url) ||
+    displayedSources[0];
   const activeSource = displayedSources.find((source) => source.url === activeUrl) || defaultSource;
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);

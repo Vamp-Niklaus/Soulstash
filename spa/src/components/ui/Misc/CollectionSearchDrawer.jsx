@@ -73,9 +73,29 @@ export function CollectionSearchDrawer({ open, onClose, collection, onAdd, pendi
               media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType
             };
           });
-          const nextResults = mergeSearchResults([], incoming, 40);
+          const nextResults = mergeSearchResults([], incoming, 100);
           setResults(nextResults);
           setLoading(false);
+
+          // Always prefetch next 2 pages in advance
+          if (incoming.length >= 10) {
+            Promise.allSettled([
+              apiFetch(`/api/search?q=${encodeURIComponent(query.trim())}&limit=20&page=2`, { signal: controller.signal }),
+              apiFetch(`/api/search?q=${encodeURIComponent(query.trim())}&limit=20&page=3`, { signal: controller.signal })
+            ]).then(([p2, p3]) => {
+              if (ignore) return;
+              const extra = [];
+              if (p2.status === 'fulfilled' && p2.value?.results) extra.push(...p2.value.results);
+              if (p3.status === 'fulfilled' && p3.value?.results) extra.push(...p3.value.results);
+              if (extra.length) {
+                const normalized = extra.map((item) => {
+                  const mType = item.media_type || (item.type === 'tv' || item.first_air_date ? 'Series' : 'Movie');
+                  return { ...item, media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType };
+                });
+                setResults((prev) => mergeSearchResults(prev, normalized, 150));
+              }
+            }).catch(() => {});
+          }
         }
       } catch (error) {
         if (error?.name === 'AbortError') return;

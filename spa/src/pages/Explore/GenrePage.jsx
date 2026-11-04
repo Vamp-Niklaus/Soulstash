@@ -90,6 +90,14 @@ export function GenrePage() {
     }
   }, [items.length]);
 
+  // Always prefetch next 2 pages in advance
+  useEffect(() => {
+    if (!data?.pages?.length || !hasNextPage || isFetchingNextPage) return;
+    if (data.pages.length < 3) {
+      fetchNextPage();
+    }
+  }, [data?.pages?.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   // Sentinel observer — attaches cleanly via useEffect every time page state updates
   const sentinelRef = useRef(null);
   useEffect(() => {
@@ -102,7 +110,7 @@ export function GenrePage() {
           fetchNextPage();
         }
       },
-      { rootMargin: '800px' }
+      { rootMargin: '1600px' }
     );
     observer.observe(node);
 

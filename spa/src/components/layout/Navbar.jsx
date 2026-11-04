@@ -173,59 +173,27 @@ export function ReactNavbar() {
       {/* ── TV Left Sidebar Navbar (Active in TV mode or when width > height) ── */}
       {isTvLayout && (
         <aside
-          className="fixed inset-y-0 left-0 top-0 bottom-0 z-[99990] flex w-16 sm:w-20 flex-col items-center justify-between border-r border-white/10 bg-[#0c0d10]/95 py-3 sm:py-4 shadow-2xl backdrop-blur-xl select-none h-screen h-[100dvh] overflow-hidden"
+          className="fixed inset-y-0 left-0 top-0 bottom-0 z-[99990] flex w-16 sm:w-20 flex-col items-center justify-between border-r border-white/10 bg-[#0c0d10]/95 py-3 sm:py-4 shadow-2xl backdrop-blur-xl select-none h-screen h-[100dvh] overflow-visible"
           aria-label="TV Sidebar Navigation"
         >
-          {/* Top Profile / Login (Replaces logo.png in TV mode) */}
-          <div className="relative flex flex-col items-center" ref={profileMenuRef}>
+          {/* Top Profile / Login: Clicking directly opens profile page in TV mode */}
+          <div className="relative flex flex-col items-center">
             {isLoggedIn && username ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setProfileDropdownOpen((prev) => !prev)}
-                  className="relative flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full overflow-hidden border-2 border-amber-400/50 hover:border-amber-400 transition-all active:scale-95 shadow-md"
-                  title={`${username} profile`}
-                  aria-label="User profile"
-                >
-                  <img
-                    src={auth?.user?.avatar || FALLBACK_AVATAR}
-                    alt="Profile"
-                    className="h-full w-full object-cover object-top"
-                  />
-                </button>
-
-                {profileDropdownOpen && (
-                  <div className="absolute top-0 left-16 sm:left-20 w-48 rounded-2xl border border-white/15 bg-[#16181d]/98 backdrop-blur-2xl p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3 py-2 border-b border-white/10 text-white/60 truncate font-semibold">
-                      @{username}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setProfileDropdownOpen(false); navigate(`/user/${username}`); }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
-                    >
-                      <i className="fas fa-user text-xs w-4"></i>
-                      <span>Profile</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setProfileDropdownOpen(false); setSettingsOpen(true); }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
-                    >
-                      <i className="fas fa-cog text-xs w-4"></i>
-                      <span>Settings</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-500/10 transition-colors text-left font-medium"
-                    >
-                      <i className="fas fa-sign-out-alt text-xs w-4"></i>
-                      <span>Log Out</span>
-                    </button>
-                  </div>
-                )}
-              </>
+              <button
+                type="button"
+                onClick={() => navigate(`/user/${username}`)}
+                className={`relative flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full overflow-hidden border-2 transition-all active:scale-95 shadow-md ${
+                  currentPath.startsWith(`/user/${username}`) ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-white/20 hover:border-amber-400'
+                }`}
+                title={`${username} Profile`}
+                aria-label="Open profile page"
+              >
+                <img
+                  src={auth?.user?.avatar || FALLBACK_AVATAR}
+                  alt="Profile"
+                  className="h-full w-full object-cover object-top"
+                />
+              </button>
             ) : (
               <button
                 type="button"
@@ -377,7 +345,7 @@ export function ReactNavbar() {
 
                   {/* Desktop Profile Dropdown (Profile, Settings, Logout) */}
                   {profileDropdownOpen && (
-                    <div className="absolute right-0 top-14 w-48 rounded-2xl border border-white/15 bg-[#16181d]/98 backdrop-blur-2xl p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150">
+                    <div className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 bg-[#16181d] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.95)] text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-3 py-2 border-b border-white/10 text-white/60 truncate font-semibold">
                         @{username}
                       </div>
@@ -409,10 +377,50 @@ export function ReactNavbar() {
                   )}
                 </>
               ) : (
-                <button type="button" className="signin-btn inline-flex items-center gap-1.5" onClick={authCta.onClick}>
-                  <i className={`fas ${authCta.iconLabel === 'Sign Up' ? 'fa-user-plus' : 'fa-right-to-bracket'} text-[11px]`}></i>
-                  <span>{authCta.label}</span>
-                </button>
+                /* Logged out Desktop: Settings button which opens a similar solid dropdown */
+                <>
+                  <button
+                    type="button"
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all border border-white/15"
+                    onClick={() => setProfileDropdownOpen((prev) => !prev)}
+                    title="Settings & Menu"
+                    aria-label="Settings menu"
+                  >
+                    <i className="fas fa-cog text-sm" />
+                  </button>
+
+                  {profileDropdownOpen && (
+                    <div className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 bg-[#16181d] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.95)] text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-3 py-2 border-b border-white/10 text-white/60 font-semibold">
+                        Soulstash Menu
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setProfileDropdownOpen(false); setSettingsOpen(true); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
+                      >
+                        <i className="fas fa-cog text-xs w-4"></i>
+                        <span>Settings &amp; Layout</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setProfileDropdownOpen(false); navigate('/login'); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-amber-400 hover:bg-white/10 transition-colors text-left font-medium"
+                      >
+                        <i className="fas fa-right-to-bracket text-xs w-4"></i>
+                        <span>Sign In</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setProfileDropdownOpen(false); navigate('/register'); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
+                      >
+                        <i className="fas fa-user-plus text-xs w-4"></i>
+                        <span>Sign Up</span>
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

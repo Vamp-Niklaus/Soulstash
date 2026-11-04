@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import { toast } from '../../../utils/toast.js';
+import { useAuthSession } from '../../../hooks/useAuthSession.js';
+import { clearAuthSession } from '../../../api/client.js';
 
 export function SettingsModal({ open, onClose, layoutMode, setLayoutMode }) {
+  const navigate = useNavigate();
+  const auth = useAuthSession();
   const [rotationMode, setRotationMode] = useState(() => {
     return localStorage.getItem('ss_rotation_mode') || 'sensor';
   });
@@ -48,7 +53,14 @@ export function SettingsModal({ open, onClose, layoutMode, setLayoutMode }) {
         console.warn('Orientation change error:', err);
       }
     } else {
-      toast(`Rotation preference saved: ${mode}`);
+      try {
+        if (mode === 'sensor' && window.screen?.orientation?.unlock) {
+          window.screen.orientation.unlock();
+        } else if (window.screen?.orientation?.lock) {
+          await window.screen.orientation.lock(mode);
+        }
+      } catch (err) {}
+      toast(`Rotation set: ${mode}`);
     }
   };
 
@@ -277,6 +289,72 @@ export function SettingsModal({ open, onClose, layoutMode, setLayoutMode }) {
                   <span>You are running the latest version (<span className="font-mono text-white">{currentVersion}</span>)</span>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+        {/* Section 4: Account Actions */}
+        <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
+              Account
+            </span>
+            <span className="text-[10px] text-white/40">
+              {auth?.isLoggedIn ? `@${auth.username}` : 'Not Signed In'}
+            </span>
+          </div>
+
+          {auth?.isLoggedIn ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate(`/user/${auth.username}`);
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-medium text-white transition-colors"
+              >
+                <i className="fas fa-user text-amber-400"></i>
+                <span>My Profile</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearAuthSession();
+                  onClose();
+                  toast('Logged out successfully');
+                  navigate('/login');
+                }}
+                className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-400 transition-colors"
+              >
+                <i className="fas fa-sign-out-alt"></i>
+                <span>Log Out</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate('/login');
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-white/10 bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition-colors"
+              >
+                <i className="fas fa-sign-in-alt"></i>
+                <span>Sign In</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate('/register');
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-amber-400/40 bg-amber-400/15 hover:bg-amber-400/25 text-xs font-semibold text-amber-300 transition-colors"
+              >
+                <i className="fas fa-user-plus"></i>
+                <span>Sign Up</span>
+              </button>
             </div>
           )}
         </div>

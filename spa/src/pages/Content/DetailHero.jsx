@@ -50,20 +50,43 @@ export function DetailHero({
 }) {
   const [viewerOpen, setViewerOpen] = useState(false);
   
-  // Posters logic
-  const posters = content?.images?.posters || [];
+  // Posters logic (combines posters from API with primary poster_path)
+  const posters = useMemo(() => {
+    const list = Array.isArray(content?.images?.posters) ? [...content.images.posters] : [];
+    if (content?.poster_path && !list.some((p) => (p?.file_path || p) === content.poster_path)) {
+      list.unshift({ file_path: content.poster_path });
+    }
+    return list;
+  }, [content?.images?.posters, content?.poster_path]);
+
   const hasPosters = posters.length > 0;
   const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
 
-    // Backdrops logic
-  // Limit to max 5 backdrops with stable memoization
+  // Backdrops logic (combines backdrops from API with primary backdrop_path)
   const backdrops = useMemo(() => {
-    const list = content?.images?.backdrops;
-    if (Array.isArray(list) && list.length > 0) {
-      return list.slice(0, 5);
+    const list = Array.isArray(content?.images?.backdrops) ? [...content.images.backdrops] : [];
+    if (content?.backdrop_path && !list.some((b) => (b?.file_path || b) === content.backdrop_path)) {
+      list.unshift({ file_path: content.backdrop_path });
     }
-    return [];
-  }, [content?.images?.backdrops]);
+    return list.slice(0, 15);
+  }, [content?.images?.backdrops, content?.backdrop_path]);
+
+  // Combined vertical posters and landscape backdrops for full gallery viewer
+  const viewerImages = useMemo(() => {
+    const all = [...posters, ...backdrops];
+    return all.length > 0 ? all : (content?.poster_path ? [content.poster_path] : (content?.backdrop_path ? [content.backdrop_path] : []));
+  }, [posters, backdrops, content?.poster_path, content?.backdrop_path]);
+
+  // Instantly preload the full-resolution first image so tapping the poster displays instantly with zero wait
+  useEffect(() => {
+    const firstImg = viewerImages[0]?.file_path || viewerImages[0];
+    if (firstImg) {
+      const fullUrl = imageUrl(firstImg, 'original');
+      const img = new Image();
+      if ('fetchPriority' in img) img.fetchPriority = 'high';
+      img.src = fullUrl;
+    }
+  }, [viewerImages]);
 
   const hasBackdrops = backdrops.length > 0;
   const [currentBackdropIndex, setCurrentBackdropIndex] = useState(0);
@@ -280,7 +303,7 @@ export function DetailHero({
       <ZoomablePosterModal
         open={viewerOpen}
         onClose={() => setViewerOpen(false)}
-        images={hasPosters ? posters : (content?.poster_path ? [content.poster_path] : [])}
+        images={viewerImages}
         currentIndex={currentPosterIndex}
         onIndexChange={setCurrentPosterIndex}
         alt={title}

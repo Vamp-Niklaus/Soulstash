@@ -113,6 +113,35 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
             hasMore,
             timestamp: Date.now()
           });
+
+          // Always prefetch next 2 pages in advance (page 2 & 3)
+          if (hasMore) {
+            Promise.allSettled([
+              apiFetch(`/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=2`, { signal: controller.signal }),
+              apiFetch(`/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=3`, { signal: controller.signal })
+            ]).then(([p2Res, p3Res]) => {
+              if (ignore) return;
+              const extra = [];
+              if (p2Res.status === 'fulfilled') {
+                const list2 = Array.isArray(p2Res.value?.results) ? p2Res.value.results : (Array.isArray(p2Res.value) ? p2Res.value : []);
+                extra.push(...list2);
+              }
+              if (p3Res.status === 'fulfilled') {
+                const list3 = Array.isArray(p3Res.value?.results) ? p3Res.value.results : (Array.isArray(p3Res.value) ? p3Res.value : []);
+                extra.push(...list3);
+              }
+              if (extra.length) {
+                const normalized = extra.map((item) => {
+                  if (searchTab === 'cast') return { ...item, media_type: 'Person' };
+                  const mType = item.media_type || (item.type === 'tv' || item.first_air_date ? 'Series' : 'Movie');
+                  return { ...item, media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType };
+                });
+                currentPageRef.current = 3;
+                allResultsRef.current = mergeSearchResults(allResultsRef.current, normalized, 400, adminMode);
+                setSearchResults([...allResultsRef.current]);
+              }
+            }).catch(() => {});
+          }
         }
       } catch (error) {
         if (error?.name === 'AbortError') return;
@@ -172,6 +201,26 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
         const nextResults = mergeSearchResults(allResultsRef.current, incoming, 400, adminMode);
         allResultsRef.current = nextResults;
         setSearchResults(nextResults);
+
+        // Advance prefetch next page as well
+        if (incoming.length >= 10) {
+          apiFetch(
+            `/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=${nextPage + 1}`,
+            { signal: controller.signal }
+          ).then((advPayload) => {
+            const advList = Array.isArray(advPayload?.results) ? advPayload.results : [];
+            if (advList.length > 0) {
+              const advIncoming = advList.map((item) => {
+                if (searchTab === 'cast') return { ...item, media_type: 'Person' };
+                const mType = item.media_type || (item.type === 'tv' || item.first_air_date ? 'Series' : 'Movie');
+                return { ...item, media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType };
+              });
+              currentPageRef.current = nextPage + 1;
+              allResultsRef.current = mergeSearchResults(allResultsRef.current, advIncoming, 400, adminMode);
+              setSearchResults([...allResultsRef.current]);
+            }
+          }).catch(() => {});
+        }
       }
       if (incoming.length < 10) {
         setHasNextPage(false);

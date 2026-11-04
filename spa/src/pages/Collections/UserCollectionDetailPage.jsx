@@ -269,11 +269,9 @@ export function UserCollectionDetailPage() {
     }
   }
 
-  // Show spinner while either the owner's live-cache or the public fetch is still in flight.
-  const isStillLoading = !collection?.name && (
-    (isOwner && loading) ||
-    (!isOwner && publicLoading)
-  );
+  // Show skeleton if collection is loading OR if current collection does not match the requested collectionName
+  const isMatching = collection && (collection.name === decodedCollectionName || collection._id === decodedCollectionName);
+  const isStillLoading = !isMatching;
   if (isStillLoading) {
     return (
       <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">
@@ -287,7 +285,7 @@ export function UserCollectionDetailPage() {
 
   return (
     <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">
-      {collection?.name ? (
+      {isMatching ? (
         <div className="pb-6">
           <CollectionDetailPane
             username={username}

@@ -19,6 +19,9 @@ function OwnerCollectionsLayout() {
   const bgPosterPath = useMemo(() => {
     const coll = page.selectedCollection;
     if (!coll) return null;
+    if (page.selectedCollectionName && coll.name !== page.selectedCollectionName && coll._id !== page.selectedCollectionName) {
+      return null;
+    }
     if (coll.banner && typeof coll.banner === 'string' && coll.banner.trim() && !coll.banner.includes('b23d0bfcaa8b')) {
       return coll.banner;
     }
@@ -27,7 +30,7 @@ function OwnerCollectionsLayout() {
     const firstWithPoster = movies.find(m => m.poster_path);
     const item = firstWithPoster || movies[0];
     return item?.poster_path || null;
-  }, [page.selectedCollection]);
+  }, [page.selectedCollection, page.selectedCollectionName]);
 
   // Apply body class + CSS vars — EXACTLY like DetailHero does for movie/series pages.
   useEffect(() => {

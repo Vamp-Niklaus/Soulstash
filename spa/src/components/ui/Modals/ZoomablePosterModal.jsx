@@ -48,14 +48,28 @@ export function ZoomablePosterModal({
   const activePath = count > 0 ? normalizedImages[currentIndex % count] : '';
   const currentUrl = activePath.startsWith('http') ? activePath : imageUrl(activePath, 'original');
 
+  const isPushedRef = useRef(false);
+
   // Reset transform whenever active image changes
   useEffect(() => {
     setTransform({ scale: 1, x: 0, y: 0 });
     setIsAnimatingBack(false);
   }, [currentIndex]);
 
+  // Back-button history trap: pressing back closes ONLY the poster overlay without navigating away from the page
   useEffect(() => {
     if (!open) return;
+
+    if (!isPushedRef.current) {
+      window.history.pushState({ posterModalOpen: true }, '');
+      isPushedRef.current = true;
+    }
+
+    const handlePopState = () => {
+      isPushedRef.current = false;
+      onClose();
+    };
+
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         onClose();
@@ -65,8 +79,19 @@ export function ZoomablePosterModal({
         onIndexChange((currentIndex + 1) % count);
       }
     };
+
+    window.addEventListener('popstate', handlePopState);
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('keydown', handleKeyDown);
+      if (isPushedRef.current) {
+        isPushedRef.current = false;
+        if (window.history.state?.posterModalOpen) {
+          window.history.back();
+        }
+      }
+    };
   }, [open, count, currentIndex, onClose, onIndexChange]);
 
   if (!open || !activePath) return null;
@@ -159,22 +184,10 @@ export function ZoomablePosterModal({
     <div
       className="fixed inset-0 z-[999999] flex items-center justify-center animate-in fade-in duration-200 select-none overflow-hidden touch-none"
       style={{
-        background: 'radial-gradient(circle at center, rgba(20, 22, 26, 0.94) 0%, rgba(9, 10, 12, 0.98) 75%, black 100%)'
+        background: 'radial-gradient(circle at center, rgba(16, 18, 22, 0.96) 0%, rgba(6, 7, 9, 0.99) 75%, black 100%)'
       }}
       onClick={onClose}
     >
-      {/* Top right close button */}
-      <button
-        type="button"
-        className="absolute top-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/90 hover:bg-white/20 hover:text-white transition-all active:scale-95"
-        onClick={onClose}
-        aria-label="Close image viewer"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" fill="currentColor">
-          <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>
-        </svg>
-      </button>
-
       {/* Previous Button */}
       {count > 1 && (
         <button
