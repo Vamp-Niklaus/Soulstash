@@ -276,11 +276,12 @@ router.post('/send-otp', async (req, res) => {
       </body></html>`;
       await sendBrevoEmail(email, fullName, 'Verify Your Email - Soulstash', html);
     } catch (emailErr) {
-      console.error('OTP email failed:', emailErr);
-      console.log(`📧 OTP for ${email}: ${otp}`);
+      otpStore.delete(email);
+      console.error('OTP email failed:', emailErr.message || emailErr);
+      return res.status(502).json({ error: 'Failed to send verification email' });
     }
 
-    res.json({ message: 'OTP sent successfully', otp: process.env.NODE_ENV === 'development' ? otp : undefined });
+    res.json({ message: 'OTP sent successfully' });
   } catch (err) {
     console.error('Send OTP error:', err);
     res.status(500).json({ error: 'Failed to send OTP' });
@@ -312,8 +313,9 @@ router.post('/forgot-password', async (req, res) => {
       </body></html>`;
       await sendBrevoEmail(email, user.username, 'Reset Your Password - Soulstash', html);
     } catch (emailErr) {
-      console.error('Password reset email failed:', emailErr);
-      console.log(`📧 OTP for ${email}: ${otp}`);
+      await getDb().collection('password_resets').deleteOne({ email, otp });
+      console.error('Password reset email failed:', emailErr.message || emailErr);
+      return res.status(502).json({ error: 'Failed to send password reset email' });
     }
 
     res.json({ message: 'OTP sent to your email!' });

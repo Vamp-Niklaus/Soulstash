@@ -129,32 +129,6 @@ export function ZoomablePosterModal({
 
   if (!open) return null;
 
-  const handlePrev = (e) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    isNavigatingRef.current = true;
-    setTimeout(() => {
-      isNavigatingRef.current = false;
-    }, 250);
-    if (countRef.current > 1 && onIndexChangeRef.current) {
-      onIndexChangeRef.current((safeIndexRef.current - 1 + countRef.current) % countRef.current);
-    }
-  };
-
-  const handleNext = (e) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    isNavigatingRef.current = true;
-    setTimeout(() => {
-      isNavigatingRef.current = false;
-    }, 250);
-    if (countRef.current > 1 && onIndexChangeRef.current) {
-      onIndexChangeRef.current((safeIndexRef.current + 1) % countRef.current);
-    }
-  };
-
   // Touch gesture handlers for mobile pinch-zoom and swipe
   const handleTouchStart = (e) => {
     swipedHorizontallyRef.current = false;
@@ -276,19 +250,6 @@ export function ZoomablePosterModal({
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
     >
-      {/* Previous Button - Reliable pointer events */}
-      {count > 1 && (
-        <button
-          type="button"
-          className="absolute left-3 sm:left-6 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white hover:bg-black/95 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl select-none"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={handlePrev}
-          aria-label="Previous image"
-        >
-          <i className="fas fa-chevron-left text-lg pointer-events-none" />
-        </button>
-      )}
-
       {/* Main Image with mobile pinch-zoom and bounce-back animation */}
       <div
         className="relative z-10 flex items-center justify-center max-w-[92vw] max-h-[86vh] pointer-events-none select-none"
@@ -317,19 +278,6 @@ export function ZoomablePosterModal({
           className="relative max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_90px_rgba(0,0,0,0.85)] pointer-events-auto touch-none select-none"
         />
       </div>
-
-      {/* Next Button - Reliable pointer events */}
-      {count > 1 && (
-        <button
-          type="button"
-          className="absolute right-3 sm:right-6 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white hover:bg-black/95 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl select-none"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={handleNext}
-          aria-label="Next image"
-        >
-          <i className="fas fa-chevron-right text-lg pointer-events-none" />
-        </button>
-      )}
 
       {/* Bottom Counter Indicator */}
       {count > 1 && (

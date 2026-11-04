@@ -123,11 +123,7 @@ export function RegisterPage() {
       setOtpStage(true);
       setOtpError('');
       setResendCountdown(30);
-      if (payload.otp) {
-        toast(`Dev OTP: ${payload.otp}`, 'info');
-      } else {
-        toast(payload.message || 'OTP sent successfully');
-      }
+      toast(payload.message || 'OTP sent successfully');
     } catch (submitError) {
       setError(submitError.message || 'Failed to send OTP');
     } finally {

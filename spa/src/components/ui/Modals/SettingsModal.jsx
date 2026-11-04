@@ -3,9 +3,24 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { AppLauncher } from '@capacitor/app-launcher';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from '../../../utils/toast.js';
 import { useAuthSession } from '../../../hooks/useAuthSession.js';
 import { clearAuthSession } from '../../../api/client.js';
+
+async function fetchLatestPublishedRelease(repository, assetExtension = '') {
+  const response = await fetch(`https://api.github.com/repos/Vamp-Niklaus/${repository}/releases?per_page=20`, {
+    headers: { Accept: 'application/vnd.github.v3+json' }
+  });
+  if (!response.ok) throw new Error(`GitHub release lookup failed (${response.status})`);
+  const releases = await response.json();
+  if (!Array.isArray(releases)) return null;
+  const published = releases.filter((release) => !release.draft && !release.prerelease);
+  if (!assetExtension) return published[0] || null;
+  return published.find((release) =>
+    Array.isArray(release.assets) && release.assets.some((asset) => asset.name?.toLowerCase().endsWith(assetExtension))
+  ) || null;
+}
 
 export function SettingsModal({
   open,
@@ -26,6 +41,7 @@ export function SettingsModal({
   const currentVersion = 'v2.0.0';
 
   const isNative = Capacitor.isNativePlatform();
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
   const isPushedRef = useRef(false);
   const onCloseRef = useRef(onClose);
@@ -69,14 +85,15 @@ export function SettingsModal({
   // Resolve the latest Android APK and Windows EXE release assets.
   useEffect(() => {
     let cancelled = false;
+    if (isNative || isTauri) {
+      return () => { cancelled = true; };
+    }
     async function checkReleaseAssets() {
-      const releases = [
-        'https://api.github.com/repos/Vamp-Niklaus/Soulstash/releases/latest',
-        'https://api.github.com/repos/Vamp-Niklaus/soulstash-backend/releases/latest'
-      ];
       try {
-        const responses = await Promise.all(releases.map((url) => fetch(url, { headers: { Accept: 'application/vnd.github.v3+json' } })));
-        const data = await Promise.all(responses.map((response) => response.ok ? response.json() : null));
+        const data = await Promise.all([
+          fetchLatestPublishedRelease('Soulstash', '.apk'),
+          fetchLatestPublishedRelease('soulstash-backend', '.exe')
+        ]);
         const apk = data[0]?.assets?.find((asset) => asset.name?.toLowerCase().endsWith('.apk'));
         const exe = data[1]?.assets?.find((asset) => asset.name?.toLowerCase().endsWith('.exe'));
         if (cancelled) return;
@@ -88,7 +105,7 @@ export function SettingsModal({
     }
     checkReleaseAssets();
     return () => { cancelled = true; };
-  }, []);
+  }, [isNative, isTauri]);
 
   const compareVersions = (left, right) => {
     const parse = (value) => (value.match(/\d+(?:\.\d+)*/)?.[0] || '').split('.').map((part) => Number(part) || 0);
@@ -103,30 +120,32 @@ export function SettingsModal({
     setCheckingUpdate(true);
     setUpdateInfo(null);
     try {
-      const res = await fetch('https://api.github.com/repos/Vamp-Niklaus/Soulstash/releases/latest', {
-        headers: { Accept: 'application/vnd.github.v3+json' }
-      });
-      if (!res.ok) {
-        throw new Error(`Status ${res.status}`);
+      const releaseRepo = isTauri ? 'soulstash-backend' : 'Soulstash';
+      const assetExtension = isTauri ? '.exe' : '.apk';
+      const data = await fetchLatestPublishedRelease(releaseRepo, assetExtension);
+      if (!data) {
+        setUpdateInfo({ checked: true, noRelease: true });
+        toast(isTauri ? 'No Windows installer has been published yet.' : 'No Android package has been published yet.', 'info');
+        return;
       }
-      const data = await res.json();
       const latestTag = data.tag_name || data.name || '';
       const versionComparison = latestTag ? compareVersions(latestTag, currentVersion) : 0;
       const isNewer = versionComparison > 0;
 
       const apkAsset = Array.isArray(data.assets)
-        ? data.assets.find((a) => a.name?.toLowerCase().endsWith('.apk'))
+        ? data.assets.find((a) => a.name?.toLowerCase().endsWith(assetExtension))
         : null;
-      const apkUrl = apkAsset?.browser_download_url || '';
+      const downloadUrl = apkAsset?.browser_download_url || '';
 
       setUpdateInfo({
         checked: true,
         isNewer,
         isLatest: versionComparison === 0,
         tagName: latestTag,
-        apkUrl,
+        downloadUrl,
         publishedAt: data.published_at ? new Date(data.published_at).toLocaleDateString() : '',
-        body: data.body || ''
+        body: data.body || '',
+        assetExtension
       });
       if (isNewer) {
         toast(`New update available: ${latestTag}`, 'success');
@@ -149,6 +168,10 @@ export function SettingsModal({
   const handleDownloadUrl = async (url) => {
     if (!url) return;
     toast('Starting download... Check your browser or downloads notification.', 'info');
+    if (isTauri) {
+      try { await openUrl(url); return; }
+      catch (err) { console.warn('Could not open download in the system browser:', err); }
+    }
     if (isNative) {
       try { await AppLauncher.openUrl({ url }); return; }
       catch (err) { console.warn('Could not open download in the system browser:', err); }
@@ -168,6 +191,10 @@ export function SettingsModal({
 
   const openExternalWebsite = async () => {
     const url = 'https://soulstash.onrender.com/';
+    if (isTauri) {
+      try { await openUrl(url); return; }
+      catch (err) { console.warn('Could not open the system browser:', err); }
+    }
     if (isNative) {
       try { await AppLauncher.openUrl({ url }); return; }
       catch (err) { console.warn('Could not open the system browser:', err); }
@@ -307,7 +334,7 @@ export function SettingsModal({
         </div>
 
         {/* Section 3: App Updates (Native App) OR Download App (Website) */}
-        {isNative ? (
+        {isNative || isTauri ? (
           <div className="flex flex-col gap-2.5 pt-2 border-t border-white/10">
             <div className="flex items-center justify-between">
               <div>
@@ -331,7 +358,11 @@ export function SettingsModal({
 
             {updateInfo && (
               <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-xs flex flex-col gap-2">
-                {updateInfo.error ? (
+                {updateInfo.noRelease ? (
+                  <div className="flex items-center justify-between text-amber-300">
+                    <span>{isTauri ? 'Windows installer coming soon.' : 'No Android release is available yet.'}</span>
+                  </div>
+                ) : updateInfo.error ? (
                   <div className="flex items-center justify-between">
                     <span className="text-white/70">Could not check for updates. Please try again.</span>
                   </div>
@@ -341,12 +372,12 @@ export function SettingsModal({
                       <span>New Version Available: {updateInfo.tagName}</span>
                       <span className="text-[10px] text-white/40">{updateInfo.publishedAt}</span>
                     </div>
-                    {updateInfo.apkUrl ? (
-                      <button type="button" onClick={() => handleDownloadUrl(updateInfo.apkUrl)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold py-2.5 text-xs transition-colors shadow-lg active:scale-98 cursor-pointer">
+                    {updateInfo.downloadUrl ? (
+                      <button type="button" onClick={() => handleDownloadUrl(updateInfo.downloadUrl)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold py-2.5 text-xs transition-colors shadow-lg active:scale-98 cursor-pointer">
                         <i className="fas fa-download"></i><span>Download Update</span>
                       </button>
-                    ) : <p className="text-amber-300 text-center">No APK is attached to this release.</p>}
-                    <p className="text-[10px] text-white/40 text-center leading-tight">After download, open the APK to install the update.</p>
+                    ) : <p className="text-amber-300 text-center">No {isTauri ? 'EXE installer' : 'APK'} is attached to this release.</p>}
+                    <p className="text-[10px] text-white/40 text-center leading-tight">{isTauri ? 'Run the downloaded installer to update the Windows app.' : 'After download, open the APK to install the update.'}</p>
                   </div>
                 ) : updateInfo.isLatest ? (
                   <div className="flex items-center justify-between text-white/80 py-1">
@@ -354,12 +385,12 @@ export function SettingsModal({
                       <i className="fas fa-check-circle text-emerald-400"></i>
                       <span>You are running the latest version (<span className="font-mono text-white">{currentVersion}</span>)</span>
                     </div>
-                    {updateInfo.apkUrl && <button type="button" onClick={() => handleDownloadUrl(updateInfo.apkUrl)} className="text-[11px] text-amber-400 hover:underline font-medium">Re-download APK</button>}
+                    {updateInfo.downloadUrl && <button type="button" onClick={() => handleDownloadUrl(updateInfo.downloadUrl)} className="text-[11px] text-amber-400 hover:underline font-medium">Re-download {isTauri ? 'installer' : 'APK'}</button>}
                   </div>
                 ) : (
                   <div className="flex items-center justify-between text-white/80 py-1">
                     <span>The installed build ({currentVersion}) is newer than the latest release ({updateInfo.tagName}).</span>
-                    {updateInfo.apkUrl && <button type="button" onClick={() => handleDownloadUrl(updateInfo.apkUrl)} className="text-[11px] text-amber-400 hover:underline font-medium">Download APK</button>}
+                    {updateInfo.downloadUrl && <button type="button" onClick={() => handleDownloadUrl(updateInfo.downloadUrl)} className="text-[11px] text-amber-400 hover:underline font-medium">Download {isTauri ? 'installer' : 'APK'}</button>}
                   </div>
                 )}
               </div>
@@ -400,7 +431,9 @@ export function SettingsModal({
                   <i className="fab fa-android text-sm"></i>
                   <span>Android (APK)</span>
                 </div>
-                <span className="text-[10px] text-white/50">{apkDownloadInfo?.url ? 'Direct APK Download' : 'Checking availability...'}</span>
+                <span className="text-[10px] text-white/50">
+                  {apkDownloadInfo === null ? 'Checking availability...' : apkDownloadInfo?.url ? 'Direct APK Download' : 'Unavailable'}
+                </span>
               </button>
 
               {/* Windows EXE Download / Coming Soon */}

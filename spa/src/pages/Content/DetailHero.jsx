@@ -60,7 +60,6 @@ export function DetailHero({
   }, [content?.images?.posters, content?.poster_path]);
 
   const hasPosters = posters.length > 0;
-  const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
   const [modalImageIndex, setModalImageIndex] = useState(0);
 
   // Backdrops logic (combines backdrops from API with primary backdrop_path)
@@ -167,18 +166,8 @@ export function DetailHero({
     return () => clearInterval(interval);
   }, [backdrops.length, isPlayerOpen]);
 
-  // Smooth poster rotation every 6s when multiple posters are available
-  useEffect(() => {
-    if (posters.length <= 1 || isPlayerOpen || viewerOpen) return;
-    const interval = setInterval(() => {
-      setCurrentPosterIndex((prev) => (prev + 1) % posters.length);
-    }, 6000);
-    return () => clearInterval(interval);
-  }, [posters.length, isPlayerOpen, viewerOpen]);
-
-  const currentPosterPath = hasPosters
-    ? (posters[currentPosterIndex]?.file_path || posters[0]?.file_path || content?.poster_path)
-    : content?.poster_path;
+  // Portrait poster remains stable as the primary image without rotation
+  const currentPosterPath = content?.poster_path || posters[0]?.file_path || null;
 
   const fallbackBackdropUrl = landscapePath
     ? imageUrl(landscapePath, 'w1280')
@@ -279,7 +268,7 @@ export function DetailHero({
           onToggleWatchlist={onToggleWatchlist}
           onOpenSaveModal={onOpenSaveModal}
           onPosterClick={isPlayerOpen ? undefined : () => {
-            setModalImageIndex(currentPosterIndex);
+            setModalImageIndex(0);
             setViewerOpen(true);
           }}
           isPlayerOpen={isPlayerOpen}
@@ -302,7 +291,7 @@ export function DetailHero({
           onToggleWatchlist={onToggleWatchlist}
           onOpenSaveModal={onOpenSaveModal}
           onPosterClick={isPlayerOpen ? undefined : () => {
-            setModalImageIndex(currentPosterIndex);
+            setModalImageIndex(0);
             setViewerOpen(true);
           }}
           isPlayerOpen={isPlayerOpen}
