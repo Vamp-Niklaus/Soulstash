@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { Capacitor } from '@capacitor/core';
 import { imageUrl } from '../../../utils/formatters.js';
 import { FALLBACK_AVATAR } from '../../../utils/constants.js';
+import { useAppLayoutMode } from '../../../hooks/useAppLayoutMode.js';
 
 /**
  * ZoomablePosterModal
@@ -21,8 +23,15 @@ export function ZoomablePosterModal({
   currentIndex = 0,
   onIndexChange,
   alt = 'Poster',
-  fallbackImage = FALLBACK_AVATAR
+  fallbackImage = FALLBACK_AVATAR,
+  showNavButtons: customShowNavButtons
 }) {
+  const { isTvLayout, isDesktopLayout, activeMode } = useAppLayoutMode();
+  const isNative = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform();
+  const isWebsiteMode = !isNative;
+  // Show navigation buttons in website mode, desktop mode, or tv mode
+  const shouldShowNav = customShowNavButtons ?? (isWebsiteMode || isDesktopLayout || isTvLayout || activeMode !== 'mobile');
+
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [isAnimatingBack, setIsAnimatingBack] = useState(false);
   const touchStateRef = useRef({
@@ -128,6 +137,32 @@ export function ZoomablePosterModal({
   }, [open]);
 
   if (!open) return null;
+
+  const handlePrev = (e) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    isNavigatingRef.current = true;
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 250);
+    if (countRef.current > 1 && onIndexChangeRef.current) {
+      onIndexChangeRef.current((safeIndexRef.current - 1 + countRef.current) % countRef.current);
+    }
+  };
+
+  const handleNext = (e) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    isNavigatingRef.current = true;
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 250);
+    if (countRef.current > 1 && onIndexChangeRef.current) {
+      onIndexChangeRef.current((safeIndexRef.current + 1) % countRef.current);
+    }
+  };
 
   // Touch gesture handlers for mobile pinch-zoom and swipe
   const handleTouchStart = (e) => {
@@ -250,6 +285,37 @@ export function ZoomablePosterModal({
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
     >
+      {/* Top right close button */}
+      <button
+        type="button"
+        className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[60] flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white/80 hover:bg-black/90 hover:text-white hover:scale-105 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl backdrop-blur-md select-none border border-white/10"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        aria-label="Close image viewer"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" height="20" width="20" viewBox="0 -960 960 960" fill="currentColor">
+          <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>
+        </svg>
+      </button>
+
+      {/* Previous Button - shown in desktop / tv / website mode */}
+      {shouldShowNav && count > 1 && (
+        <button
+          type="button"
+          className="absolute left-3 sm:left-6 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white/90 hover:bg-black/90 hover:text-white hover:scale-105 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl backdrop-blur-md select-none border border-white/10"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={handlePrev}
+          aria-label="Previous image"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" height="26" width="26" viewBox="0 -960 960 960" fill="currentColor" className="pointer-events-none">
+            <path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/>
+          </svg>
+        </button>
+      )}
+
       {/* Main Image with mobile pinch-zoom and bounce-back animation */}
       <div
         className="relative z-10 flex items-center justify-center max-w-[92vw] max-h-[86vh] pointer-events-none select-none"
@@ -278,6 +344,21 @@ export function ZoomablePosterModal({
           className="relative max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_90px_rgba(0,0,0,0.85)] pointer-events-auto touch-none select-none"
         />
       </div>
+
+      {/* Next Button - shown in desktop / tv / website mode */}
+      {shouldShowNav && count > 1 && (
+        <button
+          type="button"
+          className="absolute right-3 sm:right-6 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white/90 hover:bg-black/90 hover:text-white hover:scale-105 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl backdrop-blur-md select-none border border-white/10"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={handleNext}
+          aria-label="Next image"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" height="26" width="26" viewBox="0 -960 960 960" fill="currentColor" className="pointer-events-none">
+            <path d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/>
+          </svg>
+        </button>
+      )}
 
       {/* Bottom Counter Indicator */}
       {count > 1 && (
