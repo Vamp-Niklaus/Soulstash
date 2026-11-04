@@ -864,7 +864,7 @@ export function VideoPlayerModal({ request, onClose }) {
         inline: 'center'
       });
     }
-  }, [activeUrl, currentGroupSources.length, selectedGroup]);
+  }, [activeUrl, displayedSources.length, selectedGroup]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -883,7 +883,7 @@ export function VideoPlayerModal({ request, onClose }) {
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeUrl, currentGroupSources.length, selectedGroup]);
+  }, [activeUrl, displayedSources.length, selectedGroup]);
 
   const errorDisplay = sourceError 
     ? (fallbackSources.length ? '' : sourceError?.message || 'Failed to load sources.')

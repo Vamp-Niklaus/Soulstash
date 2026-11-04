@@ -308,10 +308,13 @@ body.collection-artwork-theme .collection-react-shell::before {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 9999;
+  z-index: 99999;
   border-bottom: 1px solid var(--cinema-border);
-  isolation: isolate;
-  overflow: hidden;
+  overflow: visible !important;
+}
+
+body.search-overlay-open .mobile-bottom-nav-react {
+  display: none !important;
 }
 
 /* Texture grain overlay on navbar */
@@ -507,8 +510,9 @@ body.collection-artwork-theme .collection-react-shell::before {
   border: 1px solid #252833;
   background: rgba(15,15,15,0.98);
   border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.85);
   overflow: hidden;
+  z-index: 99999;
 }
 
 .modern-navbar-react .profile-popup-item,

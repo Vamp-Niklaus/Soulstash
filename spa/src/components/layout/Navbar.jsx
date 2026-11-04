@@ -173,85 +173,19 @@ export function ReactNavbar() {
       {/* ── TV Left Sidebar Navbar (Active in TV mode or when width > height) ── */}
       {isTvLayout && (
         <aside
-          className="fixed inset-y-0 left-0 z-[1000] flex w-16 sm:w-20 flex-col items-center justify-between border-r border-white/10 bg-black/90 py-4 shadow-2xl backdrop-blur-xl select-none"
+          className="fixed inset-y-0 left-0 top-0 bottom-0 z-[99990] flex w-16 sm:w-20 flex-col items-center justify-between border-r border-white/10 bg-[#0c0d10]/95 py-3 sm:py-4 shadow-2xl backdrop-blur-xl select-none h-screen h-[100dvh] overflow-hidden"
           aria-label="TV Sidebar Navigation"
         >
-          {/* Top Logo */}
-          <div className="flex flex-col items-center gap-4">
-            <button
-              type="button"
-              className="group flex h-11 w-11 items-center justify-center rounded-2xl bg-white/[0.04] p-1.5 hover:bg-white/15 transition-all active:scale-95"
-              onClick={() => navigate('/')}
-              title="Home"
-            >
-              <img
-                src={`${import.meta.env.BASE_URL}images/logo.png`}
-                alt="Soulstash"
-                className="h-full w-full object-contain"
-                onError={(e) => { e.currentTarget.src = FALLBACK_LOGO; }}
-              />
-            </button>
-          </div>
-
-          {/* Middle Navigation Icons */}
-          <nav className="flex flex-col items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-all ${
-                currentPath === '/' ? 'bg-white text-black font-bold shadow-lg scale-105' : 'text-white/70 hover:bg-white/15 hover:text-white'
-              }`}
-              title="Home"
-              aria-label="Home"
-            >
-              <HomeIcon />
-            </button>
-
-            {navItems.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={item.onClick}
-                className={`flex h-11 w-11 items-center justify-center rounded-2xl transition-all ${
-                  item.active ? 'bg-white text-black font-bold shadow-lg scale-105' : 'text-white/70 hover:bg-white/15 hover:text-white'
-                }`}
-                title={item.label}
-                aria-label={item.label}
-              >
-                {item.icon}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="flex h-11 w-11 items-center justify-center rounded-2xl text-white/70 hover:bg-white/15 hover:text-white transition-all"
-              title="Search"
-              aria-label="Search"
-            >
-              <SearchIcon />
-            </button>
-          </nav>
-
-          {/* Bottom Settings & Profile / Login */}
-          <div className="flex flex-col items-center gap-3 relative" ref={profileMenuRef}>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all"
-              title="Settings &amp; Layout"
-              aria-label="Settings"
-            >
-              <i className="fas fa-cog text-sm" />
-            </button>
-
+          {/* Top Profile / Login (Replaces logo.png in TV mode) */}
+          <div className="relative flex flex-col items-center" ref={profileMenuRef}>
             {isLoggedIn && username ? (
               <>
                 <button
                   type="button"
                   onClick={() => setProfileDropdownOpen((prev) => !prev)}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-full overflow-hidden border border-white/20 hover:border-white transition-all active:scale-95"
+                  className="relative flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full overflow-hidden border-2 border-amber-400/50 hover:border-amber-400 transition-all active:scale-95 shadow-md"
                   title={`${username} profile`}
+                  aria-label="User profile"
                 >
                   <img
                     src={auth?.user?.avatar || FALLBACK_AVATAR}
@@ -261,7 +195,7 @@ export function ReactNavbar() {
                 </button>
 
                 {profileDropdownOpen && (
-                  <div className="absolute bottom-2 left-16 sm:left-20 w-48 rounded-2xl border border-white/10 bg-[#16181d] p-1.5 shadow-2xl text-xs z-[1001] animate-in fade-in zoom-in-95 duration-150">
+                  <div className="absolute top-0 left-16 sm:left-20 w-48 rounded-2xl border border-white/15 bg-[#16181d]/98 backdrop-blur-2xl p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150">
                     <div className="px-3 py-2 border-b border-white/10 text-white/60 truncate font-semibold">
                       @{username}
                     </div>
@@ -296,13 +230,66 @@ export function ReactNavbar() {
               <button
                 type="button"
                 onClick={authCta.onClick}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all"
+                className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all"
                 title="Sign In"
                 aria-label="Sign In"
               >
-                <i className="fas fa-right-to-bracket text-xs" />
+                <i className="fas fa-right-to-bracket text-sm" />
               </button>
             )}
+          </div>
+
+          {/* Middle Navigation Icons (Contained so sidebar never scrolls) */}
+          <nav className="flex flex-col items-center gap-2 sm:gap-2.5 my-auto max-h-[calc(100dvh-130px)] overflow-y-auto overscroll-contain filter-scrollbar-hidden py-1">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className={`flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl transition-all ${
+                currentPath === '/' ? 'bg-white text-black font-bold shadow-lg scale-105' : 'text-white/70 hover:bg-white/15 hover:text-white'
+              }`}
+              title="Home"
+              aria-label="Home"
+            >
+              <HomeIcon />
+            </button>
+
+            {navItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.onClick}
+                className={`flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl transition-all ${
+                  item.active ? 'bg-white text-black font-bold shadow-lg scale-105' : 'text-white/70 hover:bg-white/15 hover:text-white'
+                }`}
+                title={item.label}
+                aria-label={item.label}
+              >
+                {item.icon}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl text-white/70 hover:bg-white/15 hover:text-white transition-all"
+              title="Search"
+              aria-label="Search"
+            >
+              <SearchIcon />
+            </button>
+          </nav>
+
+          {/* Bottom Settings */}
+          <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all"
+              title="Settings & Layout"
+              aria-label="Settings"
+            >
+              <i className="fas fa-cog text-sm" />
+            </button>
           </div>
         </aside>
       )}
@@ -363,7 +350,7 @@ export function ReactNavbar() {
             </div>
 
             {/* Desktop Actions: Search button, followed by Profile avatar dropdown */}
-            <div className="desktop-actions flex items-center gap-3 relative" ref={profileMenuRef}>
+            <div className="desktop-actions flex items-center gap-3 relative" ref={profileMenuRef} style={{ overflow: 'visible', zIndex: 99999 }}>
               <button
                 className="mobile-btn tv-focus-icon"
                 aria-label="Search"
@@ -390,7 +377,7 @@ export function ReactNavbar() {
 
                   {/* Desktop Profile Dropdown (Profile, Settings, Logout) */}
                   {profileDropdownOpen && (
-                    <div className="absolute right-0 top-12 w-48 rounded-2xl border border-white/10 bg-[#16181d] p-1.5 shadow-2xl text-xs z-[1001] animate-in fade-in zoom-in-95 duration-150">
+                    <div className="absolute right-0 top-14 w-48 rounded-2xl border border-white/15 bg-[#16181d]/98 backdrop-blur-2xl p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-3 py-2 border-b border-white/10 text-white/60 truncate font-semibold">
                         @{username}
                       </div>
@@ -466,6 +453,7 @@ export function ReactNavbar() {
         hasNextPage={hasNextPage}
         isFetchingNextPage={isFetchingNextPage}
         fetchNextPage={fetchNextPage}
+        isTvLayout={isTvLayout}
       />
 
       {/* Settings Modal */}

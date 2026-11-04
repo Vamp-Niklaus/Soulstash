@@ -18,7 +18,8 @@ export function NavbarSearchOverlay({
   navigate,
   hasNextPage,
   isFetchingNextPage,
-  fetchNextPage
+  fetchNextPage,
+  isTvLayout = false
 }) {
   const overlayInputRef = useRef(null);
   const resultsScrollerRef = useRef(null);
@@ -52,11 +53,13 @@ export function NavbarSearchOverlay({
     const originalHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    document.body.classList.add('search-overlay-open');
     const frame = window.requestAnimationFrame(() => { overlayInputRef.current?.focus(); });
     return () => {
       window.cancelAnimationFrame(frame);
       document.body.style.overflow = originalBodyOverflow;
       document.documentElement.style.overflow = originalHtmlOverflow;
+      document.body.classList.remove('search-overlay-open');
     };
   }, [open]);
 
@@ -87,12 +90,14 @@ export function NavbarSearchOverlay({
 
   return (
     <>
-      <div className="fixed inset-0 z-[9998] bg-black/55 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="fixed inset-0 z-[100001] bg-black/85 backdrop-blur-md" onClick={onClose}></div>
       <div
         data-search-overlay="true"
-        // onWheel={(event) => event.stopPropagation()}
-        // onTouchMove={(event) => event.stopPropagation()}
-        className="fixed left-[5vw] right-[5vw] top-[calc(64px+env(safe-area-inset-top,0px))] z-[9999] h-[70vh] w-[90vw] overflow-hidden rounded-b-[28px] border border-[#252833] bg-[#0F0F0F] shadow-[0_24px_60px_rgba(0,0,0,0.45)]"
+        className={`fixed z-[100002] overflow-hidden border border-[#252833] bg-[#0F0F0F] shadow-[0_24px_60px_rgba(0,0,0,0.85)] ${
+          isTvLayout
+            ? 'left-[76px] sm:left-[96px] right-3 sm:right-6 top-3 sm:top-4 bottom-3 sm:bottom-4 h-auto max-h-[calc(100dvh-24px)] rounded-2xl'
+            : 'left-[5vw] right-[5vw] top-[calc(64px+env(safe-area-inset-top,0px))] h-[min(76vh,calc(100dvh-84px))] w-[90vw] rounded-b-[28px]'
+        }`}
       >
         <div className="flex h-full flex-col overflow-hidden px-4 sm:px-5 md:px-6">
           <div className="sticky top-0 z-10 bg-[rgba(15,15,15,0.98)] pb-3 pt-4">
