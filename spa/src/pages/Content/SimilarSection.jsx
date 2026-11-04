@@ -18,7 +18,7 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
 
-  // Initialize with the first page from the props
+  // Initialize with the first page from the props or fetch directly
   useEffect(() => {
     if (similar && similar.length > 0) {
       const currentIdNum = Number(id);
@@ -35,8 +35,44 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
       setPage(1);
       setHasMore(totalPages > 1 || similar.length === 20);
       preloadImages(initialItems.map(item => item.poster_path));
+    } else if (id) {
+      let ignore = false;
+      setLoading(true);
+      const endpoint = type === 'series'
+        ? `/api/series/${id}/similar?page=1`
+        : `/api/movies/${id}/similar?page=1`;
+
+      apiFetch(endpoint)
+        .then(data => {
+          if (ignore) return;
+          const results = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
+          const currentIdNum = Number(id);
+          const seen = new Set();
+          const initialItems = results.filter(item => {
+            if (!item || !item.id) return false;
+            if (Number(item.id) === currentIdNum) return false;
+            if (seen.has(Number(item.id))) return false;
+            seen.add(Number(item.id));
+            if (!item.poster_path) return false;
+            return true;
+          });
+          setItems(initialItems);
+          setPage(1);
+          setHasMore((data?.total_pages || 1) > 1 && results.length > 0);
+          preloadImages(initialItems.map(item => item.poster_path));
+        })
+        .catch(err => {
+          console.warn('Failed to fetch similar content:', err);
+        })
+        .finally(() => {
+          if (!ignore) setLoading(false);
+        });
+
+      return () => {
+        ignore = true;
+      };
     }
-  }, [similar, id, adminMode]);
+  }, [similar, id, adminMode, type]);
 
   const loadMore = async () => {
     if (loading || !hasMore) return;
