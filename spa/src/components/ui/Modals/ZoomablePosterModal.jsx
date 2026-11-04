@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { imageUrl } from '../../../utils/formatters.js';
-import { FALLBACK_AVATAR, FALLBACK_POSTER } from '../../../utils/constants.js';
+import { FALLBACK_AVATAR } from '../../../utils/constants.js';
 
 /**
  * ZoomablePosterModal
@@ -38,8 +38,9 @@ export function ZoomablePosterModal({
     isSwiping: false
   });
 
-  const isSwipingGestureRef = useRef(false);
-  const swipeCooldownRef = useRef(false);
+  const swipedHorizontallyRef = useRef(false);
+  const lastSwipeTimeRef = useRef(0);
+  const isNavigatingRef = useRef(false);
 
   const effectiveImages = useMemo(() => {
     const list = (Array.isArray(images) ? images : []).map((item) => {
@@ -55,7 +56,17 @@ export function ZoomablePosterModal({
   const count = effectiveImages.length;
   const safeIndex = count > 0 ? ((currentIndex % count) + count) % count : 0;
   const activePath = effectiveImages[safeIndex] || fallbackImage || FALLBACK_AVATAR;
-  const currentUrl = activePath.startsWith('http') || activePath.startsWith('data:') || activePath.startsWith('/')
+
+  // TMDB paths start with '/' (e.g. /abc.jpg). Direct URLs are http(s), data:, or avatar.png.
+  const isDirectUrl =
+    Boolean(activePath) &&
+    typeof activePath === 'string' &&
+    (activePath.startsWith('http://') ||
+     activePath.startsWith('https://') ||
+     activePath.startsWith('data:') ||
+     activePath.includes('avatar.png'));
+
+  const currentUrl = isDirectUrl
     ? activePath
     : imageUrl(activePath, 'original');
 
@@ -121,34 +132,32 @@ export function ZoomablePosterModal({
   const handlePrev = (e) => {
     if (e) {
       e.stopPropagation();
-      if (e.cancelable) e.preventDefault();
     }
-    swipeCooldownRef.current = true;
+    isNavigatingRef.current = true;
     setTimeout(() => {
-      swipeCooldownRef.current = false;
-    }, 350);
-    if (count > 1 && onIndexChange) {
-      onIndexChange((safeIndex - 1 + count) % count);
+      isNavigatingRef.current = false;
+    }, 250);
+    if (countRef.current > 1 && onIndexChangeRef.current) {
+      onIndexChangeRef.current((safeIndexRef.current - 1 + countRef.current) % countRef.current);
     }
   };
 
   const handleNext = (e) => {
     if (e) {
       e.stopPropagation();
-      if (e.cancelable) e.preventDefault();
     }
-    swipeCooldownRef.current = true;
+    isNavigatingRef.current = true;
     setTimeout(() => {
-      swipeCooldownRef.current = false;
-    }, 350);
-    if (count > 1 && onIndexChange) {
-      onIndexChange((safeIndex + 1) % count);
+      isNavigatingRef.current = false;
+    }, 250);
+    if (countRef.current > 1 && onIndexChangeRef.current) {
+      onIndexChangeRef.current((safeIndexRef.current + 1) % countRef.current);
     }
   };
 
   // Touch gesture handlers for mobile pinch-zoom and swipe
   const handleTouchStart = (e) => {
-    isSwipingGestureRef.current = false;
+    swipedHorizontallyRef.current = false;
     if (e.touches.length === 2) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];
@@ -201,8 +210,8 @@ export function ZoomablePosterModal({
       touchStateRef.current.swipeLastY = e.touches[0].clientY;
       const deltaX = e.touches[0].clientX - touchStateRef.current.swipeStartX;
       const deltaY = e.touches[0].clientY - touchStateRef.current.swipeStartY;
-      if (Math.abs(deltaX) > 10) {
-        isSwipingGestureRef.current = true;
+      if (Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        swipedHorizontallyRef.current = true;
         if (e.cancelable) e.preventDefault();
       }
     }
@@ -225,20 +234,17 @@ export function ZoomablePosterModal({
       const deltaX = endX - s.swipeStartX;
       const deltaY = endY - s.swipeStartY;
 
-      if (isSwipingGestureRef.current) {
-        swipeCooldownRef.current = true;
-        setTimeout(() => {
-          swipeCooldownRef.current = false;
-        }, 400);
+      if (swipedHorizontallyRef.current || Math.abs(deltaX) > 20) {
+        lastSwipeTimeRef.current = Date.now();
       }
 
       if (transform.scale <= 1.15) {
         // Horizontal swipe threshold 28px
         if (Math.abs(deltaX) > 28 && Math.abs(deltaX) > Math.abs(deltaY)) {
-          if (deltaX < 0 && count > 1 && onIndexChange) {
-            onIndexChange((safeIndex + 1) % count);
-          } else if (deltaX > 0 && count > 1 && onIndexChange) {
-            onIndexChange((safeIndex - 1 + count) % count);
+          if (deltaX < 0 && countRef.current > 1 && onIndexChangeRef.current) {
+            onIndexChangeRef.current((safeIndexRef.current + 1) % countRef.current);
+          } else if (deltaX > 0 && countRef.current > 1 && onIndexChangeRef.current) {
+            onIndexChangeRef.current((safeIndexRef.current - 1 + countRef.current) % countRef.current);
           }
         }
       }
@@ -259,7 +265,8 @@ export function ZoomablePosterModal({
         background: 'radial-gradient(circle at center, rgba(16, 18, 22, 0.96) 0%, rgba(6, 7, 9, 0.99) 75%, black 100%)'
       }}
       onClick={(e) => {
-        if (isSwipingGestureRef.current || swipeCooldownRef.current) return;
+        // Prevent accidental backdrop closing immediately following swipe or button tap
+        if (Date.now() - lastSwipeTimeRef.current < 400 || isNavigatingRef.current) return;
         if (e.target === e.currentTarget) {
           onClose();
         }
@@ -269,14 +276,13 @@ export function ZoomablePosterModal({
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
     >
-      {/* Previous Button */}
+      {/* Previous Button - Reliable pointer events */}
       {count > 1 && (
         <button
           type="button"
           className="absolute left-3 sm:left-6 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white hover:bg-black/95 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl select-none"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={handlePrev}
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchEnd={handlePrev}
           aria-label="Previous image"
         >
           <i className="fas fa-chevron-left text-lg pointer-events-none" />
@@ -312,14 +318,13 @@ export function ZoomablePosterModal({
         />
       </div>
 
-      {/* Next Button */}
+      {/* Next Button - Reliable pointer events */}
       {count > 1 && (
         <button
           type="button"
           className="absolute right-3 sm:right-6 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white hover:bg-black/95 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl select-none"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={handleNext}
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchEnd={handleNext}
           aria-label="Next image"
         >
           <i className="fas fa-chevron-right text-lg pointer-events-none" />
@@ -333,16 +338,22 @@ export function ZoomablePosterModal({
         </div>
       )}
 
-      {/* Preload adjacent images */}
-      {count > 1 && [-2, -1, 1, 2].map((offset) => {
+      {/* Preload adjacent images safely */}
+      {count > 1 && [-2, -1, 1, 2].map((offset, offsetIdx) => {
         const idx = ((safeIndex + offset) % count + count) % count;
         const preloadPath = effectiveImages[idx];
-        const preloadUrl = preloadPath.startsWith('http') || preloadPath.startsWith('data:') || preloadPath.startsWith('/')
+        if (!preloadPath || typeof preloadPath !== 'string') return null;
+        const isPreloadDirect =
+          preloadPath.startsWith('http://') ||
+          preloadPath.startsWith('https://') ||
+          preloadPath.startsWith('data:') ||
+          preloadPath.includes('avatar.png');
+        const preloadUrl = isPreloadDirect
           ? preloadPath
           : imageUrl(preloadPath, 'original');
         return (
           <img
-            key={`preload-${idx}`}
+            key={`preload-${offsetIdx}-${idx}`}
             src={preloadUrl}
             alt=""
             className="hidden"

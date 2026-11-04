@@ -211,7 +211,9 @@ export function getLanguageName(languageCode, fallback = 'Unknown') {
 export function imageUrl(path, size = 'w500') {
   if (!path) return FALLBACK_AVATAR;
   if (/^https?:\/\//i.test(String(path))) return path;
-  return `${IMAGE_BASE}/${size}${path}`;
+  if (String(path).includes('avatar.png') || String(path).startsWith('data:')) return path;
+  const cleanPath = String(path).startsWith('/') ? path : `/${path}`;
+  return `${IMAGE_BASE}/${size}${cleanPath}`;
 }
 
 /**

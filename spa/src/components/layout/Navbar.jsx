@@ -209,7 +209,7 @@ export function ReactNavbar() {
                 {tvProfileOpen && (
                   <div
                     className="absolute left-14 sm:left-16 top-0 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[100000] shadow-2xl animate-in fade-in slide-in-from-left-2 duration-150"
-                    style={{ backgroundColor: '#14161b', background: '#14161b', opacity: 1 }}
+                    style={{ backgroundColor: '#121418', background: '#121418', opacity: 1, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
                   >
                     <div className="px-3 py-2 border-b border-white/10 text-white/60 truncate font-semibold">
                       @{username}
@@ -393,8 +393,8 @@ export function ReactNavbar() {
                   {/* Desktop Profile Dropdown (Profile, Settings, Logout) */}
                   {profileDropdownOpen && (
                     <div
-                      className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150"
-                      style={{ backgroundColor: '#14161b', background: '#14161b', opacity: 1 }}
+                      className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[99999] shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                      style={{ backgroundColor: '#121418', background: '#121418', opacity: 1, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
                     >
                       <div className="px-3 py-2 border-b border-white/10 text-white/60 truncate font-semibold">
                         @{username}
@@ -441,8 +441,8 @@ export function ReactNavbar() {
 
                   {profileDropdownOpen && (
                     <div
-                      className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150"
-                      style={{ backgroundColor: '#14161b', background: '#14161b', opacity: 1 }}
+                      className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[99999] shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+                      style={{ backgroundColor: '#121418', background: '#121418', opacity: 1, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
                     >
                       <div className="px-3 py-2 border-b border-white/10 text-white/60 font-semibold">
                         Soulstash Menu

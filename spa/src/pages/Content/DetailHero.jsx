@@ -184,7 +184,7 @@ export function DetailHero({
     ? imageUrl(landscapePath, 'w1280')
     : currentPosterPath
     ? imageUrl(currentPosterPath, 'w780')
-    : FALLBACK_POSTER;
+    : FALLBACK_AVATAR;
 
   return (
     <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
@@ -236,7 +236,8 @@ export function DetailHero({
                 e.currentTarget.src = imageUrl(currentPosterPath, 'w780');
                 e.currentTarget.className = "absolute inset-0 h-full w-full object-cover scale-125 object-[center_28%]";
               } else {
-                e.currentTarget.src = FALLBACK_POSTER;
+                e.currentTarget.src = FALLBACK_AVATAR;
+                e.currentTarget.className = "absolute inset-0 h-full w-full object-cover scale-150 object-[center_35%]";
               }
             }}
           />
@@ -264,6 +265,7 @@ export function DetailHero({
         {/* Mobile / tablet layout (hidden on xl+) */}
         <MobileLayout
           content={content}
+          posterPath={currentPosterPath}
           title={title}
           type={type}
           meta={meta}
@@ -286,6 +288,7 @@ export function DetailHero({
         {/* Desktop layout (xl+) */}
         <DesktopLayout
           content={content}
+          posterPath={currentPosterPath}
           title={title}
           type={type}
           meta={meta}
@@ -324,7 +327,7 @@ export function DetailHero({
 // ---------------------------------------------------------------------------
 
 function MobileLayout({
-  content, title, type, meta, status, pendingAction,
+  content, posterPath, title, type, meta, status, pendingAction,
   directorStat, countryLabel, languageName, ageRatingLabel,
   onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick, isPlayerOpen,
 }) {
@@ -340,9 +343,9 @@ function MobileLayout({
             className={`aspect-[2/3] w-full overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block ${isPlayerOpen ? 'pointer-events-none opacity-60' : ''}`}
           >
             <img
-              src={content?.poster_path ? imageUrl(content.poster_path, 'w500') : FALLBACK_AVATAR}
+              src={posterPath ? imageUrl(posterPath, 'w500') : FALLBACK_AVATAR}
               alt={title}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover transition-opacity duration-500"
               onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
             />
           </button>
@@ -407,7 +410,7 @@ function MobileLayout({
 // ---------------------------------------------------------------------------
 
 function DesktopLayout({
-  content, title, type, meta, status, pendingAction,
+  content, posterPath, title, type, meta, status, pendingAction,
   directorStat, countryLabel, languageName, ageRatingLabel,
   onToggleWatched, onToggleWatchlist, onOpenSaveModal, onPosterClick, isPlayerOpen,
 }) {
@@ -422,9 +425,9 @@ function DesktopLayout({
           className={`w-[200px] aspect-[2/3] overflow-hidden rounded-2xl shadow-2xl flex-shrink-0 ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block ${isPlayerOpen ? 'pointer-events-none opacity-60' : ''}`}
         >
           <img
-            src={content?.poster_path ? imageUrl(content.poster_path, 'w500') : FALLBACK_AVATAR}
+            src={posterPath ? imageUrl(posterPath, 'w500') : FALLBACK_AVATAR}
             alt={title}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transition-opacity duration-500"
             onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
           />
         </button>

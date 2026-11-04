@@ -1372,7 +1372,13 @@ html.layout-tv-mode .collection-detail-header-fixed {
 }
 
 html.layout-tv-mode .collection-detail-header-spacer {
-  height: 88px !important;
+  height: 112px !important;
+}
+
+@media (min-width: 640px) {
+  html.layout-tv-mode .collection-detail-header-spacer {
+    height: 108px !important;
+  }
 }
 
 html.layout-tv-mode .sticky.lg\:top-\[88px\] {
@@ -1380,7 +1386,9 @@ html.layout-tv-mode .sticky.lg\:top-\[88px\] {
 }
 
 /* Fully opaque solid dropdown for Profile & Settings */
-.profile-dropdown-solid {
+.profile-dropdown-solid,
+.profile-popup,
+.modern-navbar-react .profile-popup {
   background-color: #121418 !important;
   background: #121418 !important;
   border: 1px solid rgba(255, 255, 255, 0.22) !important;
