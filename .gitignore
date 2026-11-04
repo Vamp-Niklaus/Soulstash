@@ -28,6 +28,10 @@ fixdb.js
 environment
 
 
+# Binaries
+*.apk
+*.exe
+
 # AI and Readmes
 CLAUDE_CONTEXT.md
 SPA-README.md
