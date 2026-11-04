@@ -34,7 +34,15 @@ export function HomePage() {
       const trendingRaw = homeData?.trending?.results || homeData?.trending || [];
       const trending = Array.isArray(trendingRaw) ? trendingRaw.filter(item => item?.poster_path && String(item.poster_path).trim()) : [];
 
-      const popularRaw = homeData?.popular?.results || homeData?.popular || homeData?.popularMovies?.results || [];
+      const popularMovies = Array.isArray(homeData?.popularMovies?.results) ? homeData.popularMovies.results : [];
+      const popularSeries = Array.isArray(homeData?.popularSeries?.results) ? homeData.popularSeries.results : [];
+      const combinedPopular = [
+        ...popularMovies.map(item => ({ ...item, media_type: item.media_type || 'Movie' })),
+        ...popularSeries.map(item => ({ ...item, media_type: item.media_type || 'Series' }))
+      ].sort((a, b) => (Number(b.popularity) || 0) - (Number(a.popularity) || 0));
+      const popularRaw = combinedPopular.length
+        ? combinedPopular
+        : (homeData?.popular?.results || homeData?.popular || []);
       const popular = Array.isArray(popularRaw) ? popularRaw.filter(item => item?.poster_path && String(item.poster_path).trim()) : [];
 
       if (trending.length) {
@@ -137,7 +145,7 @@ export function HomePage() {
           <HomeShelfHeader title="Popular" onViewAll={() => navigate('/popular')} />
           <div className={HOME_GRID_CLASS}>
             {popular.slice(0, homeShelfLimit).map((item) => (
-              <ContentCard key={`pop-${item.id}`} item={item} data-card />
+              <ContentCard key={`pop-${item.media_type || 'Movie'}-${item.id}`} item={item} data-card />
             ))}
           </div>
         </section>

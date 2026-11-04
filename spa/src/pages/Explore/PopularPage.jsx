@@ -54,8 +54,10 @@ export function PopularPage() {
       for (const item of list) {
         if (!item?.poster_path || !String(item.poster_path).trim()) continue;
         const itemId = Number(item?.id || item?.movieId || item?.seriesId);
-        if (itemId && !seen.has(itemId)) {
-          seen.add(itemId);
+        const mediaType = ['series', 'tv'].includes(String(item?.media_type || '').toLowerCase()) || item?.first_air_date ? 'series' : 'movie';
+        const itemKey = `${mediaType}:${itemId}`;
+        if (itemId && !seen.has(itemKey)) {
+          seen.add(itemKey);
           deduped.push(item);
         }
       }
