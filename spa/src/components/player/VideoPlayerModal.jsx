@@ -3,6 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { SESSION_SCRAPED } from '../../utils/constants.js';
 import { isDirectMediaUrl } from '../../utils/formatters.js';
 import { Capacitor } from '@capacitor/core';
+import { ScreenOrientation } from '@capacitor/screen-orientation';
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from '../../utils/toast.js';
@@ -29,6 +30,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const [draggingPlayer, setDraggingPlayer] = useState(false);
   const [iframeReloadKey, setIframeReloadKey] = useState(0);
   const [scale, setScale] = useState(1.0);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const iframeRef = useRef(null);
   const scrollContainerRef = useRef(null);
   
@@ -389,43 +391,78 @@ export function VideoPlayerModal({ request, onClose }) {
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  const isClosingRef = useRef(false);
+
+  const handleCloseClick = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      }
+    } catch (e) {}
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+      } catch (e) {}
+    }
+
+    if (window.history.state?.playerOpen) {
+      try {
+        window.history.back();
+      } catch (e) {}
+    }
+    if (onCloseRef.current) {
+      onCloseRef.current();
+    }
+  }, []);
+
   useEffect(() => {
     if (!window.history.state || !window.history.state.playerOpen) {
-      window.history.pushState({ playerOpen: true }, '');
+      try {
+        window.history.pushState({ playerOpen: true }, '');
+      } catch (e) {}
     }
 
     const handlePopState = () => {
+      if (isClosingRef.current) return;
       // If we are in fullscreen, the back button should ONLY exit fullscreen
       if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
-        if (document.exitFullscreen) document.exitFullscreen();
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-        else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
-        else if (document.msExitFullscreen) document.msExitFullscreen();
-        
-        // Push the state back so the next back press closes the modal
-        window.history.pushState({ playerOpen: true }, '');
+        try {
+          if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        } catch (e) {}
+        try {
+          window.history.pushState({ playerOpen: true }, '');
+        } catch (e) {}
       } else {
-        // Otherwise, close the modal
+        isClosingRef.current = true;
+        if (Capacitor.isNativePlatform()) {
+          try {
+            ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+          } catch (e) {}
+        }
         if (onCloseRef.current) onCloseRef.current();
       }
     };
 
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        handleCloseClick();
+      }
+    };
+
     window.addEventListener('popstate', handlePopState);
+    window.addEventListener('keydown', handleKeyDown);
     
     return () => {
       window.removeEventListener('popstate', handlePopState);
-      // We explicitly DO NOT call history.back() here to avoid StrictMode bugs.
-      // History cleanup is handled by handleCloseClick instead.
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
-
-  const handleCloseClick = () => {
-    if (window.history.state && window.history.state.playerOpen) {
-      window.history.back();
-    } else {
-      if (onCloseRef.current) onCloseRef.current();
-    }
-  };
+  }, [handleCloseClick]);
 
   const handleToggleZoom = () => {
     setScale((prev) => {
@@ -443,34 +480,38 @@ export function VideoPlayerModal({ request, onClose }) {
 
   useEffect(() => {
     const handleFullscreenChange = async () => {
-      const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
-      
-      if (Capacitor.isNativePlatform() && typeof ScreenOrientation !== 'undefined') {
-        try {
-          if (fsElement) {
-            await ScreenOrientation.unlock();
-          } else {
-            await ScreenOrientation.lock({ type: 'portrait' });
+      try {
+        const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+        
+        if (Capacitor.isNativePlatform()) {
+          try {
+            if (fsElement) {
+              await ScreenOrientation.unlock();
+            } else {
+              await ScreenOrientation.lock({ orientation: 'portrait' });
+            }
+          } catch (e) {
+            // Orientation ignore
           }
-        } catch (e) {
-          console.error('Screen orientation error', e);
         }
-      }
 
-      if (fsElement && fsElement === iframeRef.current) {
-        fsElement.style.transform = scale !== 1.0 ? `scale(${scale})` : 'none';
-        fsElement.style.transformOrigin = 'center center';
-        fsElement.style.width = '100vw';
-        fsElement.style.height = '100vh';
-        fsElement.style.overflow = 'hidden';
-        fsElement.style.backgroundColor = 'black'; 
-      } else if (iframeRef.current) {
-        iframeRef.current.style.transform = scale !== 1.0 ? `scale(${scale})` : 'none';
-        iframeRef.current.style.transformOrigin = 'center center';
-        iframeRef.current.style.width = '100%';
-        iframeRef.current.style.height = '100%';
-        iframeRef.current.style.overflow = '';
-        iframeRef.current.style.backgroundColor = '';
+        if (fsElement && fsElement === iframeRef.current) {
+          fsElement.style.transform = scale !== 1.0 ? `scale(${scale})` : 'none';
+          fsElement.style.transformOrigin = 'center center';
+          fsElement.style.width = '100vw';
+          fsElement.style.height = '100vh';
+          fsElement.style.overflow = 'hidden';
+          fsElement.style.backgroundColor = 'black'; 
+        } else if (iframeRef.current) {
+          iframeRef.current.style.transform = scale !== 1.0 ? `scale(${scale})` : 'none';
+          iframeRef.current.style.transformOrigin = 'center center';
+          iframeRef.current.style.width = '100%';
+          iframeRef.current.style.height = '100%';
+          iframeRef.current.style.overflow = '';
+          iframeRef.current.style.backgroundColor = '';
+        }
+      } catch (err) {
+        console.warn('Fullscreen change handler error:', err);
       }
     };
 
@@ -483,8 +524,10 @@ export function VideoPlayerModal({ request, onClose }) {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       
-      if (Capacitor.isNativePlatform() && typeof ScreenOrientation !== 'undefined') {
-        ScreenOrientation.lock({ type: 'portrait' }).catch(console.error);
+      if (Capacitor.isNativePlatform()) {
+        try {
+          ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+        } catch (e) {}
       }
     };
   }, [scale]);
@@ -546,14 +589,21 @@ export function VideoPlayerModal({ request, onClose }) {
     }
   }, [sourcePayload, fallbackSources, request, sourceSignature]);
 
+  const effectiveAnilistId = request?.anilistId || sourcePayload?.anilistId || anilistId;
+
   const combinedIncoming = useMemo(() => {
-    // Anime sources generated for current title/episode take precedence over stale backend cache entries
+    // If no AniList ID, do not include anime sources
+    if (!effectiveAnilistId) {
+      return hindiSources.filter(
+        (s) => !/\((Sub|Dub|Hindi)\)/i.test(s.label || '') && !/^(gogo|tryembed|vidhawk|vidnest-ani|vidnest-pahe)/i.test(s.id || s.key || '')
+      );
+    }
     const animeKeys = new Set(animeSources.map((s) => s.id));
     const cleanHindiSources = hindiSources.filter(
       (s) => !animeKeys.has(s.id) && !/^(gogo|tryembed|vidhawk|vidnest-ani|vidnest-pahe)/i.test(s.id || s.key || '')
     );
     return [...animeSources, ...cleanHindiSources];
-  }, [hindiSources, animeSources]);
+  }, [hindiSources, animeSources, effectiveAnilistId]);
 
   const sources = useMemo(
     () => buildPlayerSourceSlots(combinedIncoming, fallbackSources, {
@@ -564,13 +614,25 @@ export function VideoPlayerModal({ request, onClose }) {
     [combinedIncoming, fallbackSources, isFetching, failedUrls, verifiedUrls]
   );
 
-  const currentGroupSources = useMemo(() => {
-    return sources.filter((s) => s.group === selectedGroup);
-  }, [sources, selectedGroup]);
+  // Filter sources:
+  // 1. Hide disabled / unhealthy sources with no stream url
+  // 2. If no AniList ID, hide anime sources with (Sub), (Dub), (Hindi) in label
+  // 3. Hide entire dubbed section if no AniList ID
+  const displayedSources = useMemo(() => {
+    return sources.filter((s) => {
+      if (!s.url && !s.pending) return false;
+      if (!effectiveAnilistId) {
+        if (/\((Sub|Dub|Hindi)\)/i.test(s.label || '')) return false;
+        if (/^(vidnest|gogo|vidhawk|tryembed|multinime)/i.test(s.id || s.key || '')) return false;
+        if (s.group === 'dubbed') return false;
+      }
+      return true;
+    });
+  }, [sources, effectiveAnilistId]);
 
-  const currentPlayableSources = useMemo(() => {
-    return currentGroupSources.filter((s) => s.url && !s.failed);
-  }, [currentGroupSources]);
+  const availableHindi = useMemo(() => displayedSources.filter((s) => s.group === 'hindi'), [displayedSources]);
+  const availableDubbed = useMemo(() => displayedSources.filter((s) => s.group === 'dubbed'), [displayedSources]);
+  const availableSubbed = useMemo(() => displayedSources.filter((s) => s.group === 'subbed'), [displayedSources]);
 
   const handleIframeError = useCallback((failedUrl) => {
     if (!failedUrl) return;
@@ -586,31 +648,29 @@ export function VideoPlayerModal({ request, onClose }) {
       return next;
     });
 
-    // Auto-switch to next available healthy source in current group only
-    const candidates = currentGroupSources.filter((s) => s.url && s.url !== failedUrl && !failedUrls.has(s.url));
+    // Auto-switch to next available healthy source across displayed sources
+    const candidates = displayedSources.filter((s) => s.url && s.url !== failedUrl && !failedUrls.has(s.url));
     if (candidates.length > 0) {
       setActiveUrl(candidates[0].url);
       setIframeReloadKey(0);
     } else {
       setActiveUrl('');
     }
-  }, [currentGroupSources, failedUrls]);
+  }, [displayedSources, failedUrls]);
 
-  // Race every available stream once in current group only; the first host that answers wins.
+  // Race every available stream once across displayed sources; the first host that answers wins.
+  // Importantly, switching categories or viewing sources does NOT switch or interrupt the playing stream!
   const raceTokenRef = useRef(0);
-  const playableKey = currentPlayableSources.map((s) => s.url).join('|');
+  const playableKey = displayedSources.filter((s) => s.url && !failedUrls.has(s.url)).map((s) => s.url).join('|');
 
   useEffect(() => {
-    if (!currentPlayableSources.length) {
-      if (activeUrl && !currentGroupSources.some((s) => s.url === activeUrl)) {
-        setActiveUrl('');
-      }
+    // If we already have an active playing URL and it hasn't failed, KEEP IT!
+    if (activeUrl && !failedUrls.has(activeUrl)) {
       return undefined;
     }
 
-    if (activeUrl && currentPlayableSources.some((s) => s.url === activeUrl && !failedUrls.has(s.url))) {
-      return undefined;
-    }
+    const playable = displayedSources.filter((s) => s.url && !failedUrls.has(s.url));
+    if (!playable.length) return undefined;
 
     const token = ++raceTokenRef.current;
     const controllers = [];
@@ -624,7 +684,7 @@ export function VideoPlayerModal({ request, onClose }) {
       setActiveUrl(url);
     };
 
-    currentPlayableSources.forEach((s) => {
+    playable.slice(0, 6).forEach((s) => {
       const c = new AbortController();
       controllers.push(c);
       fetch(s.url, { mode: 'no-cors', signal: c.signal, cache: 'no-store' })
@@ -635,10 +695,9 @@ export function VideoPlayerModal({ request, onClose }) {
         .catch(() => {});
     });
 
-    // Fallback: pick the first non-failed priority source after 2.5s if probe hasn't settled yet
     const timer = window.setTimeout(() => {
-      if (!settled && raceTokenRef.current === token && currentPlayableSources[0]) {
-        pick(currentPlayableSources[0].url);
+      if (!settled && raceTokenRef.current === token && playable[0]) {
+        pick(playable[0].url);
       }
     }, 2500);
 
@@ -646,25 +705,24 @@ export function VideoPlayerModal({ request, onClose }) {
       window.clearTimeout(timer);
       controllers.forEach((c) => c.abort());
     };
-  }, [playableKey, activeUrl, failedUrls, currentPlayableSources, currentGroupSources]);
+  }, [playableKey, activeUrl, failedUrls, displayedSources]);
 
-  const defaultSource = currentGroupSources.find((source) => source.url && !source.failed) || currentGroupSources.find((source) => source.url) || currentGroupSources[0];
-  const activeSource = currentGroupSources.find((source) => source.url === activeUrl) || defaultSource;
+  const defaultSource = displayedSources.find((source) => source.url && !source.failed) || displayedSources.find((source) => source.url) || displayedSources[0];
+  const activeSource = displayedSources.find((source) => source.url === activeUrl) || defaultSource;
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
 
   const canEmbedSource = canUseVideoJs || activeSource?.embeddable !== false;
-  // Modern movie aspect ratio (16:9 widescreen) with decreased desktop height
-  // so the player has breathing room and is not pushed to the bottom of the screen.
-  const desktopMediaMaxH = 'min(54vh, 560px)';
-  const mobileMediaMaxH = 'min(42vh, 56.25vw)';
+  // Modern movie aspect ratio (16:9 widescreen) with increased desktop height and ratio
+  const desktopMediaMaxH = 'min(64vh, 660px)';
+  const mobileMediaMaxH = 'min(44vh, 56.25vw)';
   const mediaMaxH = isDesktopViewport ? desktopMediaMaxH : mobileMediaMaxH;
 
   const videoBoxStyle = {
     width: isDesktopViewport
-      ? `min(94vw, 1220px, calc(${desktopMediaMaxH} * 16 / 9))`
+      ? `min(94vw, 1340px, calc(${desktopMediaMaxH} * 16 / 9))`
       : 'min(96vw, calc(96vw))',
-    maxWidth: isDesktopViewport ? '1220px' : '96vw',
+    maxWidth: isDesktopViewport ? '1340px' : '96vw',
     margin: '0 auto',
     display: 'flex',
     flexDirection: 'column'
@@ -1017,148 +1075,197 @@ export function VideoPlayerModal({ request, onClose }) {
             )}
           </div>
 
-          {/* Bottom Sources Section: Group tabs & source pills */}
-          <div className="shrink-0 border-t border-white/10 bg-black/95 px-2.5 sm:px-4 py-2 sm:py-2.5 flex flex-col gap-2">
-            {/* Exactly 3 Groups: Hindi, Dubbed, Subbed / Original */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              {[
-                { id: 'hindi', label: 'Hindi' },
-                { id: 'dubbed', label: 'Dubbed' },
-                { id: 'subbed', label: 'Subbed / Original' }
-              ].map((grp) => {
-                const isSelected = selectedGroup === grp.id;
-                const count = sources.filter((s) => s.group === grp.id && s.url && !failedUrls.has(s.url)).length;
-                return (
-                  <button
-                    key={grp.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedGroup(grp.id);
-                      const groupPlayable = sources.filter((s) => s.group === grp.id && s.url && !failedUrls.has(s.url));
-                      if (groupPlayable.length > 0) {
-                        setActiveUrl(groupPlayable[0].url);
-                        setIframeReloadKey(0);
-                      } else {
-                        setActiveUrl('');
-                      }
-                    }}
-                    className={`rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all ${
-                      isSelected
-                        ? 'bg-white text-black font-bold shadow-md'
-                        : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
-                    }`}
-                  >
-                    <span>{grp.label}</span>
-                    {count > 0 && (
-                      <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-black/20 text-black font-bold' : 'bg-white/20 text-white/90'}`}>
-                        {count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Sources Row with < and > Scroll buttons */}
-            <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Bottom Sources Section: Toggleable sources panel */}
+          {!sourcesExpanded ? (
+            <div className="shrink-0 border-t border-white/10 bg-black/95 px-3 py-2 flex items-center justify-center select-none">
               <button
                 type="button"
-                onClick={() => scrollContainerRef.current?.scrollBy({ left: -200, behavior: 'smooth' })}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
-                aria-label="Scroll sources left"
-                title="Scroll Left"
+                data-player-action="true"
+                onClick={() => setSourcesExpanded(true)}
+                className="inline-flex items-center gap-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-4 py-1.5 text-xs font-semibold text-white/90 transition-all shadow-sm"
+                aria-label="Show streams and sources"
+                title="Show Streams & Sources"
               >
-                <i className="fas fa-chevron-left text-[10px]"></i>
+                <i className="fas fa-layer-group text-[11px] text-white/70" />
+                <span>Streams &amp; Sources</span>
+                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] text-white font-mono">
+                  {displayedSources.filter((s) => s.url && !failedUrls.has(s.url)).length}
+                </span>
+                <i className="fas fa-chevron-down text-[10px] text-white/60 ml-0.5" />
               </button>
-
-              <div
-                ref={scrollContainerRef}
-                className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden scroll-smooth py-0.5"
-              >
-                <div className="flex min-w-max items-center gap-1.5 sm:gap-2">
-                  {currentGroupSources.length ? (
-                    currentGroupSources.map((source) => {
-                      const isActive = Boolean(activeUrl && source.url && activeUrl === source.url);
-                      const isFailed = source.failed;
-                      const isWorking = source.working || isActive;
-                      const isUnhealthy = source.unhealthy || (!source.url && !source.pending);
-
-                      return (
-                        <button
-                          key={source.id}
-                          type="button"
-                          data-player-source="true"
-                          data-active-source={isActive}
-                          aria-label={`Play stream ${source.label}`}
-                          title={isUnhealthy ? `${source.label} (No stream data)` : isFailed ? `${source.label} (Stream failed)` : source.label}
-                          className={`inline-flex items-center gap-1.5 ${sourceButtonClass} ${
-                            isFailed
-                              ? 'opacity-60 bg-red-950/40 text-red-300 border border-red-800/40 hover:bg-red-900/50'
-                              : source.pending
-                              ? 'animate-pulse cursor-wait bg-white/15 text-white/50 border border-white/20'
-                              : isUnhealthy
-                              ? 'opacity-40 cursor-not-allowed bg-white/5 text-white/40 border border-white/5'
-                              : source.disabled
-                              ? 'cursor-not-allowed bg-white/5 text-white/25'
-                              : isActive
-                              ? 'bg-white text-black font-semibold shadow-md'
-                              : 'bg-white/10 text-white hover:bg-white/20'
-                          }`}
-                          disabled={isUnhealthy || source.disabled || source.pending}
-                          onClick={() => {
-                            if (!isUnhealthy && !source.disabled && !source.pending && source.url) {
-                              setActiveUrl(source.url);
-                              setIframeReloadKey(0);
-                            }
-                          }}
-                        >
-                          <span>{source.label}</span>
-                          {/* Status indicator */}
-                          {isFailed ? (
-                            <span
-                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
-                              title="Stream failed"
-                            />
-                          ) : isWorking ? (
-                            <span
-                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
-                              title="Active stream"
-                            />
-                          ) : source.pending ? (
-                            <span
-                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/80 animate-pulse"
-                              title="Probing stream"
-                            />
-                          ) : isUnhealthy ? (
-                            <span
-                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-400/40"
-                              title="No stream data"
-                            />
-                          ) : (
-                            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/30" />
-                          )}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <span className="text-[11px] font-medium text-white/50">
-                      No sources in this group.
-                    </span>
-                  )}
+            </div>
+          ) : (
+            <div className="shrink-0 border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 flex flex-col gap-2.5 select-none">
+              {/* Header row: sources label + hide button */}
+              <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <i className="fas fa-layer-group text-xs text-white/70" />
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">
+                    Streams &amp; Sources
+                  </span>
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/70 font-mono">
+                    {displayedSources.filter((s) => s.url && !failedUrls.has(s.url)).length} available
+                  </span>
                 </div>
+
+                <button
+                  type="button"
+                  data-player-action="true"
+                  onClick={() => setSourcesExpanded(false)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1 text-[11px] font-semibold text-white/80 hover:text-white transition-all"
+                  aria-label="Hide streams"
+                  title="Hide Streams"
+                >
+                  <span>Hide</span>
+                  <i className="fas fa-chevron-up text-[10px]" />
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => scrollContainerRef.current?.scrollBy({ left: 200, behavior: 'smooth' })}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
-                aria-label="Scroll sources right"
-                title="Scroll Right"
+              {/* Grouped sources list: vertical stacked groups */}
+              <div
+                ref={scrollContainerRef}
+                className="flex flex-col gap-3 max-h-[28vh] sm:max-h-[210px] overflow-y-auto filter-scrollbar pr-1"
               >
-                <i className="fas fa-chevron-right text-[10px]"></i>
-              </button>
+                {/* Hindi Group */}
+                {availableHindi.length > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-2.5">
+                    <span className="shrink-0 text-[11px] font-bold text-white/50 sm:w-28 pt-1 uppercase tracking-wider">
+                      Hindi :
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5 flex-1">
+                      {availableHindi.map((source) => {
+                        const isActive = Boolean(activeUrl && source.url && activeUrl === source.url);
+                        const isFailed = source.failed || failedUrls.has(source.url);
+                        const isWorking = source.working || verifiedUrls.has(source.url) || isActive;
+
+                        return (
+                          <button
+                            key={source.id}
+                            type="button"
+                            data-player-source="true"
+                            data-active-source={isActive}
+                            onClick={() => {
+                              if (!source.url || isFailed) return;
+                              setActiveUrl(source.url);
+                              setIframeReloadKey((k) => k + 1);
+                            }}
+                            disabled={!source.url || isFailed}
+                            className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all ${
+                              isActive
+                                ? 'bg-white text-black font-bold shadow-md scale-[1.02]'
+                                : isFailed
+                                ? 'opacity-50 bg-red-950/40 text-red-300 border border-red-800/40 cursor-not-allowed'
+                                : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'
+                            }`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-black' : isWorking ? 'bg-emerald-400' : 'bg-white/40'}`} />
+                            <span>{source.label}</span>
+                            {isActive && (
+                              <span className="ml-1 rounded bg-black/15 px-1 py-0.2 text-[9px] font-bold uppercase tracking-wider">
+                                Playing
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Dubbed Group (hidden if no AniList ID or no dubbed sources) */}
+                {effectiveAnilistId && availableDubbed.length > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-2.5">
+                    <span className="shrink-0 text-[11px] font-bold text-white/50 sm:w-28 pt-1 uppercase tracking-wider">
+                      Dubbed :
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5 flex-1">
+                      {availableDubbed.map((source) => {
+                        const isActive = Boolean(activeUrl && source.url && activeUrl === source.url);
+                        const isFailed = source.failed || failedUrls.has(source.url);
+                        const isWorking = source.working || verifiedUrls.has(source.url) || isActive;
+
+                        return (
+                          <button
+                            key={source.id}
+                            type="button"
+                            data-player-source="true"
+                            data-active-source={isActive}
+                            onClick={() => {
+                              if (!source.url || isFailed) return;
+                              setActiveUrl(source.url);
+                              setIframeReloadKey((k) => k + 1);
+                            }}
+                            disabled={!source.url || isFailed}
+                            className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all ${
+                              isActive
+                                ? 'bg-white text-black font-bold shadow-md scale-[1.02]'
+                                : isFailed
+                                ? 'opacity-50 bg-red-950/40 text-red-300 border border-red-800/40 cursor-not-allowed'
+                                : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'
+                            }`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-black' : isWorking ? 'bg-emerald-400' : 'bg-white/40'}`} />
+                            <span>{source.label}</span>
+                            {isActive && (
+                              <span className="ml-1 rounded bg-black/15 px-1 py-0.2 text-[9px] font-bold uppercase tracking-wider">
+                                Playing
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Subbed / Original Group */}
+                {availableSubbed.length > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-2.5">
+                    <span className="shrink-0 text-[11px] font-bold text-white/50 sm:w-28 pt-1 uppercase tracking-wider">
+                      Subbed / Original :
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5 flex-1">
+                      {availableSubbed.map((source) => {
+                        const isActive = Boolean(activeUrl && source.url && activeUrl === source.url);
+                        const isFailed = source.failed || failedUrls.has(source.url);
+                        const isWorking = source.working || verifiedUrls.has(source.url) || isActive;
+
+                        return (
+                          <button
+                            key={source.id}
+                            type="button"
+                            data-player-source="true"
+                            data-active-source={isActive}
+                            onClick={() => {
+                              if (!source.url || isFailed) return;
+                              setActiveUrl(source.url);
+                              setIframeReloadKey((k) => k + 1);
+                            }}
+                            disabled={!source.url || isFailed}
+                            className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all ${
+                              isActive
+                                ? 'bg-white text-black font-bold shadow-md scale-[1.02]'
+                                : isFailed
+                                ? 'opacity-50 bg-red-950/40 text-red-300 border border-red-800/40 cursor-not-allowed'
+                                : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'
+                            }`}
+                          >
+                            <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-black' : isWorking ? 'bg-emerald-400' : 'bg-white/40'}`} />
+                            <span>{source.label}</span>
+                            {isActive && (
+                              <span className="ml-1 rounded bg-black/15 px-1 py-0.2 text-[9px] font-bold uppercase tracking-wider">
+                                Playing
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

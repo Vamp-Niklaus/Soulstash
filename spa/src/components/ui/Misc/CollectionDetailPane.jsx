@@ -474,6 +474,19 @@ export function CollectionDetailPane({
               broadcastCollections(response.collections, response.collectionVersion);
             }
             queryClient.invalidateQueries({ queryKey: ['collections'] });
+            queryClient.invalidateQueries({ queryKey: ['collection'] });
+            queryClient.invalidateQueries({ queryKey: ['profile'] });
+            queryClient.invalidateQueries({ queryKey: ['homePageData'] });
+            queryClient.setQueriesData({ queryKey: ['collection'] }, (old) => {
+              if (!old) return old;
+              if (old.name === collection.name || (collection._id && old._id === collection._id)) {
+                return { ...old, banner: url };
+              }
+              if (old.collection && (old.collection.name === collection.name || (collection._id && old.collection._id === collection._id))) {
+                return { ...old, collection: { ...old.collection, banner: url } };
+              }
+              return old;
+            });
             toast('Banner updated!');
           } catch (err) {
             console.error('[Banner Update Error]', err);

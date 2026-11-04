@@ -140,28 +140,40 @@
 body.collection-artwork-theme {
   --collection-tint: 130 98 62;
   background-color: rgb(9 10 12) !important;
+  background-image: none !important;
+}
+
+body.collection-artwork-theme::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: -10;
+  pointer-events: none;
+  background-color: rgb(9 10 12);
   background-image:
-    linear-gradient(to bottom, rgb(var(--collection-tint) / 0.40), rgb(9 10 12 / 0.82) 85%),
-    linear-gradient(rgb(var(--collection-tint) / 0.10), rgb(var(--collection-tint) / 0.10)),
+    linear-gradient(to bottom, rgb(var(--collection-tint) / 0.55), rgb(9 10 12 / 0.88) 75%, rgb(9 10 12) 100%),
+    linear-gradient(rgb(var(--collection-tint) / 0.12), rgb(var(--collection-tint) / 0.12)),
     var(--collection-artwork-image, none),
-    url('/images/dark-bg.png') !important;
-  background-repeat: no-repeat, no-repeat, no-repeat, repeat !important;
-  background-position: center top, center top, center top, center !important;
-  background-size: 100% 100%, 100% 100%, cover, auto !important;
-  background-attachment: scroll, scroll, fixed, repeat !important;
-  transition: background-color 600ms ease;
+    url('/images/dark-bg.png');
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  background-position: center top, center top, center top, center;
+  background-size: 100% 100%, 100% 100%, cover, auto;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 @media (min-width: 1024px) {
-  body.collection-artwork-theme {
+  body.collection-artwork-theme::before {
     background-image:
       linear-gradient(to bottom, rgb(var(--collection-tint) / 0.66), rgb(9 10 12 / 0.94) 82%),
       linear-gradient(rgb(var(--collection-tint) / 0.16), rgb(var(--collection-tint) / 0.16)),
       var(--collection-artwork-image, none),
-      url('/images/dark-bg.png') !important;
-    background-size: 100% 100%, 100% 100%, cover, auto !important;
-    background-position: center top, center top, center top, center !important;
-    background-attachment: fixed !important;
+      url('/images/dark-bg.png');
   }
 }
 
@@ -999,28 +1011,40 @@ body {
 body.detail-artwork-theme {
   --detail-tint: 18 20 24;
   background-color: rgb(9 10 12) !important;
+  background-image: none !important;
+}
+
+body.detail-artwork-theme::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: -10;
+  pointer-events: none;
+  background-color: rgb(9 10 12);
   background-image:
-    linear-gradient(to bottom, rgb(var(--detail-tint) / 0.40), rgb(9 10 12 / 0.82) 85%),
-    linear-gradient(rgb(var(--detail-tint) / 0.10), rgb(var(--detail-tint) / 0.10)),
-    var(--detail-artwork-image),
-    url('/images/dark-bg.png') !important;
-  background-repeat: no-repeat, no-repeat, no-repeat, repeat !important;
-  background-position: center top, center top, center top, center !important;
-  background-size: 100% 100%, 100% 100%, cover, auto !important;
-  background-attachment: scroll, scroll, fixed, repeat !important;
-  transition: background-color 600ms ease;
+    linear-gradient(to bottom, rgb(var(--detail-tint) / 0.55), rgb(9 10 12 / 0.88) 75%, rgb(9 10 12) 100%),
+    linear-gradient(rgb(var(--detail-tint) / 0.12), rgb(var(--detail-tint) / 0.12)),
+    var(--detail-artwork-image, none),
+    url('/images/dark-bg.png');
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  background-position: center top, center top, center top, center;
+  background-size: 100% 100%, 100% 100%, cover, auto;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 @media (min-width: 1024px) {
-  body.detail-artwork-theme {
+  body.detail-artwork-theme::before {
     background-image:
       linear-gradient(to bottom, rgb(var(--detail-tint) / 0.66), rgb(9 10 12 / 0.94) 82%),
       linear-gradient(rgb(var(--detail-tint) / 0.16), rgb(var(--detail-tint) / 0.16)),
-      var(--detail-artwork-image),
-      url('/images/dark-bg.png') !important;
-    background-size: 100% 100%, 100% 100%, cover, auto !important;
-    background-position: center top, center top, center top, center !important;
-    background-attachment: fixed !important;
+      var(--detail-artwork-image, none),
+      url('/images/dark-bg.png');
   }
 }
 
@@ -1278,3 +1302,44 @@ body.detail-artwork-theme .app-shell--textured::after {
 }
 
 body.detail-artwork-theme .app-shell { background-color: transparent; }
+
+/* ==================================================
+   RESPONSIVE UI LAYOUT MODES: TV, DESKTOP, MOBILE
+   ================================================== */
+html.layout-tv-mode .app-main {
+  padding-left: 64px !important;
+  padding-top: calc(16px + env(safe-area-inset-top, 0px)) !important;
+}
+
+@media (min-width: 640px) {
+  html.layout-tv-mode .app-main {
+    padding-left: 80px !important;
+  }
+}
+
+html.layout-tv-mode .modern-navbar-react,
+html.layout-tv-mode .mobile-bottom-nav-react {
+  display: none !important;
+}
+
+html.layout-desktop-mode .mobile-bottom-nav-react {
+  display: none !important;
+}
+html.layout-desktop-mode .nav-links,
+html.layout-desktop-mode .desktop-actions {
+  display: flex !important;
+}
+html.layout-desktop-mode .mobile-actions {
+  display: none !important;
+}
+
+html.layout-mobile-mode .mobile-bottom-nav-react {
+  display: block !important;
+}
+html.layout-mobile-mode .nav-links,
+html.layout-mobile-mode .desktop-actions {
+  display: none !important;
+}
+html.layout-mobile-mode .mobile-actions {
+  display: flex !important;
+}

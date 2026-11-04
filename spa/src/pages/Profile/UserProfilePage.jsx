@@ -49,7 +49,7 @@ export function UserProfilePage() {
   const followMutation = useMutation({
     mutationFn: () => apiFetch('/api/user/follow', {
       method: 'POST',
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ targetUsername: username, username })
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile', username] });
@@ -62,7 +62,7 @@ export function UserProfilePage() {
   const unfollowMutation = useMutation({
     mutationFn: () => apiFetch('/api/user/unfollow', {
       method: 'POST',
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ targetUsername: username, username })
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile', username] });

@@ -29,6 +29,7 @@ import { imageUrl } from '../../utils/formatters.js';
 import { ActionButton } from '../../components/ui/ActionButton.jsx';
 import { DetailStat } from '../../components/ui/Cards/DetailStat.jsx';
 import { useArtworkAtmosphere } from '../../hooks/useArtworkAtmosphere.js';
+import { ZoomablePosterModal } from '../../components/ui/Modals/ZoomablePosterModal.jsx';
 
 export function DetailHero({
   content,
@@ -81,21 +82,46 @@ export function DetailHero({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Preload backdrops so they never appear half-loaded (priority 'original', fallback 'w1280')
+  // Compute primary landscape and portrait paths for high-priority loading and responsive background
+  const landscapePath = content?.backdrop_path || backdrops?.[0]?.file_path;
+  const posterPath = content?.poster_path || posters?.[0]?.file_path;
+
+  // In desktop mode: use landscape as background image (with vertical poster fallback).
+  // In mobile mode: use vertical poster as background image (with landscape fallback).
+  const bgPath = isDesktop
+    ? (landscapePath || posterPath)
+    : (posterPath || landscapePath);
+
+  const backgroundUrl = bgPath ? imageUrl(bgPath, isDesktop ? 'w1280' : 'w780') : '';
+  const sampleUrl = bgPath ? `${imageUrl(bgPath, 'w92')}?tint=1` : '';
+
+  useArtworkAtmosphere(backgroundUrl, sampleUrl);
+
+  // Top priority preload for landscape poster / backdrop first to eliminate black screen
+  useEffect(() => {
+    if (landscapePath) {
+      const fastLandscapeUrl = imageUrl(landscapePath, 'w1280');
+      const img = new Image();
+      if ('fetchPriority' in img) img.fetchPriority = 'high';
+      img.src = fastLandscapeUrl;
+    }
+  }, [landscapePath]);
+
+  // Preload backdrops so they never appear half-loaded (priority 'w1280', then 'original')
   useEffect(() => {
     loadedSetRef.current = new Set([0]);
     setCurrentBackdropIndex(0);
     if (backdrops.length <= 1) return;
 
     backdrops.forEach((backdrop, idx) => {
-      const origUrl = imageUrl(backdrop.file_path, 'original');
+      const fastUrl = imageUrl(backdrop.file_path, 'w1280');
       const img = new Image();
-      img.src = origUrl;
+      img.src = fastUrl;
       img.onload = () => {
         loadedSetRef.current.add(idx);
       };
       img.onerror = () => {
-        const fallback = imageUrl(backdrop.file_path, 'w1280');
+        const fallback = imageUrl(backdrop.file_path, 'original');
         const img2 = new Image();
         img2.src = fallback;
         img2.onload = () => loadedSetRef.current.add(idx);
@@ -122,29 +148,24 @@ export function DetailHero({
     return () => clearInterval(interval);
   }, [backdrops, isPlayerOpen]);
 
+  // Smooth poster rotation every 6s when multiple posters are available
+  useEffect(() => {
+    if (posters.length <= 1 || isPlayerOpen || viewerOpen) return;
+    const interval = setInterval(() => {
+      setCurrentPosterIndex((prev) => (prev + 1) % posters.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [posters.length, isPlayerOpen, viewerOpen]);
+
   const currentPosterPath = hasPosters
     ? posters[currentPosterIndex].file_path
     : content.poster_path;
 
-  const fallbackBackdropUrl = content?.backdrop_path
-    ? imageUrl(content.backdrop_path, 'original')
+  const fallbackBackdropUrl = landscapePath
+    ? imageUrl(landscapePath, 'w1280')
     : currentPosterPath
-    ? imageUrl(currentPosterPath, 'original')
+    ? imageUrl(currentPosterPath, 'w780')
     : null;
-
-  const landscapePath = content?.backdrop_path || backdrops?.[0]?.file_path;
-  const posterPath = content?.poster_path || posters?.[0]?.file_path;
-
-  // In desktop mode: use landscape as background image (with poster fallback).
-  // In mobile mode: use poster as background image (with landscape fallback).
-  const bgPath = isDesktop
-    ? (landscapePath || posterPath)
-    : (posterPath || landscapePath);
-
-  const backgroundUrl = bgPath ? imageUrl(bgPath, 'original') : '';
-  const sampleUrl = bgPath ? `${imageUrl(bgPath, 'w92')}?tint=1` : '';
-
-  useArtworkAtmosphere(backgroundUrl, sampleUrl);
 
   return (
     <section className="relative -mx-4 overflow-hidden bg-transparent sm:mx-0 sm:rounded-[28px] sm:border sm:border-white/10">
@@ -156,19 +177,20 @@ export function DetailHero({
             return (
               <img
                 key={backdrop.file_path || index}
-                src={imageUrl(backdrop.file_path, 'original')}
+                src={imageUrl(backdrop.file_path, 'w1280')}
                 alt={`${title} backdrop ${index + 1}`}
-                decoding="async"
+                fetchPriority={index === 0 ? 'high' : 'auto'}
+                decoding={index === 0 ? 'sync' : 'async'}
                 className={`absolute inset-0 h-full w-full object-cover object-[center_22%] transition-opacity duration-[1200ms] ease-in-out will-change-[opacity] ${
                   isCurrent ? 'opacity-100 z-[2]' : 'opacity-0 z-[1] pointer-events-none'
                 }`}
                 onLoad={() => loadedSetRef.current.add(index)}
                 onError={(e) => {
                   const src = e.currentTarget.src;
-                  if (src.includes('/original/')) {
-                    e.currentTarget.src = src.replace('/original/', '/w1280/');
-                  } else if (src.includes('/w1280/')) {
-                    e.currentTarget.src = src.replace('/w1280/', '/w780/');
+                  if (src.includes('/w1280/')) {
+                    e.currentTarget.src = src.replace('/w1280/', '/original/');
+                  } else if (src.includes('/original/')) {
+                    e.currentTarget.src = src.replace('/original/', '/w780/');
                   }
                 }}
               />
@@ -178,15 +200,17 @@ export function DetailHero({
           <img
             src={fallbackBackdropUrl}
             alt={title}
-            className={`absolute inset-0 h-full w-full object-cover ${content?.backdrop_path ? 'object-[center_22%]' : 'object-[center_35%]'}`}
+            fetchPriority="high"
+            decoding="sync"
+            className={`absolute inset-0 h-full w-full object-cover ${landscapePath ? 'object-[center_22%]' : 'object-[center_35%]'}`}
             onError={(e) => {
               const src = e.currentTarget.src;
-              if (src.includes('/original/')) {
-                e.currentTarget.src = src.replace('/original/', '/w1280/');
-              } else if (src.includes('/w1280/')) {
-                e.currentTarget.src = src.replace('/w1280/', '/w780/');
+              if (src.includes('/w1280/')) {
+                e.currentTarget.src = src.replace('/w1280/', '/original/');
+              } else if (src.includes('/original/')) {
+                e.currentTarget.src = src.replace('/original/', '/w780/');
               } else if (currentPosterPath && !src.includes(currentPosterPath)) {
-                e.currentTarget.src = imageUrl(currentPosterPath, 'original');
+                e.currentTarget.src = imageUrl(currentPosterPath, 'w780');
                 e.currentTarget.className = "absolute inset-0 h-full w-full object-cover object-[center_35%]";
               } else {
                 e.currentTarget.src = FALLBACK_POSTER;
@@ -253,67 +277,15 @@ export function DetailHero({
         />
       </div>
 
-      {viewerOpen && (
-        <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center animate-in fade-in duration-200"
-          style={{ background: 'radial-gradient(circle at center, rgba(30, 30, 30, 0.8) 0%, rgba(0, 0, 0, 0.2) 60%, transparent 100%)' }}
-          onClick={() => setViewerOpen(false)}
-        >
-          {hasPosters && posters.length > 1 && (
-            <button
-              className="absolute left-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 md:left-10"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrentPosterIndex((prev) => (prev - 1 + posters.length) % posters.length);
-              }}
-            >
-              <i className="fas fa-chevron-left" />
-            </button>
-          )}
-
-          <img 
-            key={currentPosterPath}
-            src={imageUrl(currentPosterPath, 'original')}
-            alt={title}
-            className="relative z-10 max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_80px_rgba(0,0,0,0.8)] animate-in fade-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-            onError={(event) => {
-              event.currentTarget.src = FALLBACK_AVATAR;
-            }}
-          />
-
-          {hasPosters && posters.length > 1 && (
-            <button
-              className="absolute right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 md:right-10"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrentPosterIndex((prev) => (prev + 1) % posters.length);
-              }}
-            >
-              <i className="fas fa-chevron-right" />
-            </button>
-          )}
-          
-          {hasPosters && posters.length > 1 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-4 py-1 text-sm text-white">
-              {currentPosterIndex + 1} / {posters.length}
-            </div>
-          )}
-
-          {/* Preload adjacent posters for smooth swiping */}
-          {hasPosters && posters.length > 1 && [-2, -1, 1, 2].map(offset => {
-            const index = (currentPosterIndex + offset + posters.length) % posters.length;
-            return (
-              <img 
-                key={`preload-${index}`} 
-                src={imageUrl(posters[index].file_path, 'original')} 
-                alt="" 
-                className="hidden" 
-              />
-            );
-          })}
-        </div>
-      )}
+      <ZoomablePosterModal
+        open={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+        images={hasPosters ? posters : (content?.poster_path ? [content.poster_path] : [])}
+        currentIndex={currentPosterIndex}
+        onIndexChange={setCurrentPosterIndex}
+        alt={title}
+        fallbackImage={FALLBACK_POSTER}
+      />
     </section>
   );
 }

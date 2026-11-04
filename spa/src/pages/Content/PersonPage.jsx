@@ -16,6 +16,8 @@ import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { PersonPageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { PersonProfileHero } from './PersonProfileHero.jsx';
+import { useArtworkAtmosphere } from '../../hooks/useArtworkAtmosphere.js';
+import { ZoomablePosterModal } from '../../components/ui/Modals/ZoomablePosterModal.jsx';
 
 export function PersonCreditsFilterControls({
   contentType,
@@ -288,6 +290,17 @@ export function PersonPage() {
     }
     return person?.profile_path ? [person.profile_path] : [];
   }, [personImagesData, person?.profile_path]);
+
+  // Textured background poster for Cast page
+  const personPoster = person?.profile_path || personImages?.[0];
+  const knownForCredit = credits?.find((c) => c.backdrop_path || c.poster_path);
+  const bestBackdrop = knownForCredit?.backdrop_path || knownForCredit?.poster_path;
+  const isDesktopViewport = typeof window !== 'undefined' ? window.innerWidth >= 768 : true;
+  const castBg = isDesktopViewport ? (bestBackdrop || personPoster) : (personPoster || bestBackdrop);
+  const castBgUrl = castBg ? imageUrl(castBg, isDesktopViewport ? 'w1280' : 'w780') : '';
+  const castSampleUrl = castBg ? `${imageUrl(castBg, 'w92')}?tint=1` : '';
+
+  useArtworkAtmosphere(castBgUrl, castSampleUrl);
 
   useEffect(() => {
     if (!viewerOpen) return;
@@ -660,71 +673,15 @@ export function PersonPage() {
         )}
       </section>
 
-      {viewerOpen && personImages.length > 0 && (
-        <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center animate-in fade-in duration-200"
-          style={{ background: 'radial-gradient(circle at center, rgba(30, 30, 30, 0.8) 0%, rgba(0, 0, 0, 0.2) 60%, transparent 100%)' }}
-          onClick={() => setViewerOpen(false)}
-        >
-          {personImages.length > 1 && (
-            <button
-              type="button"
-              className="absolute left-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 md:left-10"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrentImageIndex((prev) => (prev - 1 + personImages.length) % personImages.length);
-              }}
-              aria-label="Previous image"
-            >
-              <i className="fas fa-chevron-left" />
-            </button>
-          )}
-
-          <img 
-            key={personImages[currentImageIndex]}
-            src={imageUrl(personImages[currentImageIndex], 'original')}
-            alt={person?.name || 'Person profile'}
-            className="relative z-10 max-h-[85vh] max-w-[90vw] rounded-2xl object-contain shadow-[0_0_80px_rgba(0,0,0,0.8)] animate-in fade-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-            onError={(event) => {
-              event.currentTarget.src = FALLBACK_AVATAR;
-            }}
-          />
-
-          {personImages.length > 1 && (
-            <button
-              type="button"
-              className="absolute right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70 md:right-10"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrentImageIndex((prev) => (prev + 1) % personImages.length);
-              }}
-              aria-label="Next image"
-            >
-              <i className="fas fa-chevron-right" />
-            </button>
-          )}
-          
-          {personImages.length > 1 && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-4 py-1 text-sm font-medium text-white select-none">
-              {currentImageIndex + 1} / {personImages.length}
-            </div>
-          )}
-
-          {/* Preload adjacent images */}
-          {personImages.length > 1 && [-2, -1, 1, 2].map(offset => {
-            const index = (currentImageIndex + offset + personImages.length) % personImages.length;
-            return (
-              <img 
-                key={`preload-${index}`} 
-                src={imageUrl(personImages[index], 'original')} 
-                alt="" 
-                className="hidden" 
-              />
-            );
-          })}
-        </div>
-      )}
+      <ZoomablePosterModal
+        open={viewerOpen && personImages.length > 0}
+        onClose={() => setViewerOpen(false)}
+        images={personImages}
+        currentIndex={currentImageIndex}
+        onIndexChange={setCurrentImageIndex}
+        alt={person?.name || 'Person profile'}
+        fallbackImage={FALLBACK_AVATAR}
+      />
     </div>
   );
 }

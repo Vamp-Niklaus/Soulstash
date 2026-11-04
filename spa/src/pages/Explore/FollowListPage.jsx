@@ -33,12 +33,12 @@ export function FollowListPage({ listType }) {
       if (isFollowing) {
         return apiFetch('/api/user/unfollow', {
           method: 'POST',
-          body: JSON.stringify({ username: targetUsername })
+          body: JSON.stringify({ targetUsername, username: targetUsername })
         });
       } else {
         return apiFetch('/api/user/follow', {
           method: 'POST',
-          body: JSON.stringify({ username: targetUsername })
+          body: JSON.stringify({ targetUsername, username: targetUsername })
         });
       }
     },
