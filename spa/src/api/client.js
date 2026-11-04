@@ -16,18 +16,12 @@ export const API_BASE_URL = (() => {
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
   }
-  if (
-    window.location.hostname === 'localhost' &&
-    (window.location.port === '5173' || window.location.port === '3000' || window.location.port === '3001')
-  ) {
-    return ''; // Local development connects directly to the same host
-  }
-  return '';
+  return 'https://soulstash-backend.onrender.com';
 })();
 
 /** Helper to attach the base URL to our API requests */
 function buildApiUrl(path) {
-  if (typeof path === 'string' && path.startsWith('/api/')) {
+  if (typeof path === 'string' && (path.startsWith('/api/') || path.startsWith('/image/'))) {
     return `${API_BASE_URL}${path}`;
   }
   return path;

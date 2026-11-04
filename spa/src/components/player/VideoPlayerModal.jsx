@@ -17,6 +17,7 @@ import { buildPlayerSourceSlots, firstPlayableUrl, sourceKeyText } from '../../u
 
 export function VideoPlayerModal({ request, onClose }) {
   if (!request?.tmdbId) return null;
+  const [selectedGroup, setSelectedGroup] = useState('hindi');
   const [hindiSources, setHindiSources] = useState([]);
   const [animeSources, setAnimeSources] = useState([]);
   const [anilistId, setAnilistId] = useState(null);
@@ -36,9 +37,9 @@ export function VideoPlayerModal({ request, onClose }) {
   const isDesktopViewport = typeof window !== 'undefined' ? window.innerWidth >= 768 : true;
   const isAndroidViewport = !isDesktopViewport;
   const modalPadding = 16;
-  const controlsHeight = 52;
+  const controlsHeight = isAndroidViewport ? 40 : 44;
   const verticalInset = isDesktopViewport ? 10 : 36;
-  const chromeAllowance = isDesktopViewport ? 112 : 112;
+  const chromeAllowance = isDesktopViewport ? 134 : 126;
   const widthLimit = isDesktopViewport ? '99vw' : '96vw';
   const maxPlayerWidth = isDesktopViewport ? '1760px' : '1400px';
   const fallbackSources = Array.isArray(request?.fallbackSources)
@@ -46,6 +47,7 @@ export function VideoPlayerModal({ request, onClose }) {
     : [];
 
   useEffect(() => {
+    setSelectedGroup('hindi');
     setHindiSources([]);
     setAnimeSources([]);
     setAnilistId(null);
@@ -257,21 +259,6 @@ export function VideoPlayerModal({ request, onClose }) {
             key: 'gogo-server-dub',
             label: 'Gogo Server (Dub)',
             url: `https://gogoanime.me.uk/newplayer.php?mal_id=${malId}&ep=${ep}&category=dub`,
-            embeddable: true
-          },
-          // MegaPlay (Sub & Dub)
-          {
-            id: 'megaplay-sub',
-            key: 'megaplay-sub',
-            label: 'MegaPlay (Sub)',
-            url: `https://megaplay.buzz/stream/ani/${resolvedAnilistId}/${ep}/sub`,
-            embeddable: true
-          },
-          {
-            id: 'megaplay-dub',
-            key: 'megaplay-dub',
-            label: 'MegaPlay (Dub)',
-            url: `https://megaplay.buzz/stream/ani/${resolvedAnilistId}/${ep}/dub`,
             embeddable: true
           },
           // VidHawk (Sub & Dub)
@@ -563,24 +550,27 @@ export function VideoPlayerModal({ request, onClose }) {
     // Anime sources generated for current title/episode take precedence over stale backend cache entries
     const animeKeys = new Set(animeSources.map((s) => s.id));
     const cleanHindiSources = hindiSources.filter(
-      (s) => !animeKeys.has(s.id) && !/^(gogo|tryembed|megaplay|vidhawk|vidnest-ani|vidnest-pahe)/i.test(s.id || s.key || '')
+      (s) => !animeKeys.has(s.id) && !/^(gogo|tryembed|vidhawk|vidnest-ani|vidnest-pahe)/i.test(s.id || s.key || '')
     );
     return [...animeSources, ...cleanHindiSources];
   }, [hindiSources, animeSources]);
-
-  const effectiveAnilistId = anilistId || sourcePayload?.anilistId || null;
 
   const sources = useMemo(
     () => buildPlayerSourceSlots(combinedIncoming, fallbackSources, {
       isLoading: isFetching,
       failedUrls,
-      verifiedUrls,
-      anilistId: effectiveAnilistId
+      verifiedUrls
     }),
-    [combinedIncoming, fallbackSources, isFetching, failedUrls, verifiedUrls, effectiveAnilistId]
+    [combinedIncoming, fallbackSources, isFetching, failedUrls, verifiedUrls]
   );
 
-  const availableSources = useMemo(() => sources.filter((source) => source?.url), [sources]);
+  const currentGroupSources = useMemo(() => {
+    return sources.filter((s) => s.group === selectedGroup);
+  }, [sources, selectedGroup]);
+
+  const currentPlayableSources = useMemo(() => {
+    return currentGroupSources.filter((s) => s.url && !s.failed);
+  }, [currentGroupSources]);
 
   const handleIframeError = useCallback((failedUrl) => {
     if (!failedUrl) return;
@@ -596,23 +586,29 @@ export function VideoPlayerModal({ request, onClose }) {
       return next;
     });
 
-    // Auto-switch to next available healthy source
-    const candidates = availableSources.filter((s) => s.url !== failedUrl && !failedUrls.has(s.url));
+    // Auto-switch to next available healthy source in current group only
+    const candidates = currentGroupSources.filter((s) => s.url && s.url !== failedUrl && !failedUrls.has(s.url));
     if (candidates.length > 0) {
       setActiveUrl(candidates[0].url);
       setIframeReloadKey(0);
+    } else {
+      setActiveUrl('');
     }
-  }, [availableSources, failedUrls]);
+  }, [currentGroupSources, failedUrls]);
 
-  // Race every available stream once; the first host that answers wins.
-  // After a stream is chosen we keep it (no flicker) unless it fails or disappears.
+  // Race every available stream once in current group only; the first host that answers wins.
   const raceTokenRef = useRef(0);
-  const playableKey = sources.filter((s) => s.url).map((s) => s.url).join('|');
+  const playableKey = currentPlayableSources.map((s) => s.url).join('|');
 
   useEffect(() => {
-    const playable = sources.filter((s) => s.url && !s.failed);
-    if (!playable.length) return undefined;
-    if (activeUrl && playable.some((s) => s.url === activeUrl && !failedUrls.has(s.url))) {
+    if (!currentPlayableSources.length) {
+      if (activeUrl && !currentGroupSources.some((s) => s.url === activeUrl)) {
+        setActiveUrl('');
+      }
+      return undefined;
+    }
+
+    if (activeUrl && currentPlayableSources.some((s) => s.url === activeUrl && !failedUrls.has(s.url))) {
       return undefined;
     }
 
@@ -628,7 +624,7 @@ export function VideoPlayerModal({ request, onClose }) {
       setActiveUrl(url);
     };
 
-    playable.forEach((s) => {
+    currentPlayableSources.forEach((s) => {
       const c = new AbortController();
       controllers.push(c);
       fetch(s.url, { mode: 'no-cors', signal: c.signal, cache: 'no-store' })
@@ -641,8 +637,8 @@ export function VideoPlayerModal({ request, onClose }) {
 
     // Fallback: pick the first non-failed priority source after 2.5s if probe hasn't settled yet
     const timer = window.setTimeout(() => {
-      if (!settled && raceTokenRef.current === token && playable[0]) {
-        pick(playable[0].url);
+      if (!settled && raceTokenRef.current === token && currentPlayableSources[0]) {
+        pick(currentPlayableSources[0].url);
       }
     }, 2500);
 
@@ -650,16 +646,16 @@ export function VideoPlayerModal({ request, onClose }) {
       window.clearTimeout(timer);
       controllers.forEach((c) => c.abort());
     };
-  }, [playableKey, activeUrl, failedUrls, sources]);
+  }, [playableKey, activeUrl, failedUrls, currentPlayableSources, currentGroupSources]);
 
-  const defaultSource = sources.find((source) => source.url && !source.failed) || sources.find((source) => source.url) || sources[0];
-  const activeSource = sources.find((source) => source.url === activeUrl) || defaultSource;
+  const defaultSource = currentGroupSources.find((source) => source.url && !source.failed) || currentGroupSources.find((source) => source.url) || currentGroupSources[0];
+  const activeSource = currentGroupSources.find((source) => source.url === activeUrl) || defaultSource;
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
 
   const canEmbedSource = canUseVideoJs || activeSource?.embeddable !== false;
   const availableHeight = `calc(100dvh - ${modalPadding * 2 + verticalInset * 2}px)`;
-  const mediaHeight = `calc(${availableHeight} - ${chromeAllowance - 18}px)`;
+  const mediaHeight = `calc(${availableHeight} - ${chromeAllowance}px)`;
   const videoBoxStyle = {
     width: `min(${widthLimit}, ${maxPlayerWidth}, calc(${mediaHeight} * 16 / 9))`,
     maxHeight: availableHeight,
@@ -690,7 +686,7 @@ export function VideoPlayerModal({ request, onClose }) {
   };
 
   const handleSwitchSource = () => {
-    const candidates = availableSources.filter((s) => !failedUrls.has(s.url));
+    const candidates = currentPlayableSources.filter((s) => !failedUrls.has(s.url));
     if (!candidates.length) return;
     const currentIndex = candidates.findIndex((source) => source.url === activeUrl);
     const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % candidates.length : 0;
@@ -803,7 +799,7 @@ export function VideoPlayerModal({ request, onClose }) {
         inline: 'center'
       });
     }
-  }, [activeUrl, sources.length]);
+  }, [activeUrl, currentGroupSources.length, selectedGroup]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -822,7 +818,7 @@ export function VideoPlayerModal({ request, onClose }) {
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeUrl, sources.length]);
+  }, [activeUrl, currentGroupSources.length, selectedGroup]);
 
   const errorDisplay = sourceError 
     ? (fallbackSources.length ? '' : sourceError?.message || 'Failed to load sources.')
@@ -838,7 +834,7 @@ export function VideoPlayerModal({ request, onClose }) {
       >
         <div
           ref={playerBoxRef}
-          className="pointer-events-auto absolute overflow-hidden rounded-[22px] border border-white/10 bg-black"
+          className="pointer-events-auto absolute overflow-hidden rounded-[22px] border border-white/10 bg-black shadow-2xl flex flex-col"
           style={{
             ...videoBoxStyle,
             left: '50%',
@@ -847,102 +843,29 @@ export function VideoPlayerModal({ request, onClose }) {
             transition: draggingPlayer ? 'none' : 'transform 220ms ease'
           }}
         >
-            <div
-              data-player-controls="true"
-              data-player-drag-handle="true"
-              className="flex items-center justify-between gap-1.5 sm:gap-2 border-b border-white/10 bg-black/80 px-2 sm:px-4"
-              style={{ height: controlsHeight, touchAction: 'none' }}
-              onPointerDown={handlePlayerPointerDown}
-            >
-              {/* Left Scroll Button '<' (fixed at start) */}
-              <button
-                type="button"
-                onClick={() => scrollContainerRef.current?.scrollBy({ left: -220, behavior: 'smooth' })}
-                className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
-                aria-label="Scroll sources left"
-                title="Scroll Left"
-              >
-                <i className="fas fa-chevron-left text-[10px] sm:text-xs"></i>
-              </button>
+          {/* Top Bar Header: Media info & Window action controls */}
+          <div
+            data-player-controls="true"
+            data-player-drag-handle="true"
+            className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/80 px-3 sm:px-4 select-none"
+            style={{ height: controlsHeight, touchAction: 'none' }}
+            onPointerDown={handlePlayerPointerDown}
+          >
+            {/* Title & Episode info */}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="flex h-2 w-2 rounded-full bg-red-600 animate-pulse shrink-0" />
+              <span className="truncate text-xs sm:text-sm font-semibold text-white/90">
+                {request?.seriesTitle || request?.title || 'Soulstash Player'}
+              </span>
+              {(request?.seasonNumber || request?.episodeNumber) && (
+                <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-mono text-white/70">
+                  S{request.seasonNumber || 1} E{request.episodeNumber || 1}
+                </span>
+              )}
+            </div>
 
-              <div
-                ref={scrollContainerRef}
-                className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden scroll-smooth"
-              >
-                <div className="flex min-w-max items-center gap-1.5 sm:gap-2 px-1">
-                  {sources.length ? (
-                    sources.map((source) => {
-                      const isActive = activeUrl === source.url;
-                      const isFailed = source.failed;
-                      const isWorking = source.working || isActive;
-                      return (
-                        <button
-                          key={source.id}
-                          type="button"
-                          data-player-source="true"
-                          data-active-source={isActive}
-                          aria-label={`Play stream ${source.label}`}
-                          className={`inline-flex items-center gap-1.5 ${sourceButtonClass} ${
-                            isFailed
-                              ? 'opacity-60 bg-red-950/40 text-red-300 border border-red-800/40 hover:bg-red-900/50'
-                              : source.pending
-                              ? 'animate-pulse cursor-wait bg-white/15 text-white/50 border-white/20'
-                              : source.disabled
-                              ? 'cursor-not-allowed bg-white/5 text-white/25'
-                              : isActive
-                              ? 'bg-white text-black font-semibold shadow-md'
-                              : 'bg-white/10 text-white hover:bg-white/20'
-                          }`}
-                          disabled={source.disabled || source.pending}
-                          onClick={() => {
-                            if (!source.disabled && !source.pending) {
-                              setActiveUrl(source.url);
-                              setIframeReloadKey(0);
-                            }
-                          }}
-                        >
-                          <span>{source.label}</span>
-                          {/* Status dot indicator */}
-                          {isFailed ? (
-                            <span
-                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
-                              title="Stream failed"
-                            />
-                          ) : isWorking ? (
-                            <span
-                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
-                              title="Active stream"
-                            />
-                          ) : source.pending ? (
-                            <span
-                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/80 animate-pulse"
-                              title="Probing stream"
-                            />
-                          ) : (
-                            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/30" />
-                          )}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <span className="text-[11px] font-medium text-white/50">
-                      {errorDisplay || 'No source links yet.'}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Right Scroll Button '>' (fixed just before action buttons) */}
-              <button
-                type="button"
-                onClick={() => scrollContainerRef.current?.scrollBy({ left: 220, behavior: 'smooth' })}
-                className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
-                aria-label="Scroll sources right"
-                title="Scroll Right"
-              >
-                <i className="fas fa-chevron-right text-[10px] sm:text-xs"></i>
-              </button>
-            <div className="flex shrink-0 items-center justify-end gap-2">
+            {/* Window Action Buttons */}
+            <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
               <button
                 type="button"
                 data-player-action="true"
@@ -952,7 +875,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 aria-label="Reload stream"
                 title="Reload Stream"
               >
-                <i className="fas fa-redo"></i>
+                <i className="fas fa-redo text-xs"></i>
               </button>
               {!canUseVideoJs && activeUrl && (
                 <button
@@ -963,7 +886,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   aria-label={getZoomLabel()}
                   title={getZoomLabel()}
                 >
-                  <i className={getZoomIcon()}></i>
+                  <i className={`${getZoomIcon()} text-xs`}></i>
                 </button>
               )}
               <a
@@ -978,14 +901,15 @@ export function VideoPlayerModal({ request, onClose }) {
                   if (!activeUrl) event.preventDefault();
                 }}
               >
-                <i className="fas fa-external-link-alt"></i>
+                <i className="fas fa-external-link-alt text-xs"></i>
               </a>
               <button
                 type="button"
                 data-player-action="true"
                 onClick={handleCloseClick}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+                className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
                 aria-label="Close player"
+                title="Close Player"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 -960 960 960" fill="currentColor">
                   <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>
@@ -993,6 +917,8 @@ export function VideoPlayerModal({ request, onClose }) {
               </button>
             </div>
           </div>
+
+          {/* Middle: Video / Stream iframe Area */}
           <div
             className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
             style={mediaAreaStyle}
@@ -1008,7 +934,7 @@ export function VideoPlayerModal({ request, onClose }) {
               </div>
             ) : !activeUrl ? (
               <div className="flex h-full w-full items-center justify-center px-6 text-center text-sm text-white/65">
-                {errorDisplay || 'No playable source is available for this title right now.'}
+                {errorDisplay || `No playable source is available in the ${selectedGroup === 'hindi' ? 'Hindi' : selectedGroup === 'dubbed' ? 'Dubbed' : 'Subbed / Original'} group.`}
               </div>
             ) : canUseVideoJs ? (
               <div className="flex h-full w-full items-center justify-center bg-black">
@@ -1082,6 +1008,149 @@ export function VideoPlayerModal({ request, onClose }) {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Bottom Sources Section: Group tabs & source pills */}
+          <div className="shrink-0 border-t border-white/10 bg-black/95 px-2.5 sm:px-4 py-2 sm:py-2.5 flex flex-col gap-2">
+            {/* Exactly 3 Groups: Hindi, Dubbed, Subbed / Original */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {[
+                { id: 'hindi', label: 'Hindi' },
+                { id: 'dubbed', label: 'Dubbed' },
+                { id: 'subbed', label: 'Subbed / Original' }
+              ].map((grp) => {
+                const isSelected = selectedGroup === grp.id;
+                const count = sources.filter((s) => s.group === grp.id && s.url && !failedUrls.has(s.url)).length;
+                return (
+                  <button
+                    key={grp.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedGroup(grp.id);
+                      const groupPlayable = sources.filter((s) => s.group === grp.id && s.url && !failedUrls.has(s.url));
+                      if (groupPlayable.length > 0) {
+                        setActiveUrl(groupPlayable[0].url);
+                        setIframeReloadKey(0);
+                      } else {
+                        setActiveUrl('');
+                      }
+                    }}
+                    className={`rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all ${
+                      isSelected
+                        ? 'bg-white text-black font-bold shadow-md'
+                        : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+                    }`}
+                  >
+                    <span>{grp.label}</span>
+                    {count > 0 && (
+                      <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${isSelected ? 'bg-black/20 text-black font-bold' : 'bg-white/20 text-white/90'}`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sources Row with < and > Scroll buttons */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                onClick={() => scrollContainerRef.current?.scrollBy({ left: -200, behavior: 'smooth' })}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                aria-label="Scroll sources left"
+                title="Scroll Left"
+              >
+                <i className="fas fa-chevron-left text-[10px]"></i>
+              </button>
+
+              <div
+                ref={scrollContainerRef}
+                className="filter-scrollbar-hidden min-w-0 flex-1 overflow-x-auto overflow-y-hidden scroll-smooth py-0.5"
+              >
+                <div className="flex min-w-max items-center gap-1.5 sm:gap-2">
+                  {currentGroupSources.length ? (
+                    currentGroupSources.map((source) => {
+                      const isActive = Boolean(activeUrl && source.url && activeUrl === source.url);
+                      const isFailed = source.failed;
+                      const isWorking = source.working || isActive;
+                      const isUnhealthy = source.unhealthy || (!source.url && !source.pending);
+
+                      return (
+                        <button
+                          key={source.id}
+                          type="button"
+                          data-player-source="true"
+                          data-active-source={isActive}
+                          aria-label={`Play stream ${source.label}`}
+                          title={isUnhealthy ? `${source.label} (No stream data)` : isFailed ? `${source.label} (Stream failed)` : source.label}
+                          className={`inline-flex items-center gap-1.5 ${sourceButtonClass} ${
+                            isFailed
+                              ? 'opacity-60 bg-red-950/40 text-red-300 border border-red-800/40 hover:bg-red-900/50'
+                              : source.pending
+                              ? 'animate-pulse cursor-wait bg-white/15 text-white/50 border border-white/20'
+                              : isUnhealthy
+                              ? 'opacity-40 cursor-not-allowed bg-white/5 text-white/40 border border-white/5'
+                              : source.disabled
+                              ? 'cursor-not-allowed bg-white/5 text-white/25'
+                              : isActive
+                              ? 'bg-white text-black font-semibold shadow-md'
+                              : 'bg-white/10 text-white hover:bg-white/20'
+                          }`}
+                          disabled={isUnhealthy || source.disabled || source.pending}
+                          onClick={() => {
+                            if (!isUnhealthy && !source.disabled && !source.pending && source.url) {
+                              setActiveUrl(source.url);
+                              setIframeReloadKey(0);
+                            }
+                          }}
+                        >
+                          <span>{source.label}</span>
+                          {/* Status indicator */}
+                          {isFailed ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.9)]"
+                              title="Stream failed"
+                            />
+                          ) : isWorking ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
+                              title="Active stream"
+                            />
+                          ) : source.pending ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/80 animate-pulse"
+                              title="Probing stream"
+                            />
+                          ) : isUnhealthy ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-400/40"
+                              title="No stream data"
+                            />
+                          ) : (
+                            <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-white/30" />
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <span className="text-[11px] font-medium text-white/50">
+                      No sources in this group.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => scrollContainerRef.current?.scrollBy({ left: 200, behavior: 'smooth' })}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                aria-label="Scroll sources right"
+                title="Scroll Right"
+              >
+                <i className="fas fa-chevron-right text-[10px]"></i>
+              </button>
+            </div>
           </div>
         </div>
       </div>

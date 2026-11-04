@@ -39,8 +39,6 @@ const DIRECT_SOURCES = [
   { id: 'vidbolt', label: 'VidBolt', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidbolt.xyz/tv/${t}/${s || 1}/${e || 1}` : `https://vidbolt.xyz/movie/${t}` },
   { id: 'filmu', label: 'Filmu', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://embed.filmu.in/tv/${t}/${s || 1}/${e || 1}` : `https://embed.filmu.in/movie/${t}` },
   { id: 'vidout', label: 'VIDOUT', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidout.pages.dev/tv/${t}/s${s || 1}/e${e || 1}` : `https://vidout.pages.dev/movie/${t}` },
-  { id: 'nexus', label: 'Nexus', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://www.moviesnexus.fun/tv/${t}/${s || 1}/${e || 1}` : `https://www.moviesnexus.fun/movie/${t}?sv=multi-audio` },
-  { id: 'videasy', label: 'VIDEASY', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://player.videasy.to/tv/${t}/${s || 1}/${e || 1}?color=F97316&overlay=true&nextEpisode=true&autoplayNextEpisode=true&episodeSelector=true` : `https://player.videasy.to/movie/${t}?color=F97316&overlay=true` },
   { id: 'vidfast', label: 'vidfast', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidfast.pro/tv/${t}/${s || 1}/${e || 1}?autoPlay=true&title=true&poster=true&theme=F97316&nextButton=true&autoNext=true` : `https://vidfast.pro/movie/${t}?autoPlay=true&title=true&poster=true&theme=F97316` }
 ];
 

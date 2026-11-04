@@ -1,5 +1,5 @@
 export const IMAGE_BASE = 'https://image.tmdb.org/t/p';
-export const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+export const API_URL = import.meta.env.VITE_API_BASE_URL || 'https://soulstash-backend.onrender.com';
 export const FALLBACK_AVATAR = `${import.meta.env.BASE_URL}images/avatar.png`;
 export const FALLBACK_LOGO = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 50'%3E%3Ctext x='10' y='35' font-family='Arial' font-size='24' font-weight='bold' fill='%23ffffff'%3ESoulstash%3C/text%3E%3C/svg%3E`;
 export const FALLBACK_POSTER = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='300' viewBox='0 0 200 300'%3E%3Crect width='200' height='300' fill='%23141414'/%3E%3Crect x='0' y='0' width='200' height='8' fill='%23222'/%3E%3Crect x='0' y='292' width='200' height='8' fill='%23222'/%3E%3Ccircle cx='100' cy='140' r='28' fill='none' stroke='%23333' stroke-width='2'/%3E%3Cpolygon points='92,128 92,152 116,140' fill='%23333'/%3E%3Crect x='60' y='185' width='80' height='4' rx='2' fill='%23262626'/%3E%3Crect x='72' y='197' width='56' height='4' rx='2' fill='%23222'/%3E%3C/svg%3E`;
