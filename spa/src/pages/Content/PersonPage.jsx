@@ -341,21 +341,6 @@ export function PersonPage() {
 
   useArtworkAtmosphere(castBgUrl, castSampleUrl);
 
-  useEffect(() => {
-    if (!viewerOpen) return;
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setViewerOpen(false);
-      } else if (e.key === 'ArrowLeft' && personImages.length > 1) {
-        setCurrentImageIndex((prev) => (prev - 1 + personImages.length) % personImages.length);
-      } else if (e.key === 'ArrowRight' && personImages.length > 1) {
-        setCurrentImageIndex((prev) => (prev + 1) % personImages.length);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewerOpen, personImages.length]);
-
   const { data: favoritePeoplePayload } = useQuery({
     queryKey: ['favorites'],
     queryFn: () => apiFetch('/api/user/favorites'),

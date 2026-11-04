@@ -639,7 +639,20 @@ export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, epis
     },
     { id: 'legacy-vidsrc-pm', key: 'legacy-vidsrc-pm', label: 'VidSrc PM', url: isMovie ? `https://vidsrc.pm/embed/movie/${id}` : `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.pm/embed/movie/${id}` : `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`], embeddable: true, fallback: true },
     { id: 'legacy-autoembed', key: 'legacy-autoembed', label: 'AutoEmbed', url: isMovie ? `https://autoembed.co/movie/tmdb/${id}` : `https://autoembed.co/tv/tmdb/${id}-${s}-${e}`, urls: [isMovie ? `https://autoembed.co/movie/tmdb/${id}` : `https://autoembed.co/tv/tmdb/${id}-${s}-${e}`], embeddable: true, fallback: true },
-    { id: 'legacy-2embed', key: 'legacy-2embed', label: '2Embed', url: isMovie ? `https://www.2embed.cc/embed/${id}` : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`, urls: [isMovie ? `https://www.2embed.cc/embed/${id}` : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`], embeddable: true, fallback: true }
+    { id: 'legacy-2embed', key: 'legacy-2embed', label: '2Embed', url: isMovie ? `https://www.2embed.cc/embed/${id}` : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`, urls: [isMovie ? `https://www.2embed.cc/embed/${id}` : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`], embeddable: true, fallback: true },
+    {
+      id: 'youtube',
+      key: 'youtube',
+      label: 'YouTube',
+      url: input?.youtubeTrailerKey
+        ? `https://www.youtube-nocookie.com/embed/${input.youtubeTrailerKey}`
+        : input?.title
+        ? `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${input.title} full movie trailer`)}`
+        : '',
+      urls: [],
+      embeddable: true,
+      fallback: true
+    }
   ].filter((source) => source.url);
 }
 
@@ -696,7 +709,7 @@ export function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber 
 /**
  * Structures the complete payload required by the player components to begin streaming.
  */
-export function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title, originalTitle, originalName, seriesTitle, year }) {
+export function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title, originalTitle, originalName, seriesTitle, year, youtubeTrailerKey }) {
   const normalizedType = String(mediaType || '').toLowerCase() === 'movie' ? 'movie' : 'series';
   const resolvedTmdbId = Number(tmdbId);
   const resolvedSeasonNumber = normalizedType === 'series' ? Number(seasonNumber || 1) : null;
@@ -713,11 +726,14 @@ export function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNu
     originalName: originalName || originalTitle || '',
     seriesTitle: seriesTitle || '',
     year: Number(year) || null,
+    youtubeTrailerKey: youtubeTrailerKey || '',
     fallbackSources: buildLegacyPlayerSources({
       mediaType: normalizedType,
       tmdbId: resolvedTmdbId,
       seasonNumber: resolvedSeasonNumber,
       episodeNumber: resolvedEpisodeNumber,
+      title: title || seriesTitle || originalTitle || '',
+      youtubeTrailerKey
     })
   };
 }

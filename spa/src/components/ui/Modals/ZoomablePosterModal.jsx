@@ -21,7 +21,7 @@ export function ZoomablePosterModal({
   currentIndex = 0,
   onIndexChange,
   alt = 'Poster',
-  fallbackImage = FALLBACK_POSTER
+  fallbackImage = FALLBACK_AVATAR
 }) {
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [isAnimatingBack, setIsAnimatingBack] = useState(false);
@@ -38,33 +38,47 @@ export function ZoomablePosterModal({
     isSwiping: false
   });
 
+  const isSwipingGestureRef = useRef(false);
+  const swipeCooldownRef = useRef(false);
+
   const effectiveImages = useMemo(() => {
     const list = (Array.isArray(images) ? images : []).map((item) => {
       if (typeof item === 'string') return item;
       return item?.file_path || item?.url || '';
     }).filter(Boolean);
     if (list.length === 0) {
-      return [fallbackImage || FALLBACK_POSTER];
+      return [fallbackImage || FALLBACK_AVATAR];
     }
     return list;
   }, [images, fallbackImage]);
 
   const count = effectiveImages.length;
   const safeIndex = count > 0 ? ((currentIndex % count) + count) % count : 0;
-  const activePath = effectiveImages[safeIndex] || fallbackImage || FALLBACK_POSTER;
-  const currentUrl = activePath.startsWith('http') || activePath.startsWith('data:')
+  const activePath = effectiveImages[safeIndex] || fallbackImage || FALLBACK_AVATAR;
+  const currentUrl = activePath.startsWith('http') || activePath.startsWith('data:') || activePath.startsWith('/')
     ? activePath
     : imageUrl(activePath, 'original');
 
   const isPushedRef = useRef(false);
 
+  // Keep latest mutable refs for event handlers so history trap does NOT re-run on index change!
+  const onIndexChangeRef = useRef(onIndexChange);
+  onIndexChangeRef.current = onIndexChange;
+  const safeIndexRef = useRef(safeIndex);
+  safeIndexRef.current = safeIndex;
+  const countRef = useRef(count);
+  countRef.current = count;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   // Reset transform whenever active image changes
   useEffect(() => {
     setTransform({ scale: 1, x: 0, y: 0 });
     setIsAnimatingBack(false);
-  }, [currentIndex]);
+  }, [safeIndex]);
 
-  // Back-button history trap: pressing back closes ONLY the poster overlay without navigating away from the page
+  // Back-button history trap: pressing back closes ONLY the poster overlay without navigating away from the page.
+  // Crucial: ONLY depend on `open`! Re-running on index change would trigger cleanup which calls history.back()!
   useEffect(() => {
     if (!open) return;
 
@@ -75,16 +89,16 @@ export function ZoomablePosterModal({
 
     const handlePopState = () => {
       isPushedRef.current = false;
-      onClose();
+      onCloseRef.current?.();
     };
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        onClose();
-      } else if (e.key === 'ArrowLeft' && count > 1 && onIndexChange) {
-        onIndexChange((currentIndex - 1 + count) % count);
-      } else if (e.key === 'ArrowRight' && count > 1 && onIndexChange) {
-        onIndexChange((currentIndex + 1) % count);
+        onCloseRef.current?.();
+      } else if (e.key === 'ArrowLeft' && countRef.current > 1 && onIndexChangeRef.current) {
+        onIndexChangeRef.current((safeIndexRef.current - 1 + countRef.current) % countRef.current);
+      } else if (e.key === 'ArrowRight' && countRef.current > 1 && onIndexChangeRef.current) {
+        onIndexChangeRef.current((safeIndexRef.current + 1) % countRef.current);
       }
     };
 
@@ -100,32 +114,41 @@ export function ZoomablePosterModal({
         }
       }
     };
-  }, [open, count, currentIndex, onClose, onIndexChange]);
+  }, [open]);
 
   if (!open) return null;
 
   const handlePrev = (e) => {
     if (e) {
       e.stopPropagation();
-      if (e.cancelable && e.type === 'touchend') e.preventDefault();
+      if (e.cancelable) e.preventDefault();
     }
+    swipeCooldownRef.current = true;
+    setTimeout(() => {
+      swipeCooldownRef.current = false;
+    }, 350);
     if (count > 1 && onIndexChange) {
-      onIndexChange((currentIndex - 1 + count) % count);
+      onIndexChange((safeIndex - 1 + count) % count);
     }
   };
 
   const handleNext = (e) => {
     if (e) {
       e.stopPropagation();
-      if (e.cancelable && e.type === 'touchend') e.preventDefault();
+      if (e.cancelable) e.preventDefault();
     }
+    swipeCooldownRef.current = true;
+    setTimeout(() => {
+      swipeCooldownRef.current = false;
+    }, 350);
     if (count > 1 && onIndexChange) {
-      onIndexChange((currentIndex + 1) % count);
+      onIndexChange((safeIndex + 1) % count);
     }
   };
 
   // Touch gesture handlers for mobile pinch-zoom and swipe
   const handleTouchStart = (e) => {
+    isSwipingGestureRef.current = false;
     if (e.touches.length === 2) {
       const t1 = e.touches[0];
       const t2 = e.touches[1];
@@ -168,7 +191,6 @@ export function ZoomablePosterModal({
       const midY = (t1.clientY + t2.clientY) / 2;
 
       const scaleFactor = dist / (touchStateRef.current.initialDist || 1);
-      // Unrestricted zoom: can zoom far beyond boundaries
       const newScale = Math.max(0.4, touchStateRef.current.initialScale * scaleFactor);
       const dx = midX - touchStateRef.current.initialMidX;
       const dy = midY - touchStateRef.current.initialMidY;
@@ -179,9 +201,9 @@ export function ZoomablePosterModal({
       touchStateRef.current.swipeLastY = e.touches[0].clientY;
       const deltaX = e.touches[0].clientX - touchStateRef.current.swipeStartX;
       const deltaY = e.touches[0].clientY - touchStateRef.current.swipeStartY;
-      // Prevent browser default scroll/bounce when swiping horizontally
-      if (Math.abs(deltaX) > 15 && Math.abs(deltaX) > Math.abs(deltaY) && e.cancelable) {
-        e.preventDefault();
+      if (Math.abs(deltaX) > 10) {
+        isSwipingGestureRef.current = true;
+        if (e.cancelable) e.preventDefault();
       }
     }
   };
@@ -191,7 +213,6 @@ export function ZoomablePosterModal({
     if (s.isPinching) {
       s.isPinching = false;
       s.isSwiping = false;
-      // Smoothly animate back to normal 1.0x scale and centered coordinates on release
       setIsAnimatingBack(true);
       setTransform({ scale: 1, x: 0, y: 0 });
       return;
@@ -199,18 +220,25 @@ export function ZoomablePosterModal({
 
     if (s.isSwiping) {
       s.isSwiping = false;
-      if (transform.scale <= 1.15) {
-        const endX = e.changedTouches?.[0]?.clientX ?? s.swipeLastX;
-        const endY = e.changedTouches?.[0]?.clientY ?? s.swipeLastY;
-        const deltaX = endX - s.swipeStartX;
-        const deltaY = endY - s.swipeStartY;
+      const endX = e.changedTouches?.[0]?.clientX ?? s.swipeLastX;
+      const endY = e.changedTouches?.[0]?.clientY ?? s.swipeLastY;
+      const deltaX = endX - s.swipeStartX;
+      const deltaY = endY - s.swipeStartY;
 
-        // Horizontal swipe threshold 30px
-        if (Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (isSwipingGestureRef.current) {
+        swipeCooldownRef.current = true;
+        setTimeout(() => {
+          swipeCooldownRef.current = false;
+        }, 400);
+      }
+
+      if (transform.scale <= 1.15) {
+        // Horizontal swipe threshold 28px
+        if (Math.abs(deltaX) > 28 && Math.abs(deltaX) > Math.abs(deltaY)) {
           if (deltaX < 0 && count > 1 && onIndexChange) {
-            onIndexChange((currentIndex + 1) % count);
+            onIndexChange((safeIndex + 1) % count);
           } else if (deltaX > 0 && count > 1 && onIndexChange) {
-            onIndexChange((currentIndex - 1 + count) % count);
+            onIndexChange((safeIndex - 1 + count) % count);
           }
         }
       }
@@ -231,6 +259,7 @@ export function ZoomablePosterModal({
         background: 'radial-gradient(circle at center, rgba(16, 18, 22, 0.96) 0%, rgba(6, 7, 9, 0.99) 75%, black 100%)'
       }}
       onClick={(e) => {
+        if (isSwipingGestureRef.current || swipeCooldownRef.current) return;
         if (e.target === e.currentTarget) {
           onClose();
         }
@@ -244,13 +273,13 @@ export function ZoomablePosterModal({
       {count > 1 && (
         <button
           type="button"
-          className="absolute left-3 sm:left-6 z-[50] flex h-12 w-12 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-lg select-none"
+          className="absolute left-3 sm:left-6 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white hover:bg-black/95 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl select-none"
           onClick={handlePrev}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={handlePrev}
           aria-label="Previous image"
         >
-          <i className="fas fa-chevron-left text-base" />
+          <i className="fas fa-chevron-left text-lg pointer-events-none" />
         </button>
       )}
 
@@ -270,6 +299,7 @@ export function ZoomablePosterModal({
           }}
           onError={(e) => {
             const src = e.currentTarget.src;
+            if (src.includes('avatar.png')) return;
             if (src.includes('/original/')) {
               e.currentTarget.src = src.replace('/original/', '/w1280/');
             } else if (src.includes('/w1280/')) {
@@ -286,13 +316,13 @@ export function ZoomablePosterModal({
       {count > 1 && (
         <button
           type="button"
-          className="absolute right-3 sm:right-6 z-[50] flex h-12 w-12 items-center justify-center rounded-full bg-black/70 text-white hover:bg-black/90 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-lg select-none"
+          className="absolute right-3 sm:right-6 z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white hover:bg-black/95 active:scale-95 transition-all pointer-events-auto cursor-pointer shadow-2xl select-none"
           onClick={handleNext}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={handleNext}
           aria-label="Next image"
         >
-          <i className="fas fa-chevron-right text-base" />
+          <i className="fas fa-chevron-right text-lg pointer-events-none" />
         </button>
       )}
 
@@ -307,7 +337,7 @@ export function ZoomablePosterModal({
       {count > 1 && [-2, -1, 1, 2].map((offset) => {
         const idx = ((safeIndex + offset) % count + count) % count;
         const preloadPath = effectiveImages[idx];
-        const preloadUrl = preloadPath.startsWith('http') || preloadPath.startsWith('data:')
+        const preloadUrl = preloadPath.startsWith('http') || preloadPath.startsWith('data:') || preloadPath.startsWith('/')
           ? preloadPath
           : imageUrl(preloadPath, 'original');
         return (

@@ -130,13 +130,14 @@ function buildPlayerSourcePayload(record = {}, identity = null, isScraping = fal
   })) : [];
 
   const youtubeUrls = sanitizeProviderUrls(record?.sources?.youtube);
-  const youtubeSource = youtubeUrls[0]
+  let youtubeUrl = youtubeUrls[0] || (identity?.youtubeTrailerKey ? `https://www.youtube-nocookie.com/embed/${identity.youtubeTrailerKey}` : '');
+  const youtubeSource = youtubeUrl
     ? {
         id: 'youtube',
         key: 'youtube',
         label: 'YouTube',
-        urls: youtubeUrls,
-        url: youtubeUrls[0],
+        urls: youtubeUrls.length ? youtubeUrls : [youtubeUrl],
+        url: youtubeUrl,
         embeddable: true
       }
     : null;
@@ -938,15 +939,15 @@ async function fetchTmdbPlayerIdentity({ mediaType, tmdbId, seasonNumber, episod
 
   const detailUrl =
     normalizedMediaType === 'movie'
-      ? `https://api.themoviedb.org/3/movie/${numericTmdbId}?language=en-US`
-      : `https://api.themoviedb.org/3/tv/${numericTmdbId}?language=en-US`;
+      ? `https://api.themoviedb.org/3/movie/${numericTmdbId}?append_to_response=videos&language=en-US`
+      : `https://api.themoviedb.org/3/tv/${numericTmdbId}?append_to_response=videos&language=en-US`;
   const episodeUrl =
     normalizedMediaType === 'series'
-      ? `https://api.themoviedb.org/3/tv/${numericTmdbId}/season/${Number(seasonNumber || 1)}/episode/${Number(episodeNumber || 1)}?language=en-US`
+      ? `https://api.themoviedb.org/3/tv/${numericTmdbId}/season/${Number(seasonNumber || 1)}/episode/${Number(episodeNumber || 1)}?append_to_response=videos&language=en-US`
       : '';
   const ep1Url =
     normalizedMediaType === 'series' && (Number(seasonNumber || 1) !== 1 || Number(episodeNumber || 1) !== 1)
-      ? `https://api.themoviedb.org/3/tv/${numericTmdbId}/season/1/episode/1?language=en-US`
+      ? `https://api.themoviedb.org/3/tv/${numericTmdbId}/season/1/episode/1?append_to_response=videos&language=en-US`
       : '';
 
   const [detailResp, episodeResp, ep1Resp] = await Promise.all([
@@ -966,6 +967,16 @@ async function fetchTmdbPlayerIdentity({ mediaType, tmdbId, seasonNumber, episod
   const detail = await detailResp.json();
   const episodeDetail = episodeResp?.ok ? await episodeResp.json() : {};
   const ep1Detail = ep1Resp?.ok ? await ep1Resp.json() : {};
+
+  const allVideos = [
+    ...(episodeDetail?.videos?.results || []),
+    ...(ep1Detail?.videos?.results || []),
+    ...(detail?.videos?.results || [])
+  ];
+  const ytVideo = allVideos.find((v) => v.site === 'YouTube' && v.type === 'Trailer') ||
+                  allVideos.find((v) => v.site === 'YouTube' && (v.type === 'Teaser' || v.type === 'Clip')) ||
+                  allVideos.find((v) => v.site === 'YouTube');
+  const youtubeTrailerKey = ytVideo?.key || '';
   
   const title = normalizedMediaType === 'movie' ? detail.title || detail.original_title || '' : detail.name || detail.original_name || '';
   const yearValue = detail.release_date || detail.first_air_date || '';
@@ -1002,7 +1013,8 @@ async function fetchTmdbPlayerIdentity({ mediaType, tmdbId, seasonNumber, episod
     directors: [],
     cast: [],
     runtime: detail.runtime || 120,
-    episodeRuntime: episodeDetail?.runtime || detail.episode_run_time?.[0] || 40
+    episodeRuntime: episodeDetail?.runtime || detail.episode_run_time?.[0] || 40,
+    youtubeTrailerKey
   };
 }
 
@@ -1199,20 +1211,36 @@ async function refreshPlayerSourceRecord(identity) {
         }
       }
 
+      let finalYtUrl = '';
       if (bestYtVideo) {
         const durationMin = Math.round(bestYtVideo.seconds / 60);
-        console.log(`[YouTube Scraper] âœ“ Best match (query #${bestQueryIndex + 1}): "${bestYtVideo.title}" | ${durationMin} min | score=${Math.round(bestScore)} | titleSim=${(titleSimilarity(bestYtVideo.title) * 100).toFixed(0)}%`);
+        console.log(`[YouTube Scraper] ✓ Best full match (query #${bestQueryIndex + 1}): "${bestYtVideo.title}" | ${durationMin} min | score=${Math.round(bestScore)}`);
+        finalYtUrl = `https://www.youtube-nocookie.com/embed/${bestYtVideo.videoId}`;
+      } else if (identity.youtubeTrailerKey) {
+        console.log(`[YouTube Scraper] Using official TMDB trailer/video: ${identity.youtubeTrailerKey}`);
+        finalYtUrl = `https://www.youtube-nocookie.com/embed/${identity.youtubeTrailerKey}`;
+      } else {
+        try {
+          const trailerRes = await ytSearch(`${titleYear} official trailer`);
+          const firstVid = trailerRes?.videos?.[0];
+          if (firstVid?.videoId) {
+            finalYtUrl = `https://www.youtube-nocookie.com/embed/${firstVid.videoId}`;
+          }
+        } catch (e) {}
+      }
+
+      if (finalYtUrl) {
         const ytPlayer = {
           sourceKey: 'youtube',
           serverName: 'YOUTUBE',
-          url: `https://www.youtube-nocookie.com/embed/${bestYtVideo.videoId}`,
+          url: finalYtUrl,
           preferred: false,
           available: true
         };
-        // Persist to DB + push to connected SSE client immediately
+        // Persist to DB + push to connected client immediately
         await onSource([ytPlayer]);
       } else {
-        console.log(`[YouTube Scraper] No suitable video found across ${ytQueries.length} queries (runtime floor: ${tmdbRuntimeMin ? `${Math.round(tmdbRuntimeMin * 0.75)} min` : 'n/a'}).`);
+        console.log(`[YouTube Scraper] No suitable video found across ${ytQueries.length} queries.`);
       }
     } catch (ytErr) {
       console.error('[YouTube Scraper] failed:', ytErr.message);

@@ -78,7 +78,7 @@ export function DetailHero({
     if (all.length > 0) return all;
     if (content?.poster_path) return [content.poster_path];
     if (content?.backdrop_path) return [content.backdrop_path];
-    return [FALLBACK_POSTER];
+    return [FALLBACK_AVATAR];
   }, [posters, backdrops, content?.poster_path, content?.backdrop_path]);
 
   // Instantly preload the full-resolution first image so tapping the poster displays instantly with zero wait
@@ -313,7 +313,7 @@ export function DetailHero({
         currentIndex={modalImageIndex}
         onIndexChange={setModalImageIndex}
         alt={title}
-        fallbackImage={FALLBACK_POSTER}
+        fallbackImage={FALLBACK_AVATAR}
       />
     </section>
   );
@@ -340,7 +340,7 @@ function MobileLayout({
             className={`aspect-[2/3] w-full overflow-hidden rounded-xl shadow-2xl ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block ${isPlayerOpen ? 'pointer-events-none opacity-60' : ''}`}
           >
             <img
-              src={imageUrl(content.poster_path, 'w500')}
+              src={content?.poster_path ? imageUrl(content.poster_path, 'w500') : FALLBACK_AVATAR}
               alt={title}
               className="w-full h-full object-cover"
               onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
@@ -422,7 +422,7 @@ function DesktopLayout({
           className={`w-[200px] aspect-[2/3] overflow-hidden rounded-2xl shadow-2xl flex-shrink-0 ring-1 ring-white/10 hover:ring-white/30 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[#64FFDA] block ${isPlayerOpen ? 'pointer-events-none opacity-60' : ''}`}
         >
           <img
-            src={imageUrl(content.poster_path, 'w500')}
+            src={content?.poster_path ? imageUrl(content.poster_path, 'w500') : FALLBACK_AVATAR}
             alt={title}
             className="w-full h-full object-cover"
             onError={(e) => { e.currentTarget.src = FALLBACK_AVATAR; }}
