@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
-import { ScreenOrientation } from '@capacitor/screen-orientation';
+import { AppLauncher } from '@capacitor/app-launcher';
 import { toast } from '../../../utils/toast.js';
 import { useAuthSession } from '../../../hooks/useAuthSession.js';
 import { clearAuthSession } from '../../../api/client.js';
@@ -19,53 +19,84 @@ export function SettingsModal({
 }) {
   const navigate = useNavigate();
   const auth = useAuthSession();
-  const [rotationMode, setRotationMode] = useState(() => {
-    return localStorage.getItem('ss_rotation_mode') || 'sensor';
-  });
+  const [apkDownloadInfo, setApkDownloadInfo] = useState(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
-  const currentVersion = 'v1.1.0';
+  const [windowsExeInfo, setWindowsExeInfo] = useState(null);
+  const currentVersion = 'v2.0.0';
 
   const isNative = Capacitor.isNativePlatform();
 
+  const isPushedRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Back-button history trap: pressing back on Android or browser closes ONLY the Settings modal
   useEffect(() => {
     if (!open) return;
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
 
-  const handleRotationChange = async (mode) => {
-    setRotationMode(mode);
-    localStorage.setItem('ss_rotation_mode', mode);
-
-    if (Capacitor.isNativePlatform()) {
-      try {
-        if (mode === 'sensor') {
-          await ScreenOrientation.unlock();
-          toast('Auto-rotation enabled (Full Sensor)');
-        } else if (mode === 'portrait') {
-          await ScreenOrientation.lock({ orientation: 'portrait' });
-          toast('Locked to Portrait');
-        } else if (mode === 'landscape') {
-          await ScreenOrientation.lock({ orientation: 'landscape' });
-          toast('Locked to Landscape');
-        }
-      } catch (err) {
-        console.warn('Orientation change error:', err);
-      }
-    } else {
-      try {
-        if (mode === 'sensor' && window.screen?.orientation?.unlock) {
-          window.screen.orientation.unlock();
-        } else if (window.screen?.orientation?.lock) {
-          await window.screen.orientation.lock(mode);
-        }
-      } catch (err) {}
-      toast(`Rotation set: ${mode}`);
+    if (!isPushedRef.current) {
+      window.history.pushState({ settingsModalOpen: true }, '');
+      isPushedRef.current = true;
     }
+
+    const handlePopState = () => {
+      isPushedRef.current = false;
+      onCloseRef.current?.();
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onCloseRef.current?.();
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('keydown', handleKeyDown);
+      if (isPushedRef.current) {
+        isPushedRef.current = false;
+        if (window.history.state?.settingsModalOpen) {
+          window.history.back();
+        }
+      }
+    };
+  }, [open]);
+
+  // Resolve the latest Android APK and Windows EXE release assets.
+  useEffect(() => {
+    let cancelled = false;
+    async function checkReleaseAssets() {
+      const releases = [
+        'https://api.github.com/repos/Vamp-Niklaus/Soulstash/releases/latest',
+        'https://api.github.com/repos/Vamp-Niklaus/soulstash-backend/releases/latest'
+      ];
+      try {
+        const responses = await Promise.all(releases.map((url) => fetch(url, { headers: { Accept: 'application/vnd.github.v3+json' } })));
+        const data = await Promise.all(responses.map((response) => response.ok ? response.json() : null));
+        const apk = data[0]?.assets?.find((asset) => asset.name?.toLowerCase().endsWith('.apk'));
+        const exe = data[1]?.assets?.find((asset) => asset.name?.toLowerCase().endsWith('.exe'));
+        if (cancelled) return;
+        setApkDownloadInfo(apk ? { url: apk.browser_download_url, name: apk.name } : { available: false });
+        setWindowsExeInfo(exe ? { available: true, url: exe.browser_download_url, name: exe.name, tagName: data[1].tag_name || data[1].name || '' } : { available: false });
+      } catch (err) {
+        if (!cancelled) { setApkDownloadInfo({ available: false }); setWindowsExeInfo({ available: false }); }
+      }
+    }
+    checkReleaseAssets();
+    return () => { cancelled = true; };
+  }, []);
+
+  const compareVersions = (left, right) => {
+    const parse = (value) => (value.match(/\d+(?:\.\d+)*/)?.[0] || '').split('.').map((part) => Number(part) || 0);
+    const a = parse(left); const b = parse(right);
+    for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+      if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0) ? 1 : -1;
+    }
+    return 0;
   };
 
   const handleCheckUpdate = async () => {
@@ -80,44 +111,68 @@ export function SettingsModal({
       }
       const data = await res.json();
       const latestTag = data.tag_name || data.name || '';
-      const isNewer = latestTag && latestTag.replace(/^v/, '') > currentVersion.replace(/^v/, '');
+      const versionComparison = latestTag ? compareVersions(latestTag, currentVersion) : 0;
+      const isNewer = versionComparison > 0;
+
       const apkAsset = Array.isArray(data.assets)
-        ? data.assets.find((a) => a.name?.endsWith('.apk')) || data.assets[0]
+        ? data.assets.find((a) => a.name?.toLowerCase().endsWith('.apk'))
         : null;
-      const apkUrl = apkAsset?.browser_download_url || data.html_url || 'https://github.com/Vamp-Niklaus/Soulstash/releases/latest';
+      const apkUrl = apkAsset?.browser_download_url || '';
 
       setUpdateInfo({
         checked: true,
         isNewer,
+        isLatest: versionComparison === 0,
         tagName: latestTag,
         apkUrl,
-        htmlUrl: data.html_url || 'https://github.com/Vamp-Niklaus/Soulstash/releases/latest',
         publishedAt: data.published_at ? new Date(data.published_at).toLocaleDateString() : '',
         body: data.body || ''
       });
       if (isNewer) {
         toast(`New update available: ${latestTag}`, 'success');
+      } else if (versionComparison === 0) {
+        toast(`You are running the latest version (${currentVersion})`, 'success');
       } else {
-        toast('You are running the latest version!', 'success');
+        toast(`You are running ${currentVersion}, newer than the latest published release (${latestTag})`, 'success');
       }
     } catch (err) {
       setUpdateInfo({
         checked: true,
-        error: true,
-        htmlUrl: 'https://github.com/Vamp-Niklaus/Soulstash/releases/latest'
+        error: true
       });
-      toast('Could not fetch release info, click to view releases', 'info');
+      toast('Could not fetch release info. Please try again.', 'info');
     } finally {
       setCheckingUpdate(false);
     }
   };
 
-  const handleUpdateApp = () => {
-    if (!updateInfo?.apkUrl) return;
-    toast('Starting update download... Tap the Android notification to install.', 'info');
-    if (typeof window !== 'undefined') {
-      window.open(updateInfo.apkUrl, '_system');
+  const handleDownloadUrl = async (url) => {
+    if (!url) return;
+    toast('Starting download... Check your browser or downloads notification.', 'info');
+    if (isNative) {
+      try { await AppLauncher.openUrl({ url }); return; }
+      catch (err) { console.warn('Could not open download in the system browser:', err); }
     }
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.rel = 'noopener noreferrer';
+      a.setAttribute('download', '');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      window.location.href = url;
+    }
+  };
+
+  const openExternalWebsite = async () => {
+    const url = 'https://soulstash.onrender.com/';
+    if (isNative) {
+      try { await AppLauncher.openUrl({ url }); return; }
+      catch (err) { console.warn('Could not open the system browser:', err); }
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   if (!open) return null;
@@ -143,7 +198,7 @@ export function SettingsModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-white">App Settings</h2>
-              <p className="text-[11px] text-white/50">Preferences &amp; Updates</p>
+              <p className="text-[11px] text-white/50">Preferences &amp; Downloads</p>
             </div>
           </div>
           <button
@@ -251,42 +306,7 @@ export function SettingsModal({
           </div>
         </div>
 
-        {/* Section 2: Mobile Screen Rotation Option */}
-        <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
-              Screen Rotation
-            </span>
-            <span className="text-[10px] text-white/40">Sensor &amp; Orientation</span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'sensor', label: 'Auto (Sensor)', icon: 'fa-sync-alt' },
-              { id: 'portrait', label: 'Portrait', icon: 'fa-mobile-alt' },
-              { id: 'landscape', label: 'Landscape', icon: 'fa-image' }
-            ].map((rot) => {
-              const active = rotationMode === rot.id;
-              return (
-                <button
-                  key={rot.id}
-                  type="button"
-                  onClick={() => handleRotationChange(rot.id)}
-                  className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-[11px] font-medium transition-all ${
-                    active
-                      ? 'border-white bg-white/20 text-white font-bold'
-                      : 'border-white/5 bg-white/[0.04] text-white/70 hover:bg-white/10 hover:text-white'
-                  }`}
-                >
-                  <i className={`fas ${rot.icon} text-[10px]`}></i>
-                  <span>{rot.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Section 3: App Updates / Web Version Status */}
+        {/* Section 3: App Updates (Native App) OR Download App (Website) */}
         {isNative ? (
           <div className="flex flex-col gap-2.5 pt-2 border-t border-white/10">
             <div className="flex items-center justify-between">
@@ -296,30 +316,24 @@ export function SettingsModal({
                 </span>
                 <p className="text-[11px] text-white/50">Current version: <span className="font-mono text-white/80">{currentVersion}</span></p>
               </div>
-              <button
-                type="button"
-                disabled={checkingUpdate}
-                onClick={handleCheckUpdate}
-                className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1.5 text-xs font-semibold text-white transition-all disabled:opacity-50"
-              >
-                <i className={`fas fa-cloud-download-alt text-xs ${checkingUpdate ? 'animate-bounce' : ''}`}></i>
-                <span>{checkingUpdate ? 'Checking...' : 'Check Update'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={checkingUpdate}
+                  onClick={handleCheckUpdate}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1.5 text-xs font-semibold text-white transition-all disabled:opacity-50"
+                >
+                  <i className={`fas fa-cloud-download-alt text-xs ${checkingUpdate ? 'animate-bounce' : ''}`}></i>
+                  <span>{checkingUpdate ? 'Checking...' : 'Check Update'}</span>
+                </button>
+              </div>
             </div>
 
             {updateInfo && (
               <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-xs flex flex-col gap-2">
                 {updateInfo.error ? (
                   <div className="flex items-center justify-between">
-                    <span className="text-white/70">Visit official GitHub release page:</span>
-                    <a
-                      href="https://github.com/Vamp-Niklaus/Soulstash/releases/latest"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-amber-400 font-semibold hover:underline"
-                    >
-                      View Releases &rarr;
-                    </a>
+                    <span className="text-white/70">Could not check for updates. Please try again.</span>
                   </div>
                 ) : updateInfo.isNewer ? (
                   <div className="flex flex-col gap-2">
@@ -327,40 +341,97 @@ export function SettingsModal({
                       <span>New Version Available: {updateInfo.tagName}</span>
                       <span className="text-[10px] text-white/40">{updateInfo.publishedAt}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleUpdateApp}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold py-2 text-xs transition-colors shadow-lg active:scale-98"
-                    >
-                      <i className="fas fa-download"></i>
-                      <span>Update App (Download &amp; Install)</span>
-                    </button>
-                    <p className="text-[10px] text-white/40 text-center leading-tight">
-                      Tap above to download update APK. Android will prompt you to install once downloaded.
-                    </p>
+                    {updateInfo.apkUrl ? (
+                      <button type="button" onClick={() => handleDownloadUrl(updateInfo.apkUrl)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold py-2.5 text-xs transition-colors shadow-lg active:scale-98 cursor-pointer">
+                        <i className="fas fa-download"></i><span>Download Update</span>
+                      </button>
+                    ) : <p className="text-amber-300 text-center">No APK is attached to this release.</p>}
+                    <p className="text-[10px] text-white/40 text-center leading-tight">After download, open the APK to install the update.</p>
+                  </div>
+                ) : updateInfo.isLatest ? (
+                  <div className="flex items-center justify-between text-white/80 py-1">
+                    <div className="flex items-center gap-2">
+                      <i className="fas fa-check-circle text-emerald-400"></i>
+                      <span>You are running the latest version (<span className="font-mono text-white">{currentVersion}</span>)</span>
+                    </div>
+                    {updateInfo.apkUrl && <button type="button" onClick={() => handleDownloadUrl(updateInfo.apkUrl)} className="text-[11px] text-amber-400 hover:underline font-medium">Re-download APK</button>}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-white/80">
-                    <i className="fas fa-check-circle text-emerald-400"></i>
-                    <span>You are running the latest version (<span className="font-mono text-white">{currentVersion}</span>)</span>
+                  <div className="flex items-center justify-between text-white/80 py-1">
+                    <span>The installed build ({currentVersion}) is newer than the latest release ({updateInfo.tagName}).</span>
+                    {updateInfo.apkUrl && <button type="button" onClick={() => handleDownloadUrl(updateInfo.apkUrl)} className="text-[11px] text-amber-400 hover:underline font-medium">Download APK</button>}
                   </div>
                 )}
               </div>
             )}
+
+            {/* Visit Website Link parallel to App info */}
+            <div className="flex items-center justify-between pt-1 text-xs">
+              <span className="text-[11px] text-white/50">Online web streaming:</span>
+              <button type="button" onClick={openExternalWebsite} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-1.5 text-xs font-semibold text-amber-400 transition-colors">
+                <i className="fas fa-globe text-xs"></i>
+                <span>Visit Website</span>
+              </button>
+            </div>
           </div>
         ) : (
-          /* Web Browser View: Display Web status instead of native APK download */
-          <div className="flex items-center justify-between pt-2 border-t border-white/10 text-xs">
-            <div>
-              <span className="font-semibold text-white/80 uppercase tracking-wider text-[11px]">
-                Web App
-              </span>
-              <p className="text-[10px] text-white/40">Running cloud release v1.1.0</p>
+          /* Web Browser View: Display Download App options for Android and Windows + Live Web status */
+          <div className="flex flex-col gap-2.5 pt-2 border-t border-white/10 text-xs">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-semibold text-white/80 uppercase tracking-wider text-[11px]">
+                  Download Soulstash App
+                </span>
+                <p className="text-[10px] text-white/40">Download the available app for your device</p>
+              </div>
+
             </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
-              <i className="fas fa-check-circle text-[10px]"></i>
-              <span>Live &amp; Up to Date</span>
-            </span>
+
+            {/* Download Buttons: Android APK & Windows EXE */}
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              {/* Android APK Download */}
+              <button
+                type="button"
+                onClick={() => handleDownloadUrl(apkDownloadInfo?.url)}
+                disabled={!apkDownloadInfo?.url}
+                className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-white transition-all text-center"
+              >
+                <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
+                  <i className="fab fa-android text-sm"></i>
+                  <span>Android (APK)</span>
+                </div>
+                <span className="text-[10px] text-white/50">{apkDownloadInfo?.url ? 'Direct APK Download' : 'Checking availability...'}</span>
+              </button>
+
+              {/* Windows EXE Download / Coming Soon */}
+              {windowsExeInfo?.available ? (
+                <button
+                  type="button"
+                  onClick={() => handleDownloadUrl(windowsExeInfo.url)}
+                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-white transition-all text-center"
+                >
+                  <div className="flex items-center gap-1.5 text-sky-400 font-bold text-xs">
+                    <i className="fab fa-windows text-sm"></i>
+                    <span>Windows (.exe)</span>
+                  </div>
+                  <span className="text-[10px] text-white/50">Download App</span>
+                </button>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border border-white/5 bg-white/[0.03] text-white/40 text-center">
+                  <div className="flex items-center gap-1.5 text-white/60 font-medium text-xs">
+                    <i className="fab fa-windows text-sm text-white/40"></i>
+                    <span>Windows (.exe)</span>
+                  </div>
+                  <span className="text-[9px] text-amber-400/70 font-semibold uppercase tracking-wider">Coming Soon</span>
+                </div>
+              )}
+            </div>
+
+            {/* Links info row */}
+            <div className="flex items-center justify-between text-[10px] text-white/40 pt-1">
+              <span>{apkDownloadInfo?.url ? 'Android APK available now' : 'Android APK unavailable'}</span>
+              <span>{windowsExeInfo?.available ? `Windows ${windowsExeInfo.tagName || 'download available'}` : 'Windows download coming soon'}</span>
+            </div>
           </div>
         )}
 
@@ -430,18 +501,7 @@ export function SettingsModal({
           )}
         </div>
 
-        {/* Footer info link */}
-        <div className="pt-2 border-t border-white/10 text-center text-[10px] text-white/40">
-          Official Repository:{' '}
-          <a
-            href="https://github.com/Vamp-Niklaus/Soulstash/releases/latest"
-            target="_blank"
-            rel="noreferrer"
-            className="text-white/60 hover:text-white underline ml-1"
-          >
-            github.com/Vamp-Niklaus/Soulstash
-          </a>
-        </div>
+
       </div>
     </div>
   );
