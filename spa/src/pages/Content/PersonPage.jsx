@@ -284,12 +284,40 @@ export function PersonPage() {
   });
 
   const personImages = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    // 1. All profile portraits of this actor
     const profiles = personImagesData?.profiles || [];
-    if (profiles.length > 0) {
-      return profiles.map((p) => p.file_path).filter(Boolean);
+    profiles.forEach((p) => {
+      const path = p?.file_path || p;
+      if (path && !seen.has(path)) {
+        seen.add(path);
+        list.push(path);
+      }
+    });
+
+    if (person?.profile_path && !seen.has(person.profile_path)) {
+      seen.add(person.profile_path);
+      list.unshift(person.profile_path);
     }
-    return person?.profile_path ? [person.profile_path] : [];
-  }, [personImagesData, person?.profile_path]);
+
+    // 2. High-res backdrops and posters from the person's movies/series credits
+    if (Array.isArray(credits)) {
+      credits.forEach((c) => {
+        if (c.backdrop_path && !seen.has(c.backdrop_path)) {
+          seen.add(c.backdrop_path);
+          list.push(c.backdrop_path);
+        }
+        if (c.poster_path && !seen.has(c.poster_path)) {
+          seen.add(c.poster_path);
+          list.push(c.poster_path);
+        }
+      });
+    }
+
+    return list.slice(0, 25);
+  }, [personImagesData, person?.profile_path, credits]);
 
   // Instantly preload the person's photo on mount so clicking the photo displays instantly with 0 delay
   useEffect(() => {

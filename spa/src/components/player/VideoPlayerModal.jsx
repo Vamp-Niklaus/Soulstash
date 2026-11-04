@@ -488,7 +488,14 @@ export function VideoPlayerModal({ request, onClose }) {
             if (fsElement) {
               await ScreenOrientation.unlock();
             } else {
-              await ScreenOrientation.lock({ orientation: 'portrait' });
+              const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
+              if (rot === 'sensor') {
+                await ScreenOrientation.unlock();
+              } else if (rot === 'portrait') {
+                await ScreenOrientation.lock({ orientation: 'portrait' });
+              } else if (rot === 'landscape') {
+                await ScreenOrientation.lock({ orientation: 'landscape' });
+              }
             }
           } catch (e) {
             // Orientation ignore
@@ -526,7 +533,14 @@ export function VideoPlayerModal({ request, onClose }) {
       
       if (Capacitor.isNativePlatform()) {
         try {
-          ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+          const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
+          if (rot === 'sensor') {
+            ScreenOrientation.unlock().catch(() => {});
+          } else if (rot === 'portrait') {
+            ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+          } else if (rot === 'landscape') {
+            ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
+          }
         } catch (e) {}
       }
     };

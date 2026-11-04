@@ -182,11 +182,15 @@ export function ZoomablePosterModal({
 
   const modalContent = (
     <div
-      className="fixed inset-0 z-[999999] flex items-center justify-center animate-in fade-in duration-200 select-none overflow-hidden touch-none"
+      className="fixed inset-0 z-[999999] flex items-center justify-center select-none overflow-hidden touch-none"
       style={{
         background: 'radial-gradient(circle at center, rgba(16, 18, 22, 0.96) 0%, rgba(6, 7, 9, 0.99) 75%, black 100%)'
       }}
       onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
     >
       {/* Previous Button */}
       {count > 1 && (
@@ -216,10 +220,6 @@ export function ZoomablePosterModal({
             transformOrigin: 'center center',
             willChange: 'transform'
           }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onTouchCancel={handleTouchEnd}
           onError={(e) => {
             const src = e.currentTarget.src;
             if (src.includes('/original/')) {

@@ -26,14 +26,14 @@ const queryClient = new QueryClient({
 const idbPersister = {
   persistClient: async (client) => {
     try {
-      await set('SOULSTASH_REACT_QUERY_CACHE', client);
+      await set('SOULSTASH_REACT_QUERY_CACHE_V2', client);
     } catch (e) {
       console.warn('Failed to persist cache to IndexedDB:', e);
     }
   },
   restoreClient: async () => {
     try {
-      return await get('SOULSTASH_REACT_QUERY_CACHE');
+      return await get('SOULSTASH_REACT_QUERY_CACHE_V2');
     } catch (e) {
       console.warn('Failed to restore cache from IndexedDB:', e);
       return undefined;
@@ -41,7 +41,7 @@ const idbPersister = {
   },
   removeClient: async () => {
     try {
-      await del('SOULSTASH_REACT_QUERY_CACHE');
+      await del('SOULSTASH_REACT_QUERY_CACHE_V2');
     } catch (e) {
       console.warn('Failed to remove cache from IndexedDB:', e);
     }

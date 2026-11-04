@@ -61,6 +61,7 @@ export function DetailHero({
 
   const hasPosters = posters.length > 0;
   const [currentPosterIndex, setCurrentPosterIndex] = useState(0);
+  const [modalImageIndex, setModalImageIndex] = useState(0);
 
   // Backdrops logic (combines backdrops from API with primary backdrop_path)
   const backdrops = useMemo(() => {
@@ -152,24 +153,16 @@ export function DetailHero({
     });
   }, [backdrops]);
 
-  // Smooth rotation every 5s, transitioning only to loaded images
+  // Smooth rotation every 5s across available landscape backdrops
   useEffect(() => {
     if (backdrops.length <= 1 || isPlayerOpen) return;
 
     const interval = setInterval(() => {
-      setCurrentBackdropIndex((prev) => {
-        for (let step = 1; step <= backdrops.length; step++) {
-          const nextIdx = (prev + step) % backdrops.length;
-          if (loadedSetRef.current.has(nextIdx) || step === backdrops.length) {
-            return nextIdx;
-          }
-        }
-        return (prev + 1) % backdrops.length;
-      });
+      setCurrentBackdropIndex((prev) => (prev + 1) % backdrops.length);
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [backdrops, isPlayerOpen]);
+  }, [backdrops.length, isPlayerOpen]);
 
   // Smooth poster rotation every 6s when multiple posters are available
   useEffect(() => {
@@ -181,8 +174,8 @@ export function DetailHero({
   }, [posters.length, isPlayerOpen, viewerOpen]);
 
   const currentPosterPath = hasPosters
-    ? posters[currentPosterIndex].file_path
-    : content.poster_path;
+    ? (posters[currentPosterIndex]?.file_path || posters[0]?.file_path || content?.poster_path)
+    : content?.poster_path;
 
   const fallbackBackdropUrl = landscapePath
     ? imageUrl(landscapePath, 'w1280')
@@ -276,7 +269,10 @@ export function DetailHero({
           onToggleWatched={onToggleWatched}
           onToggleWatchlist={onToggleWatchlist}
           onOpenSaveModal={onOpenSaveModal}
-          onPosterClick={isPlayerOpen ? undefined : () => setViewerOpen(true)}
+          onPosterClick={isPlayerOpen ? undefined : () => {
+            setModalImageIndex(currentPosterIndex);
+            setViewerOpen(true);
+          }}
           isPlayerOpen={isPlayerOpen}
         />
 
@@ -295,7 +291,10 @@ export function DetailHero({
           onToggleWatched={onToggleWatched}
           onToggleWatchlist={onToggleWatchlist}
           onOpenSaveModal={onOpenSaveModal}
-          onPosterClick={isPlayerOpen ? undefined : () => setViewerOpen(true)}
+          onPosterClick={isPlayerOpen ? undefined : () => {
+            setModalImageIndex(currentPosterIndex);
+            setViewerOpen(true);
+          }}
           isPlayerOpen={isPlayerOpen}
         />
       </div>
@@ -304,8 +303,8 @@ export function DetailHero({
         open={viewerOpen}
         onClose={() => setViewerOpen(false)}
         images={viewerImages}
-        currentIndex={currentPosterIndex}
-        onIndexChange={setCurrentPosterIndex}
+        currentIndex={modalImageIndex}
+        onIndexChange={setModalImageIndex}
         alt={title}
         fallbackImage={FALLBACK_POSTER}
       />

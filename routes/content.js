@@ -2222,6 +2222,40 @@ router.get('/movies', async (req, res) => {
   }
 });
 
+// GET /api/movies/:id/images and /api/movie/:id/images
+router.get(['/movies/:id/images', '/movie/:id/images'], async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const resp = await tmdbFetch(
+      `https://api.themoviedb.org/3/movie/${id}/images?include_image_language=en,null`,
+      { method: 'GET', headers: tmdbHeaders() },
+      `Movie Images ${id}`
+    );
+    if (!resp.ok) return res.status(resp.status).json({ error: 'Failed to fetch movie images' });
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch movie images', details: err.message });
+  }
+});
+
+// GET /api/series/:id/images and /api/tv/:id/images
+router.get(['/series/:id/images', '/tv/:id/images'], async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const resp = await tmdbFetch(
+      `https://api.themoviedb.org/3/tv/${id}/images?include_image_language=en,null`,
+      { method: 'GET', headers: tmdbHeaders() },
+      `Series Images ${id}`
+    );
+    if (!resp.ok) return res.status(resp.status).json({ error: 'Failed to fetch series images' });
+    const data = await resp.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch series images', details: err.message });
+  }
+});
+
 // GET /api/movies/:id and /api/movie/:id
 router.get(['/movies/:id', '/movie/:id'], async (req, res) => {
   try {

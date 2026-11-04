@@ -47,11 +47,13 @@ const sendSpa = async (res) => {
         window.$RefreshSig$ = () => () => {}
       </script>\n  <script type="module" src="${DEV_VITE_ORIGIN}/@vite/client"></script>\n  <script type="module" src="${DEV_VITE_ORIGIN}/src/main.jsx"></script>`
     );
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.type('html').send(html);
   }
 
   try {
     await fs.access(SPA_DIST);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.sendFile(SPA_DIST);
   } catch {}
 
@@ -68,8 +70,10 @@ const sendSpa = async (res) => {
         window.$RefreshSig$ = () => () => {}
       </script>\n  <script type="module" src="${DEV_VITE_ORIGIN}/@vite/client"></script>\n  <script type="module" src="${DEV_VITE_ORIGIN}/src/main.jsx"></script>`
     );
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.type('html').send(html);
   }
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   return res.sendFile(SPA_SOURCE);
 };
 

@@ -18,6 +18,21 @@ export function useMediaDetails(id, type) {
       const detailResult = await apiFetch(detailPath);
 
       if (detailResult?.id && type !== 'person') {
+        // Guarantee images (backdrops & posters) are always present even if parent response lacked them
+        if (!detailResult.images?.backdrops?.length || !detailResult.images?.posters?.length) {
+          try {
+            const imgEndpoint = type === 'series' ? `/api/series/${id}/images` : `/api/movies/${id}/images`;
+            const imgData = await apiFetch(imgEndpoint);
+            if (imgData && (imgData.backdrops || imgData.posters)) {
+              detailResult.images = {
+                ...(detailResult.images || {}),
+                backdrops: imgData.backdrops || detailResult.images?.backdrops || [],
+                posters: imgData.posters || detailResult.images?.posters || []
+              };
+            }
+          } catch (e) {}
+        }
+
         try {
           const mediaType = type === 'series' ? 'Series' : 'Movie';
           const rating = await apiFetch(`/api/ratings/${mediaType}/${detailResult.id}`);

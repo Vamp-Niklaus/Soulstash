@@ -3,16 +3,28 @@ import { useState, useEffect } from 'react';
 /**
  * useAppLayoutMode
  *
- * Manages the layout presentation mode:
- * - 'auto': Landscape (width > height) automatically activates TV mode with left sidebar,
- *           Portrait activates mobile mode with bottom navbar.
- * - 'tv': Left vertical sidebar navbar for TV / wide remote operation.
- * - 'desktop': Top header navbar with profile dropdown.
- * - 'mobile': Top header with search & settings, bottom navigation bar.
+ * Manages orientation-aware layout presentation with 6 configurable modes:
+ *
+ * 1. Vertical State (height > width):
+ *    - 'auto': Auto-detect between Mobile (phone < 768px) and Desktop (tablet >= 768px)
+ *    - 'mobile': Mobile mode (top search & bottom navbar)
+ *    - 'desktop': Desktop mode (top header navbar)
+ *
+ * 2. Landscape State (width >= height):
+ *    - 'auto': Auto-detect between Desktop (default for PC/laptop/browser) and TV (smart TV / TV platforms)
+ *    - 'desktop': Desktop mode (top header navbar)
+ *    - 'tv': TV mode (left vertical sidebar navbar)
  */
 export function useAppLayoutMode() {
-  const [layoutPreference, setLayoutPreference] = useState(() => {
-    return localStorage.getItem('ss_ui_layout_mode') || 'auto';
+  const [verticalPreference, setVerticalPreference] = useState(() => {
+    return localStorage.getItem('ss_vertical_layout') || 'auto';
+  });
+
+  const [landscapePreference, setLandscapePreference] = useState(() => {
+    // If user previously had ss_ui_layout_mode === 'tv', honor that as 'tv'
+    const legacy = localStorage.getItem('ss_ui_layout_mode');
+    if (legacy === 'tv') return 'tv';
+    return localStorage.getItem('ss_landscape_layout') || 'auto';
   });
 
   const [windowDimensions, setWindowDimensions] = useState(() => {
@@ -26,8 +38,28 @@ export function useAppLayoutMode() {
     };
 
     const handleCustomChange = (e) => {
+      if (e.detail?.vertical) {
+        setVerticalPreference(e.detail.vertical);
+        localStorage.setItem('ss_vertical_layout', e.detail.vertical);
+      }
+      if (e.detail?.landscape) {
+        setLandscapePreference(e.detail.landscape);
+        localStorage.setItem('ss_landscape_layout', e.detail.landscape);
+      }
       if (e.detail?.mode) {
-        setLayoutPreference(e.detail.mode);
+        // Direct legacy mode setter
+        if (e.detail.mode === 'tv') {
+          setLandscapePreference('tv');
+          localStorage.setItem('ss_landscape_layout', 'tv');
+        } else if (e.detail.mode === 'desktop') {
+          setLandscapePreference('desktop');
+          setVerticalPreference('desktop');
+          localStorage.setItem('ss_landscape_layout', 'desktop');
+          localStorage.setItem('ss_vertical_layout', 'desktop');
+        } else if (e.detail.mode === 'mobile') {
+          setVerticalPreference('mobile');
+          localStorage.setItem('ss_vertical_layout', 'mobile');
+        }
       }
     };
 
@@ -42,19 +74,31 @@ export function useAppLayoutMode() {
     };
   }, []);
 
-  const isLandscape = windowDimensions.width > windowDimensions.height;
-  const isWide = windowDimensions.width >= 768;
+  const isVertical = windowDimensions.height > windowDimensions.width;
+  const isLandscape = !isVertical;
 
-  let activeMode = layoutPreference;
-  if (layoutPreference === 'auto') {
-    // When mobile or device is rotated into landscape (width > height)
-    // or when on TV / large widescreen:
-    if (isLandscape && (windowDimensions.width >= 600 || windowDimensions.height <= 500)) {
-      activeMode = 'tv';
-    } else if (!isWide) {
+  let activeMode = 'desktop';
+
+  if (isVertical) {
+    if (verticalPreference === 'mobile') {
       activeMode = 'mobile';
-    } else {
+    } else if (verticalPreference === 'desktop') {
       activeMode = 'desktop';
+    } else {
+      // Auto vertical: phone (< 768px) -> mobile, tablet (>= 768px) -> desktop
+      activeMode = windowDimensions.width < 768 ? 'mobile' : 'desktop';
+    }
+  } else {
+    // Landscape state
+    if (landscapePreference === 'tv') {
+      activeMode = 'tv';
+    } else if (landscapePreference === 'desktop') {
+      activeMode = 'desktop';
+    } else {
+      // Auto landscape: smart TV or TV browser -> tv, regular desktop/laptop/web -> desktop
+      const isTvPlatform = typeof navigator !== 'undefined' &&
+        /(tv|smarttv|googletv|appletv|android tv|tizen|webos|roku)/i.test(navigator.userAgent || '');
+      activeMode = isTvPlatform ? 'tv' : 'desktop';
     }
   }
 
@@ -73,13 +117,28 @@ export function useAppLayoutMode() {
     };
   }, [isTvLayout, isMobileLayout, isDesktopLayout]);
 
+  const updateVerticalPreference = (pref) => {
+    setVerticalPreference(pref);
+    localStorage.setItem('ss_vertical_layout', pref);
+    window.dispatchEvent(new CustomEvent('soulstash:layout-mode-changed', { detail: { vertical: pref } }));
+  };
+
+  const updateLandscapePreference = (pref) => {
+    setLandscapePreference(pref);
+    localStorage.setItem('ss_landscape_layout', pref);
+    window.dispatchEvent(new CustomEvent('soulstash:layout-mode-changed', { detail: { landscape: pref } }));
+  };
+
   return {
-    layoutPreference,
-    setLayoutPreference,
+    verticalPreference,
+    landscapePreference,
+    setVerticalPreference: updateVerticalPreference,
+    setLandscapePreference: updateLandscapePreference,
     activeMode,
     isTvLayout,
     isMobileLayout,
     isDesktopLayout,
+    isVertical,
     isLandscape,
     windowDimensions
   };

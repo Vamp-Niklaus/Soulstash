@@ -21,16 +21,22 @@ export function ReactNavbar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTab, setSearchTab] = useState('content');
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [tvProfileOpen, setTvProfileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const profileMenuRef = useRef(null);
+  const tvProfileRef = useRef(null);
   const navRef = useRef(null);
 
   const {
-    layoutPreference,
-    setLayoutPreference,
+    verticalPreference,
+    landscapePreference,
+    setVerticalPreference,
+    setLandscapePreference,
     isTvLayout,
     isMobileLayout,
-    isDesktopLayout
+    isDesktopLayout,
+    isVertical,
+    isLandscape
   } = useAppLayoutMode();
 
   const {
@@ -53,14 +59,18 @@ export function ReactNavbar() {
   useEffect(() => {
     setSearchOpen(false);
     setProfileDropdownOpen(false);
+    setTvProfileOpen(false);
   }, [location.pathname]);
 
-  // Close profile dropdown when clicking outside
+  // Close profile dropdowns when clicking outside
   useEffect(() => {
-    if (!profileDropdownOpen) return;
+    if (!profileDropdownOpen && !tvProfileOpen) return;
     const handleClickOutside = (e) => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) {
         setProfileDropdownOpen(false);
+      }
+      if (tvProfileRef.current && !tvProfileRef.current.contains(e.target)) {
+        setTvProfileOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -69,7 +79,7 @@ export function ReactNavbar() {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleClickOutside);
     };
-  }, [profileDropdownOpen]);
+  }, [profileDropdownOpen, tvProfileOpen]);
 
   useEffect(() => {
     const handleOpenSearch = (e) => {
@@ -176,24 +186,61 @@ export function ReactNavbar() {
           className="fixed inset-y-0 left-0 top-0 bottom-0 z-[99990] flex w-16 sm:w-20 flex-col items-center justify-between border-r border-white/10 bg-[#0c0d10]/95 py-3 sm:py-4 shadow-2xl backdrop-blur-xl select-none h-screen h-[100dvh] overflow-visible"
           aria-label="TV Sidebar Navigation"
         >
-          {/* Top Profile / Login: Clicking directly opens profile page in TV mode */}
-          <div className="relative flex flex-col items-center">
+          {/* Top Profile / Login: Tapping toggles TV profile menu */}
+          <div className="relative flex flex-col items-center" ref={tvProfileRef}>
             {isLoggedIn && username ? (
-              <button
-                type="button"
-                onClick={() => navigate(`/user/${username}`)}
-                className={`relative flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full overflow-hidden border-2 transition-all active:scale-95 shadow-md ${
-                  currentPath.startsWith(`/user/${username}`) ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-white/20 hover:border-amber-400'
-                }`}
-                title={`${username} Profile`}
-                aria-label="Open profile page"
-              >
-                <img
-                  src={auth?.user?.avatar || FALLBACK_AVATAR}
-                  alt="Profile"
-                  className="h-full w-full object-cover object-top"
-                />
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setTvProfileOpen((prev) => !prev)}
+                  className={`relative flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full overflow-hidden border-2 transition-all active:scale-95 shadow-md ${
+                    currentPath.startsWith(`/user/${username}`) ? 'border-amber-400 ring-2 ring-amber-400/30' : 'border-white/20 hover:border-amber-400'
+                  }`}
+                  title={`${username} Profile`}
+                  aria-label="User profile menu"
+                >
+                  <img
+                    src={auth?.user?.avatar || FALLBACK_AVATAR}
+                    alt="Profile"
+                    className="h-full w-full object-cover object-top"
+                  />
+                </button>
+
+                {tvProfileOpen && (
+                  <div
+                    className="absolute left-14 sm:left-16 top-0 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[100000] shadow-2xl animate-in fade-in slide-in-from-left-2 duration-150"
+                    style={{ backgroundColor: '#14161b', background: '#14161b', opacity: 1 }}
+                  >
+                    <div className="px-3 py-2 border-b border-white/10 text-white/60 truncate font-semibold">
+                      @{username}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setTvProfileOpen(false); navigate(`/user/${username}`); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left font-medium"
+                    >
+                      <i className="fas fa-user text-xs w-4"></i>
+                      <span>View Profile</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setTvProfileOpen(false); setSettingsOpen(true); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
+                    >
+                      <i className="fas fa-cog text-xs w-4"></i>
+                      <span>Settings &amp; Layout</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setTvProfileOpen(false); handleLogout(); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-500/10 transition-colors text-left font-medium"
+                    >
+                      <i className="fas fa-sign-out-alt text-xs w-4"></i>
+                      <span>Log Out</span>
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <button
                 type="button"
@@ -345,7 +392,10 @@ export function ReactNavbar() {
 
                   {/* Desktop Profile Dropdown (Profile, Settings, Logout) */}
                   {profileDropdownOpen && (
-                    <div className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 bg-[#16181d] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.95)] text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150">
+                    <div
+                      className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150"
+                      style={{ backgroundColor: '#14161b', background: '#14161b', opacity: 1 }}
+                    >
                       <div className="px-3 py-2 border-b border-white/10 text-white/60 truncate font-semibold">
                         @{username}
                       </div>
@@ -390,7 +440,10 @@ export function ReactNavbar() {
                   </button>
 
                   {profileDropdownOpen && (
-                    <div className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 bg-[#16181d] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.95)] text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150">
+                    <div
+                      className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[99999] animate-in fade-in zoom-in-95 duration-150"
+                      style={{ backgroundColor: '#14161b', background: '#14161b', opacity: 1 }}
+                    >
                       <div className="px-3 py-2 border-b border-white/10 text-white/60 font-semibold">
                         Soulstash Menu
                       </div>
@@ -468,8 +521,12 @@ export function ReactNavbar() {
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        layoutMode={layoutPreference}
-        setLayoutMode={setLayoutPreference}
+        verticalPreference={verticalPreference}
+        landscapePreference={landscapePreference}
+        setVerticalPreference={setVerticalPreference}
+        setLandscapePreference={setLandscapePreference}
+        isVertical={isVertical}
+        isLandscape={isLandscape}
       />
     </>
   );

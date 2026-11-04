@@ -188,7 +188,13 @@ app.use('/api/', rateLimit({
 app.use('/images',     require('express').static(path.join(__dirname, 'assets', 'images')));
 app.use('/js',         require('express').static(path.join(__dirname, 'spa', 'public', 'js')));
 app.use('/assets',     require('express').static(path.join(__dirname, 'spa', 'dist', 'assets'), { setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') }));
-app.use(express.static(path.join(__dirname, 'spa', 'dist')));
+app.use(express.static(path.join(__dirname, 'spa', 'dist'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  }
+}));
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth',   require('./routes/auth'));
