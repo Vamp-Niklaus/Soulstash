@@ -61,48 +61,58 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
 
     const timeout = window.setTimeout(async () => {
       try {
-        if (searchTab !== 'users') {
-          await streamApiFetch(
-            `/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20&type=${encodeURIComponent(searchTab)}&page=1&stream=1`,
-            {
-              signal: controller.signal,
-              onEvent(event) {
-                if (ignore || event?.query !== searchQuery.trim()) return;
-                if (event?.type === 'results') {
-                  const incoming = Array.isArray(event.results) ? event.results : [];
-                  const nextResults = mergeSearchResults(allResultsRef.current, incoming, 400, adminMode);
-                  allResultsRef.current = nextResults;
-                  setSearchResults(nextResults);
-                  setSearchLoading(false);
-                } else if (event?.type === 'done') {
-                  if (event.hasMore === false) {
-                    setHasNextPage(false);
-                  }
-                  searchCacheRef.current.set(cacheKey, {
-                    results: allResultsRef.current,
-                    hasMore: event?.hasMore !== false,
-                    timestamp: Date.now()
-                  });
-                }
-              }
-            }
+        if (searchTab === 'users') {
+          const payload = await apiFetch(
+            `/api/search/users?q=${encodeURIComponent(searchQuery.trim())}`,
+            { signal: controller.signal }
+          ).catch(() =>
+            apiFetch(`/api/search?q=${encodeURIComponent(searchQuery.trim())}&type=users`, { signal: controller.signal })
           );
           if (!ignore) {
-            setSearchLoading(false);
+            const rawList = Array.isArray(payload)
+              ? payload
+              : (Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload?.users) ? payload.users : []));
+            const safeResults = rawList.map((u) => ({
+              ...u,
+              media_type: 'User',
+              title: u.username || u.fullName || 'User',
+              name: u.fullName || u.username || 'User'
+            }));
+            allResultsRef.current = safeResults;
+            searchCacheRef.current.set(cacheKey, { results: safeResults, hasMore: false, timestamp: Date.now() });
+            setSearchResults(safeResults);
+            setHasNextPage(false);
           }
           return;
         }
 
+        const endpointType = searchTab === 'cast' ? '&type=cast' : '';
         const payload = await apiFetch(
-          `/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20&type=${encodeURIComponent(searchTab)}`
+          `/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=1`,
+          { signal: controller.signal }
         );
         if (!ignore) {
-          const results = Array.isArray(payload?.results) ? payload.results : [];
-          const safeResults = mergeSearchResults([], results, 40, adminMode);
-          allResultsRef.current = safeResults;
-          searchCacheRef.current.set(cacheKey, { results: safeResults, hasMore: false, timestamp: Date.now() });
-          setSearchResults(safeResults);
-          setHasNextPage(false);
+          const rawList = Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload) ? payload : []);
+          const incoming = rawList.map((item) => {
+            if (searchTab === 'cast') {
+              return { ...item, media_type: 'Person' };
+            }
+            const mType = item.media_type || (item.type === 'tv' || item.first_air_date ? 'Series' : 'Movie');
+            return {
+              ...item,
+              media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType
+            };
+          });
+          const nextResults = mergeSearchResults([], incoming, 400, adminMode);
+          allResultsRef.current = nextResults;
+          setSearchResults(nextResults);
+          const hasMore = incoming.length >= 10;
+          setHasNextPage(hasMore);
+          searchCacheRef.current.set(cacheKey, {
+            results: nextResults,
+            hasMore,
+            timestamp: Date.now()
+          });
         }
       } catch (error) {
         if (error?.name === 'AbortError') return;
@@ -141,28 +151,31 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
 
     let itemsReceived = 0;
     try {
-      await streamApiFetch(
-        `/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20&type=${encodeURIComponent(searchTab)}&page=${nextPage}&stream=1`,
-        {
-          signal: controller.signal,
-          onEvent(event) {
-            if (event?.query !== searchQuery.trim()) return;
-            if (event?.type === 'results') {
-              const incoming = Array.isArray(event.results) ? event.results : [];
-              if (incoming.length > 0) {
-                itemsReceived += incoming.length;
-                const nextResults = mergeSearchResults(allResultsRef.current, incoming, 400, adminMode);
-                allResultsRef.current = nextResults;
-                setSearchResults(nextResults);
-              }
-            } else if (event?.type === 'done') {
-              if (event.hasMore === false || itemsReceived === 0) {
-                setHasNextPage(false);
-              }
-            }
-          }
-        }
+      const endpointType = searchTab === 'cast' ? '&type=cast' : '';
+      const payload = await apiFetch(
+        `/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=${nextPage}`,
+        { signal: controller.signal }
       );
+      const rawList = Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload) ? payload : []);
+      const incoming = rawList.map((item) => {
+        if (searchTab === 'cast') {
+          return { ...item, media_type: 'Person' };
+        }
+        const mType = item.media_type || (item.type === 'tv' || item.first_air_date ? 'Series' : 'Movie');
+        return {
+          ...item,
+          media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType
+        };
+      });
+      if (incoming.length > 0) {
+        itemsReceived = incoming.length;
+        const nextResults = mergeSearchResults(allResultsRef.current, incoming, 400, adminMode);
+        allResultsRef.current = nextResults;
+        setSearchResults(nextResults);
+      }
+      if (incoming.length < 10) {
+        setHasNextPage(false);
+      }
     } catch (err) {
       if (err?.name !== 'AbortError') {
         console.warn('[Search] fetchNextPage error:', err.message);

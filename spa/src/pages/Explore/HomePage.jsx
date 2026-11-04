@@ -42,9 +42,21 @@ export function HomePage() {
         homeTrendingCache.expiresAt = Date.now() + HOME_TRENDING_TTL;
       }
 
-      const rawPublished = Array.isArray(publishedData)
+      const publishedList = Array.isArray(publishedData)
         ? publishedData
         : (Array.isArray(publishedData?.collections) ? publishedData.collections : []);
+      const rawPublished = publishedList.map((entry) => {
+        const col = entry?.collection || entry || {};
+        return {
+          ...col,
+          _id: col._id || entry?._id,
+          id: col._id || entry?._id || col.id,
+          name: col.name || entry?.name || '',
+          username: entry?.username || col.username || '',
+          avatar: entry?.avatar || col.avatar || '',
+          movies: Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : [])
+        };
+      });
 
       const rawGenres = Array.isArray(genresData?.genres) && genresData.genres.length
         ? genresData.genres
@@ -137,20 +149,22 @@ export function HomePage() {
 
       {publishedCollections.length ? (
         <section className="content-section space-y-6">
-          {publishedCollections.map((collection) => {
+          {publishedCollections.map((collection, colIdx) => {
             const items = Array.isArray(collection.movies) ? collection.movies.map(normalizeStoredCollectionItem) : [];
+            const colTitle = collection.name || 'Collection';
+            const colPublisher = collection.username || '';
             return (
-              <div key={`${collection.username}-${collection.name}`} className="space-y-4">
+              <div key={`${colPublisher}-${colTitle}-${collection._id || colIdx}`} className="space-y-4">
                 <HomeShelfHeader
-                  title={collection.name}
-                  publisher={collection.username}
-                  onPublisherClick={() => navigate(`/user/${collection.username}`)}
-                  onViewAll={() => navigate(`/user/${collection.username}/collection/${encodeURIComponent(collection.name)}`)}
+                  title={colTitle}
+                  publisher={colPublisher}
+                  onPublisherClick={() => colPublisher && navigate(`/user/${colPublisher}`)}
+                  onViewAll={() => colPublisher && navigate(`/user/${colPublisher}/collection/${encodeURIComponent(colTitle)}`)}
                 />
                 {items.length ? (
                   <div className={HOME_GRID_CLASS}>
                     {items.slice(0, homeShelfLimit).map((item, index) => (
-                      <ContentCard key={`${collection.username}-${collection.name}-${item.id || index}-${item.media_type}`} item={item} data-card />
+                      <ContentCard key={`${colPublisher}-${colTitle}-${item.id || index}-${item.media_type}`} item={item} data-card />
                     ))}
                   </div>
                 ) : (

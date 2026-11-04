@@ -13,6 +13,9 @@ export function useMediaAction(id, type, content) {
       broadcastCollections(response.collections, response.collectionVersion);
     }
     queryClient.invalidateQueries({ queryKey: ['collections'] });
+    queryClient.invalidateQueries({ queryKey: ['homePageData'] });
+    queryClient.invalidateQueries({ queryKey: ['profile'] });
+    queryClient.invalidateQueries({ queryKey: ['collection'] });
   }, [queryClient]);
 
   const { collections } = useLiveCollections();

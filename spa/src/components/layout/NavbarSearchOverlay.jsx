@@ -64,9 +64,10 @@ export function NavbarSearchOverlay({
   const activeResults = useMemo(() => {
     const source = query.trim().length >= 1 ? results : historyItems;
     return source.filter((item) => {
-      if (tab === 'content') return ['Movie', 'Series', 'tv'].includes(item.media_type);
-      if (tab === 'cast') return item.media_type === 'Person';
-      if (tab === 'users') return item.media_type === 'User';
+      if (!item) return false;
+      if (tab === 'content') return ['Movie', 'Series', 'tv', 'movie'].includes(item.media_type) || (!item.media_type && (item.title || item.originalTitle));
+      if (tab === 'cast') return item.media_type === 'Person' || item.known_for_department || item.profile_path;
+      if (tab === 'users') return item.media_type === 'User' || item.username;
       return true;
     });
   }, [historyItems, query, results, tab]);

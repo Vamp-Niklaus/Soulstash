@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from '../../../utils/toast.js';
-import { streamApiFetch } from '../../../api/client.js';
+import { apiFetch } from '../../../api/client.js';
 import { HoverMarqueeTitle } from './Typography.jsx';
 import { SearchResultSkeletonGrid } from '../Skeletons/index.js';
 import { mergeSearchResults } from '../../../utils/formatters.js';
@@ -60,22 +60,21 @@ export function CollectionSearchDrawer({ open, onClose, collection, onAdd, pendi
     setResults([]);
     const timeout = window.setTimeout(async () => {
       try {
-        const streamedResults = [];
-        await streamApiFetch(
-          `/api/search?q=${encodeURIComponent(query.trim())}&limit=20&type=content&stream=1`,
-          {
-            signal: controller.signal,
-            onEvent(event) {
-              if (ignore || event?.query !== query.trim() || event?.type !== 'results') return;
-              const incoming = Array.isArray(event.results) ? event.results : [];
-              const nextResults = mergeSearchResults(streamedResults, incoming, 40);
-              streamedResults.splice(0, streamedResults.length, ...nextResults);
-              setResults(nextResults);
-              setLoading(false);
-            }
-          }
+        const payload = await apiFetch(
+          `/api/search?q=${encodeURIComponent(query.trim())}&limit=20`,
+          { signal: controller.signal }
         );
         if (!ignore) {
+          const rawList = Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload) ? payload : []);
+          const incoming = rawList.map((item) => {
+            const mType = item.media_type || (item.type === 'tv' || item.first_air_date ? 'Series' : 'Movie');
+            return {
+              ...item,
+              media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType
+            };
+          });
+          const nextResults = mergeSearchResults([], incoming, 40);
+          setResults(nextResults);
           setLoading(false);
         }
       } catch (error) {

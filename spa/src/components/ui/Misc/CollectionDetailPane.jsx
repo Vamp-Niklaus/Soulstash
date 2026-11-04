@@ -86,37 +86,31 @@ export function CollectionDetailPane({
       body: JSON.stringify({ publish: nextPublished })
     }),
     onMutate: async (nextPublished) => {
-      // Optimistic update
-      await queryClient.cancelQueries({ queryKey: ['collections'] });
-      const previousCollections = queryClient.getQueryData(['collections']);
-      
-      if (previousCollections) {
-        queryClient.setQueryData(['collections'], (old) => {
-          if (!old) return old;
-          return normalizeCollections(old).map(c => 
-            String(c._id || c.name) === String(collection._id || collection.name)
-              ? { ...c, isPublished: nextPublished, isPublic: nextPublished ? true : false }
-              : c
-          );
-        });
-      }
-      return { previousCollections };
+      // Optimistic update so collections sidebar, badges, and detail reflect published state immediately
+      const current = getCachedUserCollections();
+      const updated = current.map(c => 
+        String(c._id || c.name) === String(collection._id || collection.name)
+          ? { ...c, isPublished: nextPublished, isPublic: nextPublished ? true : c.isPublic }
+          : c
+      );
+      broadcastCollections(updated);
+      return { previousCollections: current };
     },
     onError: (err, nextPublished, context) => {
       toast(err.message, 'error');
       if (context?.previousCollections) {
-        queryClient.setQueryData(['collections'], context.previousCollections);
+        broadcastCollections(context.previousCollections);
       }
       queryClient.invalidateQueries({ queryKey: ['collections'] });
     },
     onSuccess: (response, nextPublished) => {
-      // This page is rendered from useLiveCollections, so update its shared
-      // cache from the authoritative response instead of only invalidating an
-      // unrelated React Query entry.
       if (Array.isArray(response?.collections)) {
         broadcastCollections(response.collections, response.collectionVersion);
       }
       queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['homePageData'] });
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['collection'] });
       if (onPublishChange) onPublishChange();
       toast(nextPublished ? 'Collection published' : 'Collection unpublished');
     }

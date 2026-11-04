@@ -21,6 +21,9 @@ export function useCollectionMutations() {
       broadcastCollections(response.collections, response.collectionVersion);
     }
     queryClient.invalidateQueries({ queryKey: collectionsQueryKey });
+    queryClient.invalidateQueries({ queryKey: ['homePageData'] });
+    queryClient.invalidateQueries({ queryKey: ['profile'] });
+    queryClient.invalidateQueries({ queryKey: ['collection'] });
   };
   const options = { onSuccess: handleSuccess };
 
