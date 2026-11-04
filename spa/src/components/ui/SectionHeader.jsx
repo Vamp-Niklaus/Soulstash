@@ -1,7 +1,7 @@
 import React from 'react';
 
 export function SectionHeader({ title, subtitle, large = false }) {
-  const isLargeTitle = title === 'Trending Now' || title === 'Popular Movies' || large;
+  const isLargeTitle = title === 'Trending Now' || title === 'Popular' || large;
   const titleClassName = isLargeTitle
     ? 'section-title !mb-0 inline-block !ml-2 sm:!ml-3 !pl-1 !text-2xl sm:!text-3xl !font-black overflow-visible'
     : 'section-title !mb-0';

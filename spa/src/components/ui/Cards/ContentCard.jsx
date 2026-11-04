@@ -11,6 +11,7 @@ import {
 
 export const ContentCard = React.forwardRef(function ContentCard({ item, status = null, onRemove, itemId, ...props }, ref) {
   const navigate = useNavigate();
+  if (!item?.poster_path || !String(item.poster_path).trim()) return null;
   const title = item.title || item.name || 'Unknown';
   const contentType = item.media_type || (item.title ? 'Movie' : 'Series');
 

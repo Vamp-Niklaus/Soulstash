@@ -32,10 +32,10 @@ export function HomePage() {
       }
 
       const trendingRaw = homeData?.trending?.results || homeData?.trending || [];
-      const trending = Array.isArray(trendingRaw) ? trendingRaw : [];
+      const trending = Array.isArray(trendingRaw) ? trendingRaw.filter(item => item?.poster_path && String(item.poster_path).trim()) : [];
 
       const popularRaw = homeData?.popular?.results || homeData?.popular || homeData?.popularMovies?.results || [];
-      const popular = Array.isArray(popularRaw) ? popularRaw : [];
+      const popular = Array.isArray(popularRaw) ? popularRaw.filter(item => item?.poster_path && String(item.poster_path).trim()) : [];
 
       if (trending.length) {
         homeTrendingCache.data = trending;
@@ -134,7 +134,7 @@ export function HomePage() {
 
       {popular.length > 0 && !loading && !error ? (
         <section className="content-section">
-          <HomeShelfHeader title="Popular Movies" onViewAll={() => navigate('/popular')} />
+          <HomeShelfHeader title="Popular" onViewAll={() => navigate('/popular')} />
           <div className={HOME_GRID_CLASS}>
             {popular.slice(0, homeShelfLimit).map((item) => (
               <ContentCard key={`pop-${item.id}`} item={item} data-card />

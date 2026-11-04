@@ -42,7 +42,7 @@ export function PopularPage() {
   });
 
   useEffect(() => {
-    document.title = 'Popular Movies | Soulstash';
+    document.title = 'Popular | Soulstash';
   }, []);
 
   const items = useMemo(() => {
@@ -52,6 +52,7 @@ export function PopularPage() {
     for (const page of data.pages) {
       const list = Array.isArray(page?.results) ? page.results : (Array.isArray(page?.movies) ? page.movies : (Array.isArray(page) ? page : []));
       for (const item of list) {
+        if (!item?.poster_path || !String(item.poster_path).trim()) continue;
         const itemId = Number(item?.id || item?.movieId || item?.seriesId);
         if (itemId && !seen.has(itemId)) {
           seen.add(itemId);
@@ -96,7 +97,7 @@ export function PopularPage() {
 
   return (
     <section className="content-section">
-      <SectionHeader title="Popular Movies" large />
+      <SectionHeader title="Popular" large />
       {status === 'error' ? (
         <div className="app-error">
           <p>{error?.message || 'Unable to load popular titles.'}</p>
