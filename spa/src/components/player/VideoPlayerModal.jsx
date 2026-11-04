@@ -654,11 +654,17 @@ export function VideoPlayerModal({ request, onClose }) {
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
 
   const canEmbedSource = canUseVideoJs || activeSource?.embeddable !== false;
-  const availableHeight = `calc(100dvh - ${modalPadding * 2 + verticalInset * 2}px)`;
-  const mediaHeight = `calc(${availableHeight} - ${chromeAllowance}px)`;
+  // Modern movie aspect ratio (16:9 widescreen) with decreased desktop height
+  // so the player has breathing room and is not pushed to the bottom of the screen.
+  const desktopMediaMaxH = 'min(54vh, 560px)';
+  const mobileMediaMaxH = 'min(42vh, 56.25vw)';
+  const mediaMaxH = isDesktopViewport ? desktopMediaMaxH : mobileMediaMaxH;
+
   const videoBoxStyle = {
-    width: `min(${widthLimit}, ${maxPlayerWidth}, calc(${mediaHeight} * 16 / 9))`,
-    maxHeight: availableHeight,
+    width: isDesktopViewport
+      ? `min(94vw, 1220px, calc(${desktopMediaMaxH} * 16 / 9))`
+      : 'min(96vw, calc(96vw))',
+    maxWidth: isDesktopViewport ? '1220px' : '96vw',
     margin: '0 auto',
     display: 'flex',
     flexDirection: 'column'
@@ -666,9 +672,10 @@ export function VideoPlayerModal({ request, onClose }) {
   const mediaAreaStyle = {
     width: '100%',
     aspectRatio: '16 / 9',
-    maxHeight: mediaHeight
+    maxHeight: mediaMaxH,
+    backgroundColor: 'black'
   };
-  const baseVerticalShift = isDesktopViewport ? -10 : -20;
+  const baseVerticalShift = isDesktopViewport ? -16 : -10;
   const sourceButtonClass = isAndroidViewport
     ? 'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors'
     : 'shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors sm:text-xs';

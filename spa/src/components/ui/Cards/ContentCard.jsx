@@ -25,7 +25,7 @@ export const ContentCard = React.forwardRef(function ContentCard({ item, status 
     >
       <div className="cardImageWrap relative">
         <img
-          src={imageUrl(item.poster_path, 'w500')}
+          src={imageUrl(item.poster_path, 'w342')}
           alt={title}
           className="cardImg fadeImg"
           loading="lazy"

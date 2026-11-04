@@ -122,7 +122,10 @@ export async function apiFetch(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, { ...options, headers });
+  // Sensible default request timeout (20s) to prevent hanging requests on slow/dead networks
+  const signal = options.signal || (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined);
+
+  const response = await fetch(url, { ...options, headers, signal });
   
   if (!response.ok) {
     await handleApiError(response);

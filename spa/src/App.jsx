@@ -1,5 +1,5 @@
 // 1. The Core Engines (React & Router)
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Outlet, useParams, useLocation, useNavigate, matchPath } from 'react-router-dom';
 
 // 2. The Layout & Global UI
@@ -104,8 +104,36 @@ export function AppShell() {
     </Routes>
   );
 
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   return (
     <div className={`app-shell app-shell--textured ${isCollectionRoute ? 'collection-react-shell' : ''}`}>
+      {!isOnline && (
+        <div className="sticky top-0 z-[10000] flex items-center justify-between bg-amber-600/95 px-4 py-2 text-xs font-medium text-white shadow-md backdrop-blur">
+          <div className="flex items-center gap-2">
+            <i className="fas fa-wifi-slash text-sm"></i>
+            <span>Offline — Showing saved data from local cache</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded bg-black/30 px-2.5 py-1 text-[11px] font-semibold hover:bg-black/50 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <ReactNavbar />
       <main className={`app-main ${isAuthRoute ? 'app-main--auth' : ''}`}>
         <div className={`app-container ${isCollectionRoute ? 'app-container--collections' : ''}`}>
