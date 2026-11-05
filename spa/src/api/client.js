@@ -84,18 +84,22 @@ export function clearAuthSession() {
 // ---------------------------------------------------------------------------
 
 /**
- * Checks if the backend threw an error, and logs the user out if their
- * VIP pass (token) is expired.
+ * Clears an invalid session while keeping it for ordinary permission errors.
  */
 async function handleApiError(response) {
-  if (response.status === 401 || response.status === 403) {
-    // 401 / 403 means Unauthorized (Invalid VIP Pass)
+  const payload = await response.json().catch(() => ({}));
+  const message = String(payload.error || '').toLowerCase();
+  const authenticationFailure = response.status === 401 || (
+    response.status === 403 &&
+    /invalid or expired token|invalid token|token expired|access token required/.test(message)
+  );
+
+  if (authenticationFailure) {
     clearAuthSession();
     if (!['/login', '/register'].includes(window.location.pathname)) {
       window.dispatchEvent(new CustomEvent('soulstash:unauthorized'));
     }
   }
-  const payload = await response.json().catch(() => ({}));
   const error = new Error(payload.error || `Request failed with status ${response.status}`);
   error.status = response.status;
   error.payload = payload;
