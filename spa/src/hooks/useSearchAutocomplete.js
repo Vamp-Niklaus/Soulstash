@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch, streamApiFetch } from '../api/client.js';
 import { mergeSearchResults } from '../utils/formatters.js';
+import { getKartoonsSearchQueries, searchKartoonsShows } from '../api/kartoons.js';
+import { mergeKartoonsSearchResults } from '../utils/kartoonsSearch.js';
 
 export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) {
   const [searchResults, setSearchResults] = useState([]);
@@ -12,6 +14,7 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
   const allResultsRef = useRef([]);
   const nextControllerRef = useRef(null);
   const searchCacheRef = useRef(new Map());
+  const kartoonResultsRef = useRef(null);
 
   // adminMode: 0=filter adult, 1=all, 2=adult only
   const adminMode = user?.admin === true ? Number(user?.adminMode ?? (user?.showAdult ? 1 : 0)) : 0;
@@ -21,6 +24,7 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
     searchCacheRef.current.clear();
     setSearchResults([]);
     allResultsRef.current = [];
+    kartoonResultsRef.current = null;
   }, [user?.admin, adminMode]);
 
   useEffect(() => {
@@ -40,6 +44,7 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
     const controller = new AbortController();
     currentPageRef.current = 1;
     allResultsRef.current = [];
+    kartoonResultsRef.current = null;
     setHasNextPage(true);
     setIsFetchingNextPage(false);
 
@@ -50,6 +55,7 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
 
     if (cached && now - cached.timestamp < cacheTtl) {
       allResultsRef.current = cached.results;
+      kartoonResultsRef.current = cached.kartoons || null;
       setSearchResults(cached.results);
       setSearchLoading(false);
       setHasNextPage(Boolean(cached.hasMore));
@@ -87,13 +93,28 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
         }
 
         const endpointType = searchTab === 'cast' ? '&type=cast' : '';
-        const payload = await apiFetch(
-          `/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=1`,
-          { signal: controller.signal }
-        );
+        // Run Soulstash API + Kartoons search in parallel (content tab only)
+        const queryVariants = searchTab === 'content'
+          ? getKartoonsSearchQueries(searchQuery.trim())
+          : [searchQuery.trim()];
+        const [soulSettled, kartoonSettled] = await Promise.all([
+          Promise.allSettled(queryVariants.map((q) => apiFetch(
+            `/api/search?q=${encodeURIComponent(q)}&limit=20${endpointType}&page=1`,
+            { signal: controller.signal }
+          ))),
+          searchTab === 'content'
+            ? Promise.allSettled(queryVariants.map((q) => searchKartoonsShows(q, { signal: controller.signal })))
+            : Promise.resolve([])
+        ]);
+
         if (!ignore) {
-          const rawList = Array.isArray(payload?.results) ? payload.results : (Array.isArray(payload) ? payload : []);
-          const incoming = rawList.map((item) => {
+          const incomingRaw = soulSettled
+            .filter((r) => r.status === 'fulfilled')
+            .flatMap((r) => Array.isArray(r.value?.results) ? r.value.results : (Array.isArray(r.value) ? r.value : []));
+          const kartoonPayload = Array.isArray(kartoonSettled) && kartoonSettled.length
+            ? { data: kartoonSettled.filter((r) => r.status === 'fulfilled').flatMap((r) => r.value?.data || []) }
+            : null;
+          const incoming = incomingRaw.map((item) => {
             if (searchTab === 'cast') {
               return { ...item, media_type: 'Person' };
             }
@@ -103,45 +124,21 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
               media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType
             };
           });
-          const nextResults = mergeSearchResults([], incoming, 400, adminMode);
+          const soulMerged = mergeSearchResults([], incoming, 400, adminMode);
+          kartoonResultsRef.current = kartoonPayload;
+          const nextResults = searchTab === 'content'
+            ? mergeKartoonsSearchResults(soulMerged, kartoonPayload)
+            : soulMerged;
           allResultsRef.current = nextResults;
           setSearchResults(nextResults);
           const hasMore = incoming.length >= 10;
           setHasNextPage(hasMore);
           searchCacheRef.current.set(cacheKey, {
             results: nextResults,
+            kartoons: kartoonPayload,
             hasMore,
             timestamp: Date.now()
           });
-
-          // Always prefetch next 2 pages in advance (page 2 & 3)
-          if (hasMore) {
-            Promise.allSettled([
-              apiFetch(`/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=2`, { signal: controller.signal }),
-              apiFetch(`/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=3`, { signal: controller.signal })
-            ]).then(([p2Res, p3Res]) => {
-              if (ignore) return;
-              const extra = [];
-              if (p2Res.status === 'fulfilled') {
-                const list2 = Array.isArray(p2Res.value?.results) ? p2Res.value.results : (Array.isArray(p2Res.value) ? p2Res.value : []);
-                extra.push(...list2);
-              }
-              if (p3Res.status === 'fulfilled') {
-                const list3 = Array.isArray(p3Res.value?.results) ? p3Res.value.results : (Array.isArray(p3Res.value) ? p3Res.value : []);
-                extra.push(...list3);
-              }
-              if (extra.length) {
-                const normalized = extra.map((item) => {
-                  if (searchTab === 'cast') return { ...item, media_type: 'Person' };
-                  const mType = item.media_type || (item.type === 'tv' || item.first_air_date ? 'Series' : 'Movie');
-                  return { ...item, media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType };
-                });
-                currentPageRef.current = 3;
-                allResultsRef.current = mergeSearchResults(allResultsRef.current, normalized, 400, adminMode);
-                setSearchResults([...allResultsRef.current]);
-              }
-            }).catch(() => {});
-          }
         }
       } catch (error) {
         if (error?.name === 'AbortError') return;

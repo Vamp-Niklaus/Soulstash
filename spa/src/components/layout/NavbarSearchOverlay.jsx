@@ -68,7 +68,7 @@ export function NavbarSearchOverlay({
     const source = query.trim().length >= 1 ? results : historyItems;
     return source.filter((item) => {
       if (!item) return false;
-      if (tab === 'content') return ['Movie', 'Series', 'tv', 'movie'].includes(item.media_type) || (!item.media_type && (item.title || item.originalTitle));
+      if (tab === 'content') return ['Movie', 'Series', 'tv', 'movie'].includes(item.media_type) || item.source === 'kartoons' || (!item.media_type && (item.title || item.originalTitle));
       if (tab === 'cast') return item.media_type === 'Person' || item.known_for_department || item.profile_path;
       if (tab === 'users') return item.media_type === 'User' || item.username;
       return true;
@@ -80,6 +80,11 @@ export function NavbarSearchOverlay({
     onClose();
     if (item.media_type === 'Person') { navigate(`/person/${item.id}`); return; }
     if (item.media_type === 'User') { navigate(`/user/${encodeURIComponent(item.username || item.title || item.name)}`); return; }
+    // Pure Kartoons-only result → go to Kartoons detail page
+    if (item.source === 'kartoons' && item.kartoons?.slug) {
+      navigate(`/kartoons/${encodeURIComponent(item.kartoons.slug)}`);
+      return;
+    }
     navigate(mediaRoute(item));
   }, [navigate, onClose]);
 
