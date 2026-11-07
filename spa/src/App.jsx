@@ -32,6 +32,7 @@ import { PopularPage } from './pages/Explore/PopularPage.jsx';
 import { GenrePage } from './pages/Explore/GenrePage.jsx';
 import { DetailPage } from './pages/Content/DetailPage.jsx';
 import { PersonPage } from './pages/Content/PersonPage.jsx';
+import { KartoonDetailPage } from './pages/Content/KartoonDetailPage.jsx';
 
 
 
@@ -98,6 +99,7 @@ export function AppShell() {
       <Route path="/genre/:id/:name?" element={<GenrePage />} />
 
       {/* Content */}
+      <Route path="/kartoons/:slug" element={<KartoonDetailPage />} />
       <Route path="/movie/:id" element={<DetailPage type="movie" />} />
       <Route path="/series/:id" element={<DetailPage type="series" />} />
       <Route path="/person/:id" element={<PersonPage />} />

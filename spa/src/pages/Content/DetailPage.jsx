@@ -13,8 +13,8 @@
  *   3. Render subcomponents in order
  */
 
-import { useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { useDetailPage } from '../../hooks/useDetailPage.js';
 import { toast } from '../../utils/toast.js';
@@ -26,9 +26,11 @@ import { DetailStat } from '../../components/ui/Cards/DetailStat.jsx';
 import { DetailPeopleStat } from '../../components/ui/Cards/DetailPeopleStat.jsx';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { VideoPlayerModal } from '../../components/player/VideoPlayerModal.jsx';
+import { KartoonWatchModal } from '../../components/player/KartoonWatchModal.jsx';
 import { SaveToCollectionModal } from '../../components/ui/Modals/SaveToCollectionModal.jsx';
 import { CreateCollectionModal } from '../../components/ui/Modals/CreateCollectionModal.jsx';
 import { PlayerErrorBoundary } from '../../components/player/PlayerErrorBoundary.jsx';
+import { fetchKartoonsEpisodes, kartoonEpisodePlayerUrl } from '../../api/kartoons.js';
 
 import { DetailHero } from './DetailHero.jsx';
 import { SeasonEpisodeSection } from './SeasonEpisodeSection.jsx';
@@ -78,6 +80,9 @@ const GENRE_NAME_TO_ID = {
 
 export function DetailPage({ type }) {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const kartoonSlug = searchParams.get('kartoons') || '';
+  const [kartoonPlayer, setKartoonPlayer] = useState(null);
   const auth = useAuthSession();
   const page = useDetailPage(id, type, auth);
 
@@ -137,6 +142,25 @@ export function DetailPage({ type }) {
 
   // ── Play button handler ───────────────────────────────────────────────────
 
+  async function playKartoonsEpisode(seasonNumber, episodeNumber, fallback) {
+    if (!kartoonSlug) {
+      fallback();
+      return;
+    }
+    try {
+      const episodes = await fetchKartoonsEpisodes(kartoonSlug, seasonNumber);
+      const match = episodes.find((episode) => Number(episode.episodeNumber) === Number(episodeNumber));
+      if (!match?._id) throw new Error('Matching Kartoons episode not found');
+      setKartoonPlayer({
+        url: kartoonEpisodePlayerUrl(match._id),
+        subtitle: `Season ${seasonNumber} • Episode ${episodeNumber}`
+      });
+    } catch {
+      toast('Kartoons episode unavailable. Opening the Soulstash player.', 'info');
+      fallback();
+    }
+  }
+
   function handlePlayClick() {
     const tmdbId = content?.id || id;
     const originalTitle = content?.original_title || content?.original_name || '';
@@ -149,9 +173,11 @@ export function DetailPage({ type }) {
     } else {
       const season = page.selectedSeason || 1;
       const ep = page.seasonDetails?.episodes?.[0]?.episode_number || 1;
-      page.setPlayerRequest(
-        createPlayerRequest({ mediaType: 'series', tmdbId, seasonNumber: season, episodeNumber: ep, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal })
-      );
+      void playKartoonsEpisode(season, ep, () => {
+        page.setPlayerRequest(
+          createPlayerRequest({ mediaType: 'series', tmdbId, seasonNumber: season, episodeNumber: ep, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal })
+        );
+      });
     }
   }
 
@@ -159,20 +185,22 @@ export function DetailPage({ type }) {
     const originalTitle = content?.original_title || content?.original_name || '';
     const originalName = content?.original_name || content?.original_title || '';
     const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
-    page.setPlayerRequest(
-      createPlayerRequest({
-        mediaType: 'series',
-        tmdbId: content?.id || id,
-        seasonNumber: episode.season_number,
-        episodeNumber: episode.episode_number,
-        imdbId: content?.imdb_id,
-        title: `${title} S${episode.season_number}E${episode.episode_number}`,
-        originalTitle,
-        originalName,
-        seriesTitle: title,
-        year: yearVal
-      })
-    );
+    void playKartoonsEpisode(episode.season_number, episode.episode_number, () => {
+      page.setPlayerRequest(
+        createPlayerRequest({
+          mediaType: 'series',
+          tmdbId: content?.id || id,
+          seasonNumber: episode.season_number,
+          episodeNumber: episode.episode_number,
+          imdbId: content?.imdb_id,
+          title: `${title} S${episode.season_number}E${episode.episode_number}`,
+          originalTitle,
+          originalName,
+          seriesTitle: title,
+          year: yearVal
+        })
+      );
+    });
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -202,7 +230,7 @@ export function DetailPage({ type }) {
           page.setSaveModalOpen(true);
         }}
         onPlay={handlePlayClick}
-        isPlayerOpen={!!page.playerRequest?.tmdbId}
+        isPlayerOpen={!!page.playerRequest?.tmdbId || !!kartoonPlayer?.url}
       />
 
       {/* 2. Overview + genres */}
@@ -331,6 +359,14 @@ export function DetailPage({ type }) {
       />
 
       {/* 7. Video player (rendered only when a play request is active) */}
+      {kartoonPlayer?.url ? (
+        <KartoonWatchModal
+          title={title}
+          subtitle={kartoonPlayer.subtitle}
+          embedUrl={kartoonPlayer.url}
+          onClose={() => setKartoonPlayer(null)}
+        />
+      ) : null}
       {page.playerRequest?.tmdbId && (
         <PlayerErrorBoundary onClose={() => page.setPlayerRequest(null)}>
           <VideoPlayerModal

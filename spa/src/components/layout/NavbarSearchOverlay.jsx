@@ -80,6 +80,15 @@ export function NavbarSearchOverlay({
     onClose();
     if (item.media_type === 'Person') { navigate(`/person/${item.id}`); return; }
     if (item.media_type === 'User') { navigate(`/user/${encodeURIComponent(item.username || item.title || item.name)}`); return; }
+    if (item.source === 'kartoons' && item.kartoons?.slug) {
+      navigate(`/kartoons/${encodeURIComponent(item.kartoons.slug)}`);
+      return;
+    }
+    if (item.kartoons?.slug) {
+      const route = mediaRoute(item);
+      navigate(`${route}?kartoons=${encodeURIComponent(item.kartoons.slug)}`);
+      return;
+    }
     navigate(mediaRoute(item));
   }, [navigate, onClose]);
 
@@ -151,12 +160,14 @@ export function NavbarSearchOverlay({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {activeResults.map((item, index) => {
                   const title = item.title || item.name || item.username || 'Unknown';
-                  const image = item.media_type === 'User' ? (item.avatar || item.poster_path) : item.poster_path || item.profile_path;
+                  const image = item.media_type === 'User'
+                    ? (item.avatar || item.poster_path)
+                    : (item.posterUrl || item.poster_path || item.kartoons?.image || item.profile_path);
                   const meta = item.media_type === 'User'
                     ? (item.fullName || item.bio || 'Soulstash user')
                     : item.media_type === 'Person'
                       ? 'Cast & Crew'
-                      : `${item.media_type === 'Series' || item.media_type === 'tv' ? 'Series' : 'Movie'}${yearFrom(item) ? ` | ${yearFrom(item)}` : ''}`;
+                      : `${item.media_type === 'Series' || item.media_type === 'tv' ? 'Series' : 'Movie'}${yearFrom(item) ? ` | ${yearFrom(item)}` : ''}${item.source === 'kartoons' ? ' | Kartoons' : item.kartoons?.slug ? ' | Kartoons player' : ''}`;
                   return (
                     <button key={`${item.media_type}-${item.id || item.username || index}`}
                       ref={(el) => { resultButtonsRef.current[index] = el; }}
@@ -166,7 +177,7 @@ export function NavbarSearchOverlay({
                       className={`flex items-center gap-3 rounded-lg p-3 text-left border outline-none bg-[#171717] border-transparent hover:bg-[#1d1d1d] tv-focus-card ${focusedIndex === index ? 'is-focused' : ''}`}>
                       <div className="h-20 w-14 shrink-0 overflow-hidden rounded-md bg-[#252833]">
                         {image ? (
-                          <img src={item.media_type === 'User' ? image : imageUrl(image, 'w300_and_h450_face')} alt={title}
+                          <img src={item.media_type === 'User' || item.posterUrl || item.kartoons?.image ? image : imageUrl(image, 'w300_and_h450_face')} alt={title}
                             className="h-full w-full object-cover"
                             onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_AVATAR; }} />
                         ) : (
