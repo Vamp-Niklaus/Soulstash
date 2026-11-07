@@ -10,8 +10,7 @@ import { toast } from '../../utils/toast.js';
 import { apiFetch } from '../../api/client.js';
 import { ActionButton } from '../ui/ActionButton.jsx';
 import {
-  kartoonEpisodePlayerUrl,
-  kartoonMoviePlayerUrl,
+  fetchKartoonsStremioStreams,
   resolveKartoonsEpisodeId,
   resolveKartoonsMovieId,
   searchKartoonsShows,
@@ -392,27 +391,32 @@ export function VideoPlayerModal({ request, onClose }) {
         const isMovie = request?.mediaType === 'movie';
         const season = Number(request?.seasonNumber) || 1;
         const episode = Number(request?.episodeNumber) || 1;
-        let kartoonUrl = null;
+        let kartoonStream = null;
+
+        const firstKartoonStream = async (type, id) => {
+          if (!id) return null;
+          const streams = await fetchKartoonsStremioStreams(type, id).catch(() => []);
+          return streams.find((stream) => /\.m3u8(?:[?#]|$)/i.test(stream.url || '')) || streams[0] || null;
+        };
 
         // 1. If explicit kartoonsEpisodeId is provided
         if (request?.kartoonsEpisodeId) {
-          kartoonUrl = kartoonEpisodePlayerUrl(request.kartoonsEpisodeId);
+          kartoonStream = await firstKartoonStream('series', request.kartoonsEpisodeId);
         }
 
         // 2. If explicit kartoonsSlug is provided
-        if (!kartoonUrl && request?.kartoonsSlug) {
+        if (!kartoonStream && request?.kartoonsSlug) {
           if (isMovie) {
-            kartoonUrl = kartoonMoviePlayerUrl(request.kartoonsSlug);
+            const movieId = await resolveKartoonsMovieId(request.kartoonsSlug).catch(() => null);
+            kartoonStream = await firstKartoonStream('movie', movieId);
           } else {
             const epId = await resolveKartoonsEpisodeId(request.kartoonsSlug, season, episode).catch(() => null);
-            if (epId) {
-              kartoonUrl = kartoonEpisodePlayerUrl(epId);
-            }
+            kartoonStream = await firstKartoonStream('series', epId);
           }
         }
 
         // 3. Otherwise, search Kartoons by title (e.g. Dragon Ball, Ben 10, etc.)
-        if (!kartoonUrl && (request?.title || request?.seriesTitle)) {
+        if (!kartoonStream && (request?.title || request?.seriesTitle)) {
           const rawTitle = String(request.seriesTitle || request.title || '');
           const cleanTitle = rawTitle
             .replace(/\s*S\d+E\d+.*$/i, '')
@@ -426,29 +430,29 @@ export function VideoPlayerModal({ request, onClose }) {
               const res = await searchKartoonsMovies(cleanTitle).catch(() => ({ data: [] }));
               const match = findKartoonsMatch(request, res?.data || []);
               if (match?.slug) {
-                kartoonUrl = kartoonMoviePlayerUrl(match.slug);
+                const movieId = await resolveKartoonsMovieId(match.slug).catch(() => null);
+                kartoonStream = await firstKartoonStream('movie', movieId);
               }
             } else {
               const res = await searchKartoonsShows(cleanTitle).catch(() => ({ data: [] }));
               const match = findKartoonsMatch(request, res?.data || []);
               if (match?.slug) {
                 const epId = await resolveKartoonsEpisodeId(match.slug, season, episode).catch(() => null);
-                if (epId) {
-                  kartoonUrl = kartoonEpisodePlayerUrl(epId);
-                }
+                kartoonStream = await firstKartoonStream('series', epId);
               }
             }
           }
         }
 
-        if (cancelled || !kartoonUrl) return;
+        if (cancelled || !kartoonStream?.url) return;
 
         const kSources = [{
           id: 'kartoon',
           key: 'kartoon',
           label: 'Kartoon',
-          url: kartoonUrl,
-          embeddable: true,
+          url: kartoonStream.url,
+          embeddable: false,
+          isDirect: true,
           group: 'hindi'
         }];
 
