@@ -3,18 +3,18 @@
  *
  * Route component for /movie/:id and /series/:id.
  *
- * This file is intentionally short — it is an orchestrator, not a god component.
+ * This file is intentionally short ΓÇö it is an orchestrator, not a god component.
  * All data-fetching and state live in useDetailPage.js.
  * All JSX sections live in their own subcomponent files.
  *
  * Reading this file should feel like reading a table of contents:
  *   1. Get all data/state from the hook
- *   2. Compute a few display values (title, meta, directorStat…)
+ *   2. Compute a few display values (title, meta, directorStatΓÇª)
  *   3. Render subcomponents in order
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useMemo } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { useDetailPage } from '../../hooks/useDetailPage.js';
 import { toast } from '../../utils/toast.js';
@@ -26,15 +26,9 @@ import { DetailStat } from '../../components/ui/Cards/DetailStat.jsx';
 import { DetailPeopleStat } from '../../components/ui/Cards/DetailPeopleStat.jsx';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { VideoPlayerModal } from '../../components/player/VideoPlayerModal.jsx';
-import { KartoonWatchModal } from '../../components/player/KartoonWatchModal.jsx';
 import { SaveToCollectionModal } from '../../components/ui/Modals/SaveToCollectionModal.jsx';
 import { CreateCollectionModal } from '../../components/ui/Modals/CreateCollectionModal.jsx';
 import { PlayerErrorBoundary } from '../../components/player/PlayerErrorBoundary.jsx';
-import {
-  fetchKartoonsEpisodes, getKartoonsSearchQueries, kartoonEpisodePlayerUrl,
-  kartoonMoviePlayerUrl, searchKartoonsMovies, searchKartoonsShows
-} from '../../api/kartoons.js';
-import { findKartoonsMatch } from '../../utils/kartoonsSearch.js';
 
 import { DetailHero } from './DetailHero.jsx';
 import { SeasonEpisodeSection } from './SeasonEpisodeSection.jsx';
@@ -84,64 +78,18 @@ const GENRE_NAME_TO_ID = {
 
 export function DetailPage({ type }) {
   const { id } = useParams();
-  const [searchParams] = useSearchParams();
-  const kartoonSlug = searchParams.get('kartoons') || '';
-  const [kartoonPlayer, setKartoonPlayer] = useState(null);
-  const kartoonLookupRef = useRef(Promise.resolve(null));
   const auth = useAuthSession();
   const page = useDetailPage(id, type, auth);
-  const detailContent = page.content;
 
-  useEffect(() => {
-    if (!detailContent || kartoonSlug || !['movie', 'series'].includes(type)) {
-      kartoonLookupRef.current = Promise.resolve(null);
-      return undefined;
-    }
-
-    const controller = new AbortController();
-    const lookup = async () => {
-      const titles = [
-        detailContent.title,
-        detailContent.name,
-        detailContent.original_title,
-        detailContent.original_name
-      ].filter((value, index, values) => value && values.indexOf(value) === index);
-      const searchQueries = [...new Set(titles.flatMap(getKartoonsSearchQueries))];
-      const search = type === 'movie' ? searchKartoonsMovies : searchKartoonsShows;
-      const responses = await Promise.allSettled(searchQueries.map((term) => search(term, { signal: controller.signal })));
-      const candidates = responses
-        .filter((result) => result.status === 'fulfilled')
-        .flatMap((result) => result.value?.data || []);
-      const year = detailContent.release_year || detailContent.release_date?.slice?.(0, 4) || detailContent.first_air_date?.slice?.(0, 4);
-      const match = findKartoonsMatch({
-        ...detailContent,
-        type: type === 'movie' ? 'movie' : 'tv',
-        media_type: type === 'movie' ? 'Movie' : 'Series',
-        release_year: year
-      }, candidates);
-      return match ? { slug: match.slug, type: type === 'movie' ? 'movie' : 'series' } : null;
-    };
-
-    const lookupPromise = lookup()
-      .catch((error) => {
-        if (error?.name !== 'AbortError') console.warn('[Kartoons] Detail match lookup failed:', error.message);
-        return null;
-      })
-      .then((match) => (controller.signal.aborted ? null : match));
-    kartoonLookupRef.current = lookupPromise;
-
-    return () => controller.abort();
-  }, [detailContent, kartoonSlug, type]);
-
-  // ── Loading / error states ────────────────────────────────────────────────
+  // ΓöÇΓöÇ Loading / error states ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (page.loading || !page.content) {
     return <DetailPageSkeleton type={type} />;
   }
 
-  const content = detailContent;
+  const { content } = page;
 
-  // ── Computed display values ───────────────────────────────────────────────
-  // These are pure derivations — no side effects, no state.
+  // ΓöÇΓöÇ Computed display values ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // These are pure derivations ΓÇö no side effects, no state.
 
   const title = content.title || content.name || 'Unknown title';
   const languageName = getLanguageName(
@@ -173,7 +121,7 @@ export function DetailPage({ type }) {
     displayRating ? `${ratingSource} ${displayRating.toFixed(1)}` : 'No rating'
   ].filter(Boolean);
 
-  // Director / creator stat — renders as a clickable people stat when possible,
+  // Director / creator stat ΓÇö renders as a clickable people stat when possible,
   // or falls back to a plain text stat
   const directorPeople = getDirectorPeople(content, page.creditsCrew, type);
   const directorLabel = getDirectorLabel(content, page.creditsCrew, type);
@@ -187,36 +135,7 @@ export function DetailPage({ type }) {
     <DetailStat label={type === 'series' ? 'Creator' : 'Directed By'} value={directorLabel} />
   );
 
-  // ── Play button handler ───────────────────────────────────────────────────
-
-  async function playKartoonsEpisode(seasonNumber, episodeNumber, fallback) {
-    const match = kartoonSlug ? { slug: kartoonSlug, type: 'series' } : await kartoonLookupRef.current;
-    if (!match || match.type !== 'series') {
-      fallback();
-      return;
-    }
-    try {
-      const episodes = await fetchKartoonsEpisodes(match.slug, seasonNumber);
-      const match = episodes.find((episode) => Number(episode.episodeNumber) === Number(episodeNumber));
-      if (!match?._id) throw new Error('Matching Kartoons episode not found');
-      setKartoonPlayer({
-        url: kartoonEpisodePlayerUrl(match._id),
-        subtitle: `Season ${seasonNumber} • Episode ${episodeNumber}`
-      });
-    } catch {
-      toast('Kartoons episode unavailable. Opening the Soulstash player.', 'info');
-      fallback();
-    }
-  }
-
-  async function playKartoonsMovie(fallback) {
-    const match = await kartoonLookupRef.current;
-    if (!match || match.type !== 'movie') {
-      fallback();
-      return;
-    }
-    setKartoonPlayer({ url: kartoonMoviePlayerUrl(match.slug), subtitle: 'Kartoons movie' });
-  }
+  // ΓöÇΓöÇ Play button handler ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   function handlePlayClick() {
     const tmdbId = content?.id || id;
@@ -224,17 +143,15 @@ export function DetailPage({ type }) {
     const originalName = content?.original_name || content?.original_title || '';
     const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
     if (type === 'movie') {
-      void playKartoonsMovie(() => page.setPlayerRequest(
+      page.setPlayerRequest(
         createPlayerRequest({ mediaType: 'movie', tmdbId, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal })
-      ));
+      );
     } else {
       const season = page.selectedSeason || 1;
       const ep = page.seasonDetails?.episodes?.[0]?.episode_number || 1;
-      void playKartoonsEpisode(season, ep, () => {
-        page.setPlayerRequest(
-          createPlayerRequest({ mediaType: 'series', tmdbId, seasonNumber: season, episodeNumber: ep, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal })
-        );
-      });
+      page.setPlayerRequest(
+        createPlayerRequest({ mediaType: 'series', tmdbId, seasonNumber: season, episodeNumber: ep, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal })
+      );
     }
   }
 
@@ -242,29 +159,27 @@ export function DetailPage({ type }) {
     const originalTitle = content?.original_title || content?.original_name || '';
     const originalName = content?.original_name || content?.original_title || '';
     const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
-    void playKartoonsEpisode(episode.season_number, episode.episode_number, () => {
-      page.setPlayerRequest(
-        createPlayerRequest({
-          mediaType: 'series',
-          tmdbId: content?.id || id,
-          seasonNumber: episode.season_number,
-          episodeNumber: episode.episode_number,
-          imdbId: content?.imdb_id,
-          title: `${title} S${episode.season_number}E${episode.episode_number}`,
-          originalTitle,
-          originalName,
-          seriesTitle: title,
-          year: yearVal
-        })
-      );
-    });
+    page.setPlayerRequest(
+      createPlayerRequest({
+        mediaType: 'series',
+        tmdbId: content?.id || id,
+        seasonNumber: episode.season_number,
+        episodeNumber: episode.episode_number,
+        imdbId: content?.imdb_id,
+        title: `${title} S${episode.season_number}E${episode.episode_number}`,
+        originalTitle,
+        originalName,
+        seriesTitle: title,
+        year: yearVal
+      })
+    );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   return (
     <div className="space-y-10">
 
-      {/* 1. Hero — backdrop, poster, metadata, action buttons */}
+      {/* 1. Hero ΓÇö backdrop, poster, metadata, action buttons */}
       <DetailHero
         content={content}
         type={type}
@@ -287,7 +202,7 @@ export function DetailPage({ type }) {
           page.setSaveModalOpen(true);
         }}
         onPlay={handlePlayClick}
-        isPlayerOpen={!!page.playerRequest?.tmdbId || !!kartoonPlayer?.url}
+        isPlayerOpen={!!page.playerRequest?.tmdbId}
       />
 
       {/* 2. Overview + genres */}
@@ -416,14 +331,6 @@ export function DetailPage({ type }) {
       />
 
       {/* 7. Video player (rendered only when a play request is active) */}
-      {kartoonPlayer?.url ? (
-        <KartoonWatchModal
-          title={title}
-          subtitle={kartoonPlayer.subtitle}
-          embedUrl={kartoonPlayer.url}
-          onClose={() => setKartoonPlayer(null)}
-        />
-      ) : null}
       {page.playerRequest?.tmdbId && (
         <PlayerErrorBoundary onClose={() => page.setPlayerRequest(null)}>
           <VideoPlayerModal

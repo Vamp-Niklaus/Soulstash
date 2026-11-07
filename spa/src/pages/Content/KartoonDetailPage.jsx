@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { fetchKartoonsEpisodes, fetchKartoonsShowDetail, kartoonEpisodePlayerUrl } from '../../api/kartoons.js';
+import { fetchKartoonsEpisodes, fetchKartoonsShowDetail } from '../../api/kartoons.js';
 import { KartoonWatchModal } from '../../components/player/KartoonWatchModal.jsx';
 import { FALLBACK_POSTER } from '../../utils/constants.js';
 
@@ -62,7 +62,8 @@ export function KartoonDetailPage() {
     if (!episode?._id) return;
     const episodeTitle = episode.title || `Episode ${episode.episodeNumber || ''}`;
     setPlayer({
-      url: kartoonEpisodePlayerUrl(episode._id),
+      streamType: 'series',
+      streamId: episode._id,
       subtitle: `Season ${seasonNumber} • ${episodeTitle}`
     });
   }, [seasonNumber]);
@@ -141,7 +142,8 @@ export function KartoonDetailPage() {
         <KartoonWatchModal
           title={show.title}
           subtitle={player.subtitle}
-          embedUrl={player.url}
+          streamType={player.streamType}
+          streamId={player.streamId}
           onClose={() => setPlayer(null)}
         />
       ) : null}

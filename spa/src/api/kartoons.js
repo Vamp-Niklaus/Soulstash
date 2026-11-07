@@ -1,5 +1,86 @@
 const KARTOONS_API = 'https://api.kartoons.me/api';
+const KARTOONS_STREMIO = `${KARTOONS_API}/stremio`;
+const KARTOONS_TOKEN = 'OK_DGA031TQOAsyYaGa3LrOu9xdIjNCDRsxbos0-XCs';
 export const KARTOONS_ORIGIN = 'https://kartoons.to';
+
+// Cache for Stremio streams (5 min — m3u8 hashes rotate)
+const _streamCache = {};
+// Cache for the full movie catalog (6 h)
+const _movieCatalogCache = { at: 0, data: null };
+// Cache for episode IDs (stable — never expire)
+const _episodeIdCache = {};
+
+/**
+ * Fetch direct streams from the Kartoons Stremio addon.
+ * Returns an array of { url, label } objects — each is a dub/language variant.
+ * These are direct .m3u8 HLS URLs with CORS open — no iframe needed.
+ *
+ * @param {'series'|'movie'} type
+ * @param {string} id  — episode _id for series, movie _id for movies
+ * @param {boolean} force — bypass 5-min cache
+ */
+export async function fetchKartoonsStremioStreams(type, id, force = false) {
+  const cacheKey = `${type}|${id}`;
+  if (!force) {
+    const cached = _streamCache[cacheKey];
+    if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.streams;
+  }
+  const url = `${KARTOONS_STREMIO}/stream/${type}/${encodeURIComponent(id)}.json?token=${KARTOONS_TOKEN}`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Kartoons Stremio ${res.status}`);
+  const json = await res.json().catch(() => ({}));
+  const streams = (json.streams || [])
+    .filter((s) => s.url)
+    .map((s, i) => ({
+      url: s.url,
+      // "Odelu 1 - S1E1" → "Odelu 1"
+      label: String(s.title || `Server ${i + 1}`).replace(/\s*-\s*S\d+E\d+\s*$/i, '').trim() || `Server ${i + 1}`
+    }));
+  if (!streams.length) throw new Error('No streams available');
+  _streamCache[cacheKey] = { at: Date.now(), streams };
+  return streams;
+}
+
+/**
+ * Resolve a movie _id from its slug using the Stremio movie catalog.
+ * The slug's trailing hex segment is the start of the Mongo ObjectId.
+ */
+export async function resolveKartoonsMovieId(slug) {
+  const hex = String((slug || '').split('-').pop() || '').toLowerCase();
+  if (!hex) return null;
+  if (!_movieCatalogCache.data || Date.now() - _movieCatalogCache.at > 6 * 3600 * 1000) {
+    const url = `${KARTOONS_STREMIO}/catalog/movie/kartoons_movies.json?token=${KARTOONS_TOKEN}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json().catch(() => ({}));
+    _movieCatalogCache.data = json.metas || [];
+    _movieCatalogCache.at = Date.now();
+  }
+  const hit = (_movieCatalogCache.data || []).find((m) =>
+    String((m.id || '').split(':').pop() || '').toLowerCase().startsWith(hex)
+  );
+  return hit ? String(hit.id || '').split(':').pop() : null;
+}
+
+/**
+ * Resolve a stable episode _id for a given slug / season / episode.
+ * Falls back to the first available season if the requested one has no episodes.
+ */
+export async function resolveKartoonsEpisodeId(slug, season, episode) {
+  const key = `${slug}|${season}|${episode}`;
+  if (_episodeIdCache[key]) return _episodeIdCache[key];
+  let eps = await fetchKartoonsEpisodes(slug, season);
+  if (!eps.length) {
+    // try to find first season that has episodes
+    const detail = await kartFetch(`/shows/${encodeURIComponent(slug)}`).catch(() => ({}));
+    const seasons = Array.isArray(detail?.seasons) ? detail.seasons : [];
+    const first = seasons.find((s) => Number(s.episodeCount || 0) > 0);
+    if (first) eps = await fetchKartoonsEpisodes(slug, Number(first.seasonNumber));
+  }
+  const ep = eps.find((e) => String(e.episodeNumber) === String(episode)) || eps[0];
+  if (!ep?._id) throw new Error('Episode not found');
+  _episodeIdCache[key] = ep._id;
+  return ep._id;
+}
 
 async function kartFetch(path, { signal } = {}) {
   const controller = new AbortController();

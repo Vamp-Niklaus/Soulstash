@@ -467,9 +467,6 @@ export function saveSearchHistoryItem(item) {
         username: item.username || '',
         poster_path: item.poster_path || item.profile_path || item.avatar || '',
         media_type: item.media_type,
-        source: item.source || '',
-        posterUrl: item.posterUrl || '',
-        kartoons: item.kartoons || null,
         release_date: item.release_date || item.first_air_date || '',
         fullName: item.fullName || ''
       },
