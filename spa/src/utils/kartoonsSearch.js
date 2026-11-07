@@ -44,15 +44,20 @@ function posterFile(path = '') {
   return clean.slice(clean.lastIndexOf('/') + 1).toLowerCase();
 }
 
-function isSeries(item) {
-  return ['tv', 'series', 'show'].includes(String(item?.type || item?.media_type || '').toLowerCase());
+function contentKind(item) {
+  const kind = String(item?.type || item?.media_type || '').toLowerCase();
+  if (['tv', 'series', 'show'].includes(kind)) return 'series';
+  if (['movie', 'film'].includes(kind)) return 'movie';
+  return '';
 }
 
 function matchScore(item, kartoon) {
-  if (!isSeries(item)) return 0;
+  const itemKind = contentKind(item);
+  const kartoonKind = contentKind(kartoon);
+  if (!itemKind || (kartoonKind && itemKind !== kartoonKind)) return 0;
 
   const itemYear = Number(item.release_year || item.release_date?.slice?.(0, 4) || item.first_air_date?.slice?.(0, 4) || 0);
-  const kartoonYear = Number(kartoon.startYear || 0);
+  const kartoonYear = Number(kartoon.startYear || kartoon.releaseYear || 0);
   if (itemYear && kartoonYear && Math.abs(itemYear - kartoonYear) > 1) return 0;
 
   const left = normalizeKartoonsTitle(item.title || item.name || item.originalTitle || item.original_name);
@@ -65,6 +70,13 @@ function matchScore(item, kartoon) {
   if (titleSimilarity >= 0.88) return samePoster ? 1 : titleSimilarity;
   if (containsTitle && titleSimilarity >= 0.6) return samePoster ? 0.9 : 0.8;
   return 0;
+}
+
+export function findKartoonsMatch(item, kartoonItems = []) {
+  return (Array.isArray(kartoonItems) ? kartoonItems : [])
+    .map((kartoon) => ({ kartoon, score: matchScore(item, kartoon) }))
+    .filter(({ kartoon, score }) => score > 0 && kartoon?.slug)
+    .sort((left, right) => right.score - left.score)[0]?.kartoon || null;
 }
 
 function toKartoonsMetadata(item) {

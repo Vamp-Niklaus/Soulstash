@@ -39,6 +39,21 @@ export async function searchKartoonsShows(query, { signal } = {}) {
   };
 }
 
+export async function searchKartoonsMovies(query, { signal } = {}) {
+  const value = String(query || '').trim();
+  if (value.length < 2) return { data: [], pagination: null };
+  const params = new URLSearchParams({ page: '1', search: value });
+  const payload = await kartFetch(`/movies?${params}`, { signal });
+  return {
+    data: (Array.isArray(payload) ? payload : []).map((item) => ({
+      ...item,
+      type: 'movie',
+      startYear: Number(item.startYear || item.releaseYear) || null
+    })),
+    pagination: payload?.pagination || null
+  };
+}
+
 export function getKartoonsSearchQueries(query) {
   const value = String(query || '').trim();
   const normalized = normalizeKartoonsSearchTerm(value).replace(/\b(19\d{2}|20\d{2})\b/g, '').replace(/\s+/g, ' ').trim();
@@ -99,4 +114,8 @@ export function normalizeKartoonsShow(item = {}) {
 
 export function kartoonEpisodePlayerUrl(episodeId) {
   return `${KARTOONS_ORIGIN}/player?episodeId=${encodeURIComponent(episodeId)}`;
+}
+
+export function kartoonMoviePlayerUrl(slug) {
+  return `${KARTOONS_ORIGIN}/player?movieId=${encodeURIComponent(slug)}`;
 }

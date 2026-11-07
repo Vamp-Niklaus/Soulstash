@@ -13,7 +13,7 @@
  *   3. Render subcomponents in order
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { useDetailPage } from '../../hooks/useDetailPage.js';
@@ -30,7 +30,11 @@ import { KartoonWatchModal } from '../../components/player/KartoonWatchModal.jsx
 import { SaveToCollectionModal } from '../../components/ui/Modals/SaveToCollectionModal.jsx';
 import { CreateCollectionModal } from '../../components/ui/Modals/CreateCollectionModal.jsx';
 import { PlayerErrorBoundary } from '../../components/player/PlayerErrorBoundary.jsx';
-import { fetchKartoonsEpisodes, kartoonEpisodePlayerUrl } from '../../api/kartoons.js';
+import {
+  fetchKartoonsEpisodes, getKartoonsSearchQueries, kartoonEpisodePlayerUrl,
+  kartoonMoviePlayerUrl, searchKartoonsMovies, searchKartoonsShows
+} from '../../api/kartoons.js';
+import { findKartoonsMatch } from '../../utils/kartoonsSearch.js';
 
 import { DetailHero } from './DetailHero.jsx';
 import { SeasonEpisodeSection } from './SeasonEpisodeSection.jsx';
@@ -83,15 +87,58 @@ export function DetailPage({ type }) {
   const [searchParams] = useSearchParams();
   const kartoonSlug = searchParams.get('kartoons') || '';
   const [kartoonPlayer, setKartoonPlayer] = useState(null);
+  const kartoonLookupRef = useRef(Promise.resolve(null));
   const auth = useAuthSession();
   const page = useDetailPage(id, type, auth);
+  const detailContent = page.content;
+
+  useEffect(() => {
+    if (!detailContent || kartoonSlug || !['movie', 'series'].includes(type)) {
+      kartoonLookupRef.current = Promise.resolve(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const lookup = async () => {
+      const titles = [
+        detailContent.title,
+        detailContent.name,
+        detailContent.original_title,
+        detailContent.original_name
+      ].filter((value, index, values) => value && values.indexOf(value) === index);
+      const searchQueries = [...new Set(titles.flatMap(getKartoonsSearchQueries))];
+      const search = type === 'movie' ? searchKartoonsMovies : searchKartoonsShows;
+      const responses = await Promise.allSettled(searchQueries.map((term) => search(term, { signal: controller.signal })));
+      const candidates = responses
+        .filter((result) => result.status === 'fulfilled')
+        .flatMap((result) => result.value?.data || []);
+      const year = detailContent.release_year || detailContent.release_date?.slice?.(0, 4) || detailContent.first_air_date?.slice?.(0, 4);
+      const match = findKartoonsMatch({
+        ...detailContent,
+        type: type === 'movie' ? 'movie' : 'tv',
+        media_type: type === 'movie' ? 'Movie' : 'Series',
+        release_year: year
+      }, candidates);
+      return match ? { slug: match.slug, type: type === 'movie' ? 'movie' : 'series' } : null;
+    };
+
+    const lookupPromise = lookup()
+      .catch((error) => {
+        if (error?.name !== 'AbortError') console.warn('[Kartoons] Detail match lookup failed:', error.message);
+        return null;
+      })
+      .then((match) => (controller.signal.aborted ? null : match));
+    kartoonLookupRef.current = lookupPromise;
+
+    return () => controller.abort();
+  }, [detailContent, kartoonSlug, type]);
 
   // ── Loading / error states ────────────────────────────────────────────────
   if (page.loading || !page.content) {
     return <DetailPageSkeleton type={type} />;
   }
 
-  const { content } = page;
+  const content = detailContent;
 
   // ── Computed display values ───────────────────────────────────────────────
   // These are pure derivations — no side effects, no state.
@@ -143,12 +190,13 @@ export function DetailPage({ type }) {
   // ── Play button handler ───────────────────────────────────────────────────
 
   async function playKartoonsEpisode(seasonNumber, episodeNumber, fallback) {
-    if (!kartoonSlug) {
+    const match = kartoonSlug ? { slug: kartoonSlug, type: 'series' } : await kartoonLookupRef.current;
+    if (!match || match.type !== 'series') {
       fallback();
       return;
     }
     try {
-      const episodes = await fetchKartoonsEpisodes(kartoonSlug, seasonNumber);
+      const episodes = await fetchKartoonsEpisodes(match.slug, seasonNumber);
       const match = episodes.find((episode) => Number(episode.episodeNumber) === Number(episodeNumber));
       if (!match?._id) throw new Error('Matching Kartoons episode not found');
       setKartoonPlayer({
@@ -161,15 +209,24 @@ export function DetailPage({ type }) {
     }
   }
 
+  async function playKartoonsMovie(fallback) {
+    const match = await kartoonLookupRef.current;
+    if (!match || match.type !== 'movie') {
+      fallback();
+      return;
+    }
+    setKartoonPlayer({ url: kartoonMoviePlayerUrl(match.slug), subtitle: 'Kartoons movie' });
+  }
+
   function handlePlayClick() {
     const tmdbId = content?.id || id;
     const originalTitle = content?.original_title || content?.original_name || '';
     const originalName = content?.original_name || content?.original_title || '';
     const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
     if (type === 'movie') {
-      page.setPlayerRequest(
+      void playKartoonsMovie(() => page.setPlayerRequest(
         createPlayerRequest({ mediaType: 'movie', tmdbId, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal })
-      );
+      ));
     } else {
       const season = page.selectedSeason || 1;
       const ep = page.seasonDetails?.episodes?.[0]?.episode_number || 1;
