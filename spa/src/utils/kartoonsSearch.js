@@ -124,18 +124,19 @@ export function mergeKartoonsSearchResults(soulstashResults = [], kartoonPayload
 
   const extras = kartItems
     .filter((_, index) => !usedKart.has(index))
-    .filter((item) => item?.slug && item?.title && item?.image)
+    .filter((item) => item?.slug && item?.title && (item?.image || item?.coverImage))
     .map((item) => ({
       id: `kartoons:${item.slug}`,
-      title: item.title,
+      title: item.title?.trim() || item.title,
       media_type: 'Series',
       type: 'tv',
       release_year: Number(item.startYear) || null,
       release_date: item.startYear ? `${item.startYear}-01-01` : null,
       voteAverage: Number(item.rating) || 0,
-      poster_path: null,
-      posterUrl: item.image || '',
-      backdrop_path: null,
+      poster_path: item.image || item.coverImage || null,
+      posterUrl: item.image || item.coverImage || '',
+      image: item.image || item.coverImage || '',
+      backdrop_path: item.coverImage || item.image || null,
       source: 'kartoons',
       score: 0,
       kartoons: toKartoonsMetadata(item)

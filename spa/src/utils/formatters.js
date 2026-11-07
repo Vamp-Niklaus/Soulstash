@@ -465,10 +465,12 @@ export function saveSearchHistoryItem(item) {
         title: item.title || item.name || item.username || 'Unknown',
         name: item.name || item.title || '',
         username: item.username || '',
-        poster_path: item.poster_path || item.profile_path || item.avatar || '',
+        poster_path: item.poster_path || item.posterUrl || item.image || item.kartoons?.image || item.profile_path || item.avatar || '',
         media_type: item.media_type,
         release_date: item.release_date || item.first_air_date || '',
-        fullName: item.fullName || ''
+        fullName: item.fullName || '',
+        source: item.source || '',
+        kartoons: item.kartoons || null
       },
       ...getSearchHistory().filter(
         (entry) =>

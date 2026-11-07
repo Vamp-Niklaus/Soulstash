@@ -3,7 +3,7 @@ import { NavbarSkeleton, SearchResultSkeletonGrid } from '../ui/Skeletons/index.
 import { HoverMarqueeTitle } from '../ui/Misc/Typography.jsx';
 import { getSearchHistory, saveSearchHistoryItem } from '../../utils/formatters.js';
 import { imageUrl, yearFrom, mediaRoute } from '../../utils/formatters.js';
-import { FALLBACK_AVATAR } from '../../utils/constants.js';
+import { FALLBACK_AVATAR, FALLBACK_POSTER } from '../../utils/constants.js';
 import { useOverlaySearchKeyboardNav } from '../../hooks/useOverlaySearchKeyboardNav.js';
 
 export function NavbarSearchOverlay({
@@ -156,7 +156,10 @@ export function NavbarSearchOverlay({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {activeResults.map((item, index) => {
                   const title = item.title || item.name || item.username || 'Unknown';
-                  const image = item.media_type === 'User' ? (item.avatar || item.poster_path) : item.poster_path || item.profile_path;
+                  const fallbackImage = item.media_type === 'User' ? FALLBACK_AVATAR : (FALLBACK_POSTER || FALLBACK_AVATAR);
+                  const image = item.media_type === 'User'
+                    ? (item.avatar || item.poster_path)
+                    : (item.poster_path || item.posterUrl || item.image || item.kartoons?.image || item.profile_path);
                   const meta = item.media_type === 'User'
                     ? (item.fullName || item.bio || 'Soulstash user')
                     : item.media_type === 'Person'
@@ -173,9 +176,9 @@ export function NavbarSearchOverlay({
                         {image ? (
                           <img src={item.media_type === 'User' ? image : imageUrl(image, 'w300_and_h450_face')} alt={title}
                             className="h-full w-full object-cover"
-                            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_AVATAR; }} />
+                            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = fallbackImage; }} />
                         ) : (
-                          <img src={FALLBACK_AVATAR} alt={title} className="h-full w-full object-cover" />
+                          <img src={fallbackImage} alt={title} className="h-full w-full object-cover" />
                         )}
                       </div>
                       <div className="min-w-0 flex-1 overflow-hidden">

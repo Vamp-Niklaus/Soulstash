@@ -30,14 +30,19 @@ function getHls() {
 
 async function ensureHlsJs() {
   if (getHls()) return getHls();
-  await new Promise((resolve, reject) => {
+  await new Promise((resolve) => {
     const existing = document.getElementById('__hls_script__');
-    if (existing) { existing.addEventListener('load', resolve); existing.addEventListener('error', reject); return; }
+    if (existing) {
+      if (window.Hls) { resolve(window.Hls); return; }
+      existing.addEventListener('load', () => resolve(window.Hls));
+      setTimeout(() => resolve(window.Hls), 1500);
+      return;
+    }
     const s = document.createElement('script');
     s.id = '__hls_script__';
     s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
-    s.onload = resolve;
-    s.onerror = reject;
+    s.onload = () => resolve(window.Hls);
+    s.onerror = () => resolve(null);
     document.head.appendChild(s);
   });
   return getHls();
@@ -890,6 +895,7 @@ export function VideoPlayerModal({ request, onClose }) {
       try { hlsInstanceRef.current.destroy(); } catch {}
       hlsInstanceRef.current = null;
     }
+    video.removeAttribute('src');
 
     if (isHls) {
       ensureHlsJs().then((Hls) => {
@@ -903,14 +909,25 @@ export function VideoPlayerModal({ request, onClose }) {
           enableWorker: true,
           startFragPrefetch: true,
           lowLatencyMode: false,
+          backBufferLength: 30,
+          maxBufferLength: 60,
+          maxMaxBufferLength: 120,
           manifestLoadingTimeOut: 15000,
           levelLoadingTimeOut: 15000,
           fragLoadingTimeOut: 30000,
+          manifestLoadingMaxRetry: 3,
+          levelLoadingMaxRetry: 4,
+          fragLoadingMaxRetry: 4,
+          fragLoadingRetryDelay: 400,
+          nudgeMaxRetry: 8,
+          maxBufferHole: 0.5,
+          nudgeOffset: 0.2
         });
         hlsInstanceRef.current = hls;
         hls.loadSource(activeUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
           video.play().catch(() => {});
         });
         hls.on(Hls.Events.ERROR, (_e, data) => {
@@ -992,8 +1009,19 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const reloadActiveSource = useCallback(() => {
     if (!activeUrl) return;
+    if (canUseVideoJs && directVideoRef.current) {
+      if (hlsInstanceRef.current) {
+        try { hlsInstanceRef.current.destroy(); } catch {}
+        hlsInstanceRef.current = null;
+      }
+      directVideoRef.current.removeAttribute('src');
+      const u = activeUrl;
+      setActiveUrl('');
+      setTimeout(() => setActiveUrl(u), 30);
+      return;
+    }
     setIframeReloadKey((current) => current + 1);
-  }, [activeUrl]);
+  }, [activeUrl, canUseVideoJs]);
 
   const settlePlayerPosition = useCallback((currentOffset) => {
     const playerNode = playerBoxRef.current;
@@ -1166,7 +1194,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 type="button"
                 data-player-action="true"
                 onClick={reloadActiveSource}
-                disabled={!activeUrl || canUseVideoJs}
+                disabled={!activeUrl}
                 className={iconButtonClass}
                 aria-label="Reload stream"
                 title="Reload Stream"
@@ -1236,14 +1264,10 @@ export function VideoPlayerModal({ request, onClose }) {
               <div className="flex h-full w-full items-center justify-center bg-black">
                 <video
                   ref={directVideoRef}
-                  key={`${sourceSignature}:${activeUrl}`}
-                  src={activeUrl}
                   controls
                   autoPlay
                   playsInline
                   className="w-full h-full bg-black object-contain"
-                  onError={() => handleIframeError(activeUrl)}
-                  onLoadedData={() => setVerifiedUrls((prev) => new Set(prev).add(activeUrl))}
                 />
               </div>
             ) : !canEmbedSource ? (
