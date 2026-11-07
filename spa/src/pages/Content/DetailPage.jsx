@@ -66,11 +66,12 @@ const GENRE_NAME_TO_ID = {
   western: 37,
   'action & adventure': 10759,
   kids: 10762,
-  news: 10763,
-  reality: 10764,
+  // Hidden genres:
+  // news: 10763,
+  // reality: 10764,
   'sci-fi & fantasy': 10765,
-  soap: 10766,
-  talk: 10767,
+  // soap: 10766,
+  // talk: 10767,
   'war & politics': 10768,
   bollywood: 'bollywood',
   'latest in india': 'bollywood'

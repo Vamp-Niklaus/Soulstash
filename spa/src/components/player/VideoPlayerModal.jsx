@@ -10,7 +10,8 @@ import { toast } from '../../utils/toast.js';
 import { apiFetch } from '../../api/client.js';
 import { ActionButton } from '../ui/ActionButton.jsx';
 import {
-  fetchKartoonsStremioStreams,
+  kartoonEpisodePlayerUrl,
+  kartoonMoviePlayerUrl,
   resolveKartoonsEpisodeId,
   resolveKartoonsMovieId,
   searchKartoonsShows,
@@ -383,38 +384,35 @@ export function VideoPlayerModal({ request, onClose }) {
     fetchAnime();
   }, [request]);
 
-  // Kartoons Stremio Resolution (Direct HLS Hindi streams)
+  // Kartoons Resolution (Single embed source in Hindi section)
   useEffect(() => {
     let cancelled = false;
     const resolveKartoons = async () => {
       try {
         const isMovie = request?.mediaType === 'movie';
-        let streams = [];
         const season = Number(request?.seasonNumber) || 1;
         const episode = Number(request?.episodeNumber) || 1;
+        let kartoonUrl = null;
 
         // 1. If explicit kartoonsEpisodeId is provided
         if (request?.kartoonsEpisodeId) {
-          streams = await fetchKartoonsStremioStreams('series', request.kartoonsEpisodeId).catch(() => []);
+          kartoonUrl = kartoonEpisodePlayerUrl(request.kartoonsEpisodeId);
         }
 
         // 2. If explicit kartoonsSlug is provided
-        if (!streams.length && request?.kartoonsSlug) {
+        if (!kartoonUrl && request?.kartoonsSlug) {
           if (isMovie) {
-            const movieId = await resolveKartoonsMovieId(request.kartoonsSlug).catch(() => null);
-            if (movieId) {
-              streams = await fetchKartoonsStremioStreams('movie', movieId).catch(() => []);
-            }
+            kartoonUrl = kartoonMoviePlayerUrl(request.kartoonsSlug);
           } else {
             const epId = await resolveKartoonsEpisodeId(request.kartoonsSlug, season, episode).catch(() => null);
             if (epId) {
-              streams = await fetchKartoonsStremioStreams('series', epId).catch(() => []);
+              kartoonUrl = kartoonEpisodePlayerUrl(epId);
             }
           }
         }
 
         // 3. Otherwise, search Kartoons by title (e.g. Dragon Ball, Ben 10, etc.)
-        if (!streams.length && (request?.title || request?.seriesTitle)) {
+        if (!kartoonUrl && (request?.title || request?.seriesTitle)) {
           const rawTitle = String(request.seriesTitle || request.title || '');
           const cleanTitle = rawTitle
             .replace(/\s*S\d+E\d+.*$/i, '')
@@ -428,10 +426,7 @@ export function VideoPlayerModal({ request, onClose }) {
               const res = await searchKartoonsMovies(cleanTitle).catch(() => ({ data: [] }));
               const match = findKartoonsMatch(request, res?.data || []);
               if (match?.slug) {
-                const movieId = await resolveKartoonsMovieId(match.slug).catch(() => null);
-                if (movieId) {
-                  streams = await fetchKartoonsStremioStreams('movie', movieId).catch(() => []);
-                }
+                kartoonUrl = kartoonMoviePlayerUrl(match.slug);
               }
             } else {
               const res = await searchKartoonsShows(cleanTitle).catch(() => ({ data: [] }));
@@ -439,24 +434,23 @@ export function VideoPlayerModal({ request, onClose }) {
               if (match?.slug) {
                 const epId = await resolveKartoonsEpisodeId(match.slug, season, episode).catch(() => null);
                 if (epId) {
-                  streams = await fetchKartoonsStremioStreams('series', epId).catch(() => []);
+                  kartoonUrl = kartoonEpisodePlayerUrl(epId);
                 }
               }
             }
           }
         }
 
-        if (cancelled || !streams.length) return;
+        if (cancelled || !kartoonUrl) return;
 
-        const kSources = streams.map((s, idx) => ({
-          id: `kartoon-${idx + 1}`,
-          key: `kartoon-${idx + 1}`,
-          label: streams.length === 1 ? 'Kartoon' : `Kartoon (${s.label})`,
-          url: s.url,
+        const kSources = [{
+          id: 'kartoon',
+          key: 'kartoon',
+          label: 'Kartoon',
+          url: kartoonUrl,
           embeddable: true,
-          isDirect: true,
           group: 'hindi'
-        }));
+        }];
 
         setKartoonSources(kSources);
       } catch (err) {
@@ -1311,7 +1305,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   webkitallowfullscreen="true"
                   mozallowfullscreen="true"
                   allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *; display-capture *"
-                  referrerPolicy={activeUrl.includes('youtube.com') || activeUrl.includes('youtube-nocookie.com') ? 'strict-origin-when-cross-origin' : 'no-referrer'}
+                  referrerPolicy={activeUrl.includes('youtube.com') || activeUrl.includes('youtube-nocookie.com') || activeUrl.includes('kartoons') ? 'strict-origin-when-cross-origin' : 'no-referrer'}
                   title="Soulstash Player"
                 />
                 {Capacitor.isNativePlatform() && (activeUrl.includes('youtube.com') || activeUrl.includes('youtu.be') || activeUrl.includes('youtube-nocookie.com')) && (

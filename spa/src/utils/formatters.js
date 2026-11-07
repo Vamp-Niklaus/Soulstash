@@ -221,6 +221,10 @@ export function imageUrl(path, size = 'w500') {
  */
 export function mediaRoute(item) {
   if (!item) return '#';
+  if (item.is_kartoons || item.isKartoons || String(item.id || '').startsWith('kartoons-')) {
+    const slug = item.kartoons_slug || item.slug || String(item.id || '').replace(/^kartoons-/, '');
+    return `/kartoons/${slug}`;
+  }
   const type = String(item.media_type || item.type || (item.seriesId ? 'Series' : 'Movie')).toLowerCase();
   const id = item.id || item.tmdbID || item.movieId || item.seriesId || item._id;
   if (!id) return '#';

@@ -1601,6 +1601,139 @@ function getDateWindow(daysBack = 210) {
   return { today, startDate };
 }
 
+// ── Hidden Genres & Kartoons Genre Mixing ────────────────────────────────────
+const HIDDEN_GENRE_IDS = new Set([10763, 10764, 10766, 10767, '10763', '10764', '10766', '10767']);
+const HIDDEN_GENRE_NAMES = new Set(['news', 'reality', 'soap', 'talk']);
+
+function isHiddenGenre(g) {
+  if (!g) return false;
+  const id = g.id !== undefined ? g.id : g;
+  const name = String(g.name || '').toLowerCase();
+  return HIDDEN_GENRE_IDS.has(id) || HIDDEN_GENRE_NAMES.has(name);
+}
+
+function normalizeKartoonsTitle(s = '') {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\b(the|a|an)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function areTitlesPairable(tmdbTitle, kartoonTitle, tmdbYear, kartoonYear) {
+  if (!tmdbTitle || !kartoonTitle) return false;
+  const tNorm = normalizeKartoonsTitle(tmdbTitle);
+  const kNorm = normalizeKartoonsTitle(kartoonTitle);
+  if (!tNorm || !kNorm) return false;
+
+  if (tNorm === kNorm) return true;
+
+  const y1 = Number(String(tmdbYear || '').slice(0, 4));
+  const y2 = Number(String(kartoonYear || '').slice(0, 4));
+  const yearMatches = !y1 || !y2 || Math.abs(y1 - y2) <= 1;
+
+  if (yearMatches) {
+    if (tNorm.includes(kNorm) || kNorm.includes(tNorm)) {
+      const minLen = Math.min(tNorm.length, kNorm.length);
+      if (minLen >= 4) return true;
+    }
+  }
+  return false;
+}
+
+async function fetchKartoonsGenreItems(category, page = 1, searchQuery = '') {
+  try {
+    const searchParam = searchQuery ? `&search=${encodeURIComponent(searchQuery)}` : '';
+    const [showsRes, moviesRes] = await Promise.all([
+      fetch(`https://api.kartoons.me/api/shows?page=${page}&category=${encodeURIComponent(category)}${searchParam}`, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(6000)
+      }).catch(() => null),
+      fetch(`https://api.kartoons.me/api/movies?page=${page}&category=${encodeURIComponent(category)}${searchParam}`, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(6000)
+      }).catch(() => null)
+    ]);
+
+    const showsData = showsRes?.ok ? await showsRes.json().catch(() => null) : null;
+    const moviesData = moviesRes?.ok ? await moviesRes.json().catch(() => null) : null;
+
+    const rawShows = Array.isArray(showsData) ? showsData : (showsData?.data || []);
+    const rawMovies = Array.isArray(moviesData) ? moviesData : (moviesData?.data || []);
+
+    const shows = (Array.isArray(rawShows) ? rawShows : []).map(s => ({ ...s, type: 'show' }));
+    const movies = (Array.isArray(rawMovies) ? rawMovies : []).map(m => ({ ...m, type: 'movie' }));
+
+    return [...shows, ...movies];
+  } catch (err) {
+    console.warn('[API] Kartoons genre items fetch failed:', err.message);
+    return [];
+  }
+}
+
+function mergeKartoonsIntoItems(existingItems, kartoonList) {
+  if (!Array.isArray(kartoonList) || !kartoonList.length) return existingItems;
+  const result = [...existingItems];
+  const newKartoonEntries = [];
+
+  for (const kItem of kartoonList) {
+    const kTitle = kItem.title || '';
+    const kYear = kItem.startYear || kItem.releaseYear || kItem.endYear || null;
+
+    // Check if an existing TMDB item is pairable
+    const matched = result.find(tItem => {
+      const tTitle = tItem.title || tItem.name || tItem.original_title || tItem.original_name || '';
+      const tYear = tItem.release_date || tItem.first_air_date || tItem.release_year || null;
+      return areTitlesPairable(tTitle, kTitle, tYear, kYear);
+    });
+
+    if (matched) {
+      matched.kartoons_slug = kItem.slug;
+      matched.has_kartoons = true;
+      matched.kartoons_title = kItem.title;
+      matched.kartoons_id = kItem._id;
+    } else {
+      const isMovie = kItem.type === 'movie';
+      const year = Number(kYear) || null;
+      newKartoonEntries.push({
+        id: `kartoons-${kItem.slug}`,
+        slug: kItem.slug,
+        title: kItem.title,
+        name: kItem.title,
+        poster_path: kItem.image || kItem.coverImage || '',
+        backdrop_path: kItem.coverImage || kItem.image || '',
+        vote_average: Number(kItem.rating) || 0,
+        release_date: year ? `${year}-01-01` : '',
+        first_air_date: year ? `${year}-01-01` : '',
+        release_year: year,
+        media_type: isMovie ? 'Movie' : 'Series',
+        is_kartoons: true,
+        kartoons_slug: kItem.slug,
+        is_hindi: true,
+        popularity: (Number(kItem.rating) || 7) * 10
+      });
+    }
+  }
+
+  if (!newKartoonEntries.length) return result;
+
+  const interleaved = [];
+  let kIdx = 0;
+  for (let i = 0; i < result.length; i++) {
+    interleaved.push(result[i]);
+    if ((i + 1) % 3 === 0 && kIdx < newKartoonEntries.length) {
+      interleaved.push(newKartoonEntries[kIdx++]);
+    }
+  }
+  while (kIdx < newKartoonEntries.length) {
+    interleaved.push(newKartoonEntries[kIdx++]);
+  }
+  return interleaved;
+}
+
 async function refreshCategoryCache(genre, year, page, limit, adminMode) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
@@ -1704,6 +1837,15 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
     }
 
     finalItems = await attachCachedRatings(finalItems);
+
+    const isKids = String(genre) === '10762' || String(genre).toLowerCase() === 'kids';
+    const isAnimation = String(genre) === '16' || String(genre).toLowerCase() === 'animation';
+    if (isKids || isAnimation) {
+      const category = isKids ? 'Cartoon' : 'Anime';
+      const kItems = await fetchKartoonsGenreItems(category, page);
+      finalItems = mergeKartoonsIntoItems(finalItems, kItems);
+    }
+
     finalItems = finalItems.slice(0, targetCount);
 
     const safeTotalPages = Math.max(
@@ -2032,8 +2174,15 @@ router.get('/movies', async (req, res) => {
       let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
       
       const all = [...movies, ...tvShows].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-      let finalItems = all.filter(item => shouldShow(item, adminMode)).slice(0, Math.max(limit * 2, limit));
       finalItems = await attachCachedRatings(finalItems);
+
+      const isKids = String(genre) === '10762' || String(genre).toLowerCase() === 'kids';
+      const isAnimation = String(genre) === '16' || String(genre).toLowerCase() === 'animation';
+      if (isKids || isAnimation) {
+        const category = isKids ? 'Cartoon' : 'Anime';
+        const kItems = await fetchKartoonsGenreItems(category, page, search);
+        finalItems = mergeKartoonsIntoItems(finalItems, kItems);
+      }
 
       const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
       const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
@@ -2228,6 +2377,15 @@ router.get('/movies', async (req, res) => {
     }
 
     finalItems = await attachCachedRatings(finalItems);
+
+    const isKids = String(genre) === '10762' || String(genre).toLowerCase() === 'kids';
+    const isAnimation = String(genre) === '16' || String(genre).toLowerCase() === 'animation';
+    if (isKids || isAnimation) {
+      const category = isKids ? 'Cartoon' : 'Anime';
+      const kItems = await fetchKartoonsGenreItems(category, page);
+      finalItems = mergeKartoonsIntoItems(finalItems, kItems);
+    }
+
     finalItems = finalItems.slice(0, targetCount);
 
     const safeTotalPages = Math.max(
@@ -3001,12 +3159,27 @@ let genresCache = null;
 let genresCacheTime = 0;
 const GENRES_CACHE_DURATION = 24 * 60 * 60 * 1000;
 
+async function fetchCombinedGenres() {
+  const [mResp, tvResp] = await Promise.all([
+    tmdbFetch('https://api.themoviedb.org/3/genre/movie/list?language=en-US', { method: 'GET', headers: tmdbHeaders() }, 'Genres Bg Movie').catch(() => null),
+    tmdbFetch('https://api.themoviedb.org/3/genre/tv/list?language=en-US', { method: 'GET', headers: tmdbHeaders() }, 'Genres Bg TV').catch(() => null)
+  ]);
+  const mData = mResp?.ok ? await mResp.json().catch(() => null) : null;
+  const tvData = tvResp?.ok ? await tvResp.json().catch(() => null) : null;
+  const seen = new Set();
+  const merged = [];
+  for (const g of [...(mData?.genres || []), ...(tvData?.genres || [])]) {
+    if (!g?.id || seen.has(g.id)) continue;
+    seen.add(g.id);
+    if (isHiddenGenre(g)) continue;
+    merged.push({ id: g.id, name: g.name });
+  }
+  return merged.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 async function refreshGenresCache() {
   try {
-    const resp = await tmdbFetch('https://api.themoviedb.org/3/genre/movie/list?language=en-US', { method: 'GET', headers: tmdbHeaders() }, 'Genres Bg');
-    if (!resp.ok) return;
-    const data = await resp.json();
-    const finalData = data.genres.map(g => ({ id: g.id, name: g.name })).sort((a,b) => a.name.localeCompare(b.name));
+    const finalData = await fetchCombinedGenres();
     if (finalData.length > 0) {
       genresCache = finalData;
       genresCacheTime = Date.now();
@@ -3031,17 +3204,7 @@ router.get('/genres', async (req, res) => {
       return res.json(genresCache);
     }
 
-    const resp = await tmdbFetch(
-      'https://api.themoviedb.org/3/genre/movie/list?language=en-US',
-      { method: 'GET', headers: tmdbHeaders() },
-      'Genres'
-    );
-    if (!resp.ok) return res.status(500).json({ error: 'Failed to fetch genres' });
-    const data = await resp.json();
-    const finalData = data.genres
-      .map(g => ({ id: g.id, name: g.name }))
-      .sort((a,b) => a.name.localeCompare(b.name));
-      
+    const finalData = await fetchCombinedGenres();
     if (finalData.length > 0) {
       genresCache = finalData;
       genresCacheTime = Date.now();
@@ -3173,19 +3336,17 @@ async function buildHomePayload(adminMode = 0) {
     genres = genresCache;
   } else {
     try {
-      const resp = await tmdbFetch('https://api.themoviedb.org/3/genre/movie/list?language=en-US', opts, 'Home Genres');
-      if (resp.ok) {
-        const data = await resp.json();
-        genres = data.genres
-          .map(g => ({ id: g.id, name: g.name }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-        if (genres.length) { genresCache = genres; genresCacheTime = Date.now(); }
+      const merged = await fetchCombinedGenres();
+      if (merged.length) {
+        genres = merged;
+        genresCache = genres;
+        genresCacheTime = Date.now();
       }
     } catch (e) { console.warn('[Home] Genres fetch failed:', e.message); }
   }
 
   // 4. First N genre shelves
-  const targetGenres = [{ id: "bollywood", name: "Latest in India" }, ...genres.slice(0, HOME_PRELOAD_GENRES - 1)];
+  const targetGenres = [{ id: "bollywood", name: "Latest in India" }, ...genres.filter(g => !isHiddenGenre(g)).slice(0, HOME_PRELOAD_GENRES - 1)];
   const categories = {};
 
   const fetchGenreMovies = async (genre) => {
@@ -3291,6 +3452,15 @@ async function buildHomePayload(adminMode = 0) {
       }
 
       finalItems = await attachCachedRatings(finalItems);
+
+      const isKids = String(genre?.id) === '10762' || String(genre?.name || '').toLowerCase() === 'kids';
+      const isAnimation = String(genre?.id) === '16' || String(genre?.name || '').toLowerCase() === 'animation';
+      if (isKids || isAnimation) {
+        const category = isKids ? 'Cartoon' : 'Anime';
+        const kItems = await fetchKartoonsGenreItems(category, 1);
+        finalItems = mergeKartoonsIntoItems(finalItems, kItems);
+      }
+
       finalItems = finalItems.slice(0, HOME_CATEGORY_LIMIT);
       return { id: genre.id, movies: finalItems };
     } catch (e) {
@@ -3304,7 +3474,7 @@ async function buildHomePayload(adminMode = 0) {
     if (movies.length) categories[String(id)] = movies;
   }
 
-  return { trending, popular, genres: [{ id: 'bollywood', name: 'Latest in India' }, ...genres], categories };
+  return { trending, popular, genres: [{ id: 'bollywood', name: 'Latest in India' }, ...genres.filter(g => !isHiddenGenre(g))], categories };
 }
 
 async function refreshHomeCache(adminMode = 0) {
