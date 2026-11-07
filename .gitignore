@@ -1,6 +1,18 @@
 
 node_modules/
-android/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/**/build/
+android/capacitor-cordova-android-plugins/
+android/capacitor.settings.gradle
+android/app/capacitor.build.gradle
+android/app/src/main/assets/
+android/app/src/androidTest/
+android/app/src/test/
+*.keystore
+*.jks
+src-tauri/icons/android/
 archive/
 MCP/
 .env
