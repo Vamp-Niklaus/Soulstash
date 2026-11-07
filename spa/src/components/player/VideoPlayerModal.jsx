@@ -9,6 +9,14 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from '../../utils/toast.js';
 import { apiFetch } from '../../api/client.js';
 import { ActionButton } from '../ui/ActionButton.jsx';
+import {
+  fetchKartoonsStremioStreams,
+  resolveKartoonsEpisodeId,
+  resolveKartoonsMovieId,
+  searchKartoonsShows,
+  searchKartoonsMovies
+} from '../../api/kartoons.js';
+import { findKartoonsMatch } from '../../utils/kartoonsSearch.js';
 
 // Assume PlayerErrorBoundary is imported
 import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
@@ -16,11 +24,31 @@ import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
 // Assume buildPlayerSourceSlots is imported
 import { buildPlayerSourceSlots, firstPlayableUrl, sourceKeyText } from '../../utils/playerUtils.js';
 
+function getHls() {
+  return window.Hls ?? null;
+}
+
+async function ensureHlsJs() {
+  if (getHls()) return getHls();
+  await new Promise((resolve, reject) => {
+    const existing = document.getElementById('__hls_script__');
+    if (existing) { existing.addEventListener('load', resolve); existing.addEventListener('error', reject); return; }
+    const s = document.createElement('script');
+    s.id = '__hls_script__';
+    s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return getHls();
+}
+
 export function VideoPlayerModal({ request, onClose }) {
-  if (!request?.tmdbId) return null;
+  if (!request?.tmdbId && !request?.kartoonsSlug && !request?.kartoonsEpisodeId) return null;
   const [selectedGroup, setSelectedGroup] = useState('hindi');
   const [hindiSources, setHindiSources] = useState([]);
   const [animeSources, setAnimeSources] = useState([]);
+  const [kartoonSources, setKartoonSources] = useState([]);
   const [anilistId, setAnilistId] = useState(null);
   const [activeUrl, setActiveUrl] = useState('');
   const [sourceSignature, setSourceSignature] = useState('');
@@ -32,6 +60,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const [scale, setScale] = useState(1.0);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const iframeRef = useRef(null);
+  const directVideoRef = useRef(null);
+  const hlsInstanceRef = useRef(null);
   const scrollContainerRef = useRef(null);
   
   const playerBoxRef = useRef(null);
@@ -52,6 +82,7 @@ export function VideoPlayerModal({ request, onClose }) {
     setSelectedGroup('hindi');
     setHindiSources([]);
     setAnimeSources([]);
+    setKartoonSources([]);
     setAnilistId(null);
     setActiveUrl('');
     setSourceSignature('');
@@ -347,6 +378,91 @@ export function VideoPlayerModal({ request, onClose }) {
     fetchAnime();
   }, [request]);
 
+  // Kartoons Stremio Resolution (Direct HLS Hindi streams)
+  useEffect(() => {
+    let cancelled = false;
+    const resolveKartoons = async () => {
+      try {
+        const isMovie = request?.mediaType === 'movie';
+        let streams = [];
+        const season = Number(request?.seasonNumber) || 1;
+        const episode = Number(request?.episodeNumber) || 1;
+
+        // 1. If explicit kartoonsEpisodeId is provided
+        if (request?.kartoonsEpisodeId) {
+          streams = await fetchKartoonsStremioStreams('series', request.kartoonsEpisodeId).catch(() => []);
+        }
+
+        // 2. If explicit kartoonsSlug is provided
+        if (!streams.length && request?.kartoonsSlug) {
+          if (isMovie) {
+            const movieId = await resolveKartoonsMovieId(request.kartoonsSlug).catch(() => null);
+            if (movieId) {
+              streams = await fetchKartoonsStremioStreams('movie', movieId).catch(() => []);
+            }
+          } else {
+            const epId = await resolveKartoonsEpisodeId(request.kartoonsSlug, season, episode).catch(() => null);
+            if (epId) {
+              streams = await fetchKartoonsStremioStreams('series', epId).catch(() => []);
+            }
+          }
+        }
+
+        // 3. Otherwise, search Kartoons by title (e.g. Dragon Ball, Ben 10, etc.)
+        if (!streams.length && (request?.title || request?.seriesTitle)) {
+          const rawTitle = String(request.seriesTitle || request.title || '');
+          const cleanTitle = rawTitle
+            .replace(/\s*S\d+E\d+.*$/i, '')
+            .replace(/\s*Season\s*\d+.*$/i, '')
+            .replace(/\s*Episode\s*\d+.*$/i, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          if (cleanTitle.length >= 2) {
+            if (isMovie) {
+              const res = await searchKartoonsMovies(cleanTitle).catch(() => ({ data: [] }));
+              const match = findKartoonsMatch(request, res?.data || []);
+              if (match?.slug) {
+                const movieId = await resolveKartoonsMovieId(match.slug).catch(() => null);
+                if (movieId) {
+                  streams = await fetchKartoonsStremioStreams('movie', movieId).catch(() => []);
+                }
+              }
+            } else {
+              const res = await searchKartoonsShows(cleanTitle).catch(() => ({ data: [] }));
+              const match = findKartoonsMatch(request, res?.data || []);
+              if (match?.slug) {
+                const epId = await resolveKartoonsEpisodeId(match.slug, season, episode).catch(() => null);
+                if (epId) {
+                  streams = await fetchKartoonsStremioStreams('series', epId).catch(() => []);
+                }
+              }
+            }
+          }
+        }
+
+        if (cancelled || !streams.length) return;
+
+        const kSources = streams.map((s, idx) => ({
+          id: `kartoon-${idx + 1}`,
+          key: `kartoon-${idx + 1}`,
+          label: streams.length === 1 ? 'Kartoon' : `Kartoon (${s.label})`,
+          url: s.url,
+          embeddable: true,
+          isDirect: true,
+          group: 'hindi'
+        }));
+
+        setKartoonSources(kSources);
+      } catch (err) {
+        console.warn('[Soulstash Player] Kartoons resolution failed:', err.message);
+      }
+    };
+
+    resolveKartoons();
+    return () => { cancelled = true; };
+  }, [request]);
+
   useEffect(() => {
     return () => {
       setNativeScale(1.0); // Reset scale on unmount
@@ -560,10 +676,12 @@ export function VideoPlayerModal({ request, onClose }) {
     return params;
   }, [request]);
 
+  const isPureKartoons = String(request?.tmdbId || '').startsWith('kartoons-');
+
   const { data: sourcePayload, isLoading: sourceLoading, error: sourceError, isFetching } = useQuery({
     queryKey: ['playerSources', request.mediaType, request.tmdbId, request.seasonNumber, request.episodeNumber, request.imdbId],
     queryFn: () => apiFetch(`/api/player/sources?${queryParams.toString()}`),
-    enabled: !!request.tmdbId,
+    enabled: !!request.tmdbId && !isPureKartoons,
     retry: (failureCount, error) => {
       if (error?.status === 503 && failureCount < 30) return true;
       return false;
@@ -603,18 +721,19 @@ export function VideoPlayerModal({ request, onClose }) {
   const effectiveAnilistId = request?.anilistId || sourcePayload?.anilistId || anilistId;
 
   const combinedIncoming = useMemo(() => {
+    const baseHindi = [...kartoonSources, ...hindiSources];
     // If no AniList ID, do not include anime sources
     if (!effectiveAnilistId) {
-      return hindiSources.filter(
+      return baseHindi.filter(
         (s) => !/\((Sub|Dub|Hindi)\)/i.test(s.label || '') && !/^(gogo|tryembed|vidhawk|vidnest-ani|vidnest-pahe)/i.test(s.id || s.key || '')
       );
     }
     const animeKeys = new Set(animeSources.map((s) => s.id));
-    const cleanHindiSources = hindiSources.filter(
+    const cleanHindiSources = baseHindi.filter(
       (s) => !animeKeys.has(s.id) && !/^(gogo|tryembed|vidhawk|vidnest-ani|vidnest-pahe)/i.test(s.id || s.key || '')
     );
     return [...animeSources, ...cleanHindiSources];
-  }, [hindiSources, animeSources, effectiveAnilistId]);
+  }, [hindiSources, animeSources, kartoonSources, effectiveAnilistId]);
 
   const sources = useMemo(
     () => buildPlayerSourceSlots(combinedIncoming, fallbackSources, {
@@ -627,12 +746,13 @@ export function VideoPlayerModal({ request, onClose }) {
 
   // Filter sources:
   // 1. Hide disabled / unhealthy sources with no stream url
-  // 2. If no AniList ID, hide anime sources with (Sub), (Dub), (Hindi) in label
+  // 2. If no AniList ID, hide anime sources with (Sub), (Dub), (Hindi) in label (preserve Kartoon sources!)
   // 3. Hide entire dubbed section if no AniList ID
   const displayedSources = useMemo(() => {
     return sources.filter((s) => {
       if (!s.url && !s.pending) return false;
-      if (!effectiveAnilistId) {
+      const isKartoon = /kartoon/i.test(s.id || s.key || s.label || '');
+      if (!effectiveAnilistId && !isKartoon) {
         if (/\((Sub|Dub|Hindi)\)/i.test(s.label || '')) return false;
         if (/^(vidnest|gogo|vidhawk|tryembed|multinime)/i.test(s.id || s.key || '')) return false;
         if (s.group === 'dubbed') return false;
@@ -669,6 +789,13 @@ export function VideoPlayerModal({ request, onClose }) {
     }
   }, [displayedSources, failedUrls]);
 
+  const isKartoonSource = (s) => {
+    if (!s) return false;
+    const lowerKey = String(s.key || s.id || '').toLowerCase();
+    const lowerLabel = String(s.label || s.name || '').toLowerCase();
+    return lowerKey.includes('kartoon') || lowerLabel.includes('kartoon');
+  };
+
   const isVidboltSource = (s) => {
     if (!s) return false;
     const lowerKey = String(s.key || s.id || '').toLowerCase();
@@ -677,7 +804,7 @@ export function VideoPlayerModal({ request, onClose }) {
     return lowerKey.includes('vidbolt') || lowerLabel.includes('vidbolt') || url.includes('vidbolt');
   };
 
-  // Race every available stream once across displayed sources; VidBolt is prioritized as default player!
+  // Race every available stream once across displayed sources; Kartoon is prioritized if present, then VidBolt!
   // Importantly, switching categories or viewing sources does NOT switch or interrupt the playing stream!
   const raceTokenRef = useRef(0);
   const playableKey = displayedSources.filter((s) => s.url && !failedUrls.has(s.url)).map((s) => s.url).join('|');
@@ -690,6 +817,14 @@ export function VideoPlayerModal({ request, onClose }) {
 
     const playable = displayedSources.filter((s) => s.url && !failedUrls.has(s.url));
     if (!playable.length) return undefined;
+
+    // Prioritize Kartoon as default player if available
+    const kartoonSource = playable.find(isKartoonSource);
+    if (kartoonSource && !failedUrls.has(kartoonSource.url)) {
+      setActiveUrl(kartoonSource.url);
+      setVerifiedUrls((prev) => new Set(prev).add(kartoonSource.url));
+      return undefined;
+    }
 
     // Prioritize VidBolt as default player if available
     const vidboltSource = playable.find(isVidboltSource);
@@ -735,6 +870,7 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [playableKey, activeUrl, failedUrls, displayedSources]);
 
   const defaultSource =
+    displayedSources.find((s) => s.url && !s.failed && isKartoonSource(s)) ||
     displayedSources.find((s) => s.url && !s.failed && isVidboltSource(s)) ||
     displayedSources.find((source) => source.url && !source.failed) ||
     displayedSources.find((source) => source.url) ||
@@ -742,6 +878,70 @@ export function VideoPlayerModal({ request, onClose }) {
   const activeSource = displayedSources.find((source) => source.url === activeUrl) || defaultSource;
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
+
+  // HLS stream playback handler for .m3u8 direct streams
+  useEffect(() => {
+    if (!canUseVideoJs || !activeUrl) return;
+    const isHls = /\.m3u8(\?|$)/i.test(activeUrl);
+    const video = directVideoRef.current;
+    if (!video) return;
+
+    if (hlsInstanceRef.current) {
+      try { hlsInstanceRef.current.destroy(); } catch {}
+      hlsInstanceRef.current = null;
+    }
+
+    if (isHls) {
+      ensureHlsJs().then((Hls) => {
+        if (!Hls || !Hls.isSupported()) {
+          video.src = activeUrl;
+          video.load();
+          video.play().catch(() => {});
+          return;
+        }
+        const hls = new Hls({
+          enableWorker: true,
+          startFragPrefetch: true,
+          lowLatencyMode: false,
+          manifestLoadingTimeOut: 15000,
+          levelLoadingTimeOut: 15000,
+          fragLoadingTimeOut: 30000,
+        });
+        hlsInstanceRef.current = hls;
+        hls.loadSource(activeUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => {});
+        });
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+          if (!data?.fatal) return;
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); return; }
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch {} return; }
+          handleIframeError(activeUrl);
+        });
+      });
+    } else {
+      video.src = activeUrl;
+      video.load();
+      video.play().catch(() => {});
+    }
+
+    return () => {
+      if (hlsInstanceRef.current) {
+        try { hlsInstanceRef.current.destroy(); } catch {}
+        hlsInstanceRef.current = null;
+      }
+    };
+  }, [activeUrl, canUseVideoJs, handleIframeError]);
+
+  useEffect(() => {
+    return () => {
+      if (hlsInstanceRef.current) {
+        try { hlsInstanceRef.current.destroy(); } catch {}
+        hlsInstanceRef.current = null;
+      }
+    };
+  }, []);
 
   const canEmbedSource = canUseVideoJs || activeSource?.embeddable !== false;
   // Modern movie aspect ratio (16:9 widescreen) with increased desktop height and ratio
@@ -1019,7 +1219,7 @@ export function VideoPlayerModal({ request, onClose }) {
             className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
             style={mediaAreaStyle}
           >
-            {isFetching && !activeUrl ? (
+            {(isFetching || (isPureKartoons && !activeUrl && !failedUrls.size)) ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-6">
                 <div className="batman-loader-wrapper">
                   <div className="batman-loader" />
@@ -1035,6 +1235,7 @@ export function VideoPlayerModal({ request, onClose }) {
             ) : canUseVideoJs ? (
               <div className="flex h-full w-full items-center justify-center bg-black">
                 <video
+                  ref={directVideoRef}
                   key={`${sourceSignature}:${activeUrl}`}
                   src={activeUrl}
                   controls

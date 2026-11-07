@@ -5,6 +5,7 @@ export const SOURCE_GROUPS = [
 ];
 
 export const HINDI_ORDER = [
+  'Kartoon',
   'H1',
   'H2',
   'H3',
@@ -96,6 +97,9 @@ export function getSourceGroup(source = {}) {
     /^(h[1-5])$/i.test(id) ||
     /^(h[1-5])$/i.test(label) ||
     /^(smwh|rpmshre|upnshr|strmp2|flls)$/i.test(key) ||
+    lowerLabel.includes('kartoon') ||
+    id.includes('kartoon') ||
+    key.includes('kartoon') ||
     lowerLabel === 'vidbolt' ||
     lowerLabel === 'vidout' ||
     lowerLabel.includes('hindi')
@@ -114,6 +118,7 @@ export function getSourceGroup(source = {}) {
 
 function getGroupItemRank(label = '', orderList = []) {
   const trimmed = label.trim().toLowerCase();
+  if (trimmed.includes('kartoon')) return -1;
   const idx = orderList.findIndex((item) => item.toLowerCase() === trimmed);
   return idx >= 0 ? idx : 999;
 }

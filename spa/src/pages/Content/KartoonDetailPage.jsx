@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchKartoonsEpisodes, fetchKartoonsShowDetail } from '../../api/kartoons.js';
-import { KartoonWatchModal } from '../../components/player/KartoonWatchModal.jsx';
-import { FALLBACK_POSTER } from '../../utils/constants.js';
+import { DetailHero } from './DetailHero.jsx';
+import { SeasonEpisodeSection } from './SeasonEpisodeSection.jsx';
+import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
+import { DetailStat } from '../../components/ui/Cards/DetailStat.jsx';
+import { DetailPageSkeleton } from '../../components/ui/Skeletons/index.js';
+import { VideoPlayerModal } from '../../components/player/VideoPlayerModal.jsx';
+import { PlayerErrorBoundary } from '../../components/player/PlayerErrorBoundary.jsx';
+import { toast } from '../../utils/toast.js';
 
 export function KartoonDetailPage() {
   const { slug = '' } = useParams();
@@ -12,7 +18,10 @@ export function KartoonDetailPage() {
   const [loading, setLoading] = useState(true);
   const [episodesLoading, setEpisodesLoading] = useState(false);
   const [error, setError] = useState('');
-  const [player, setPlayer] = useState(null);
+  const [playerRequest, setPlayerRequest] = useState(null);
+
+  const seasonScrollerRef = useRef(null);
+  const episodeScrollerRef = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -51,31 +60,118 @@ export function KartoonDetailPage() {
     return () => controller.abort();
   }, [show, slug, seasonNumber]);
 
-  const seasons = useMemo(() => {
+  const seasonsList = useMemo(() => {
     const values = (show?.seasons || [])
       .map((season) => Number(season.seasonNumber))
       .filter((number) => Number.isInteger(number) && number > 0);
-    return [...new Set(values)].sort((a, b) => a - b);
+    const unique = [...new Set(values)].sort((a, b) => a - b);
+    return unique.map((num) => ({
+      id: num,
+      season_number: num,
+      name: `Season ${num}`,
+      episode_count: Number((show?.seasons || []).find((s) => Number(s.seasonNumber) === num)?.episodeCount || 0)
+    }));
   }, [show?.seasons]);
 
-  const playEpisode = useCallback((episode) => {
-    if (!episode?._id) return;
-    const episodeTitle = episode.title || `Episode ${episode.episodeNumber || ''}`;
-    setPlayer({
-      streamType: 'series',
-      streamId: episode._id,
-      subtitle: `Season ${seasonNumber} • ${episodeTitle}`
+  const content = useMemo(() => {
+    if (!show) return null;
+    return {
+      id: `kartoons-${slug}`,
+      title: show.title,
+      name: show.title,
+      backdrop_path: show.coverImage || show.image,
+      poster_path: show.image || show.coverImage,
+      images: {
+        posters: [{ file_path: show.image || show.coverImage }],
+        backdrops: [{ file_path: show.coverImage || show.image }]
+      },
+      overview: show.description,
+      vote_average: show.rating,
+      first_air_date: show.startYear ? `${show.startYear}-01-01` : '',
+      number_of_seasons: seasonsList.length || 1,
+      number_of_episodes: show.episodeCount || seasonsList.reduce((acc, s) => acc + (s.episode_count || 0), 0) || episodes.length,
+      seasons: seasonsList.length ? seasonsList : [{ season_number: 1, name: 'Season 1', id: 1 }],
+      genres: (show.tags || []).map((t) => ({ id: t, name: t })),
+      status: show.status || 'Ended'
+    };
+  }, [show, slug, seasonsList, episodes.length]);
+
+  const meta = useMemo(() => {
+    if (!show) return [];
+    return [
+      'Series',
+      show.startYear ? String(show.startYear) : '',
+      show.rating ? `★ ${Number(show.rating).toFixed(1)}` : '',
+      'Hindi'
+    ].filter(Boolean);
+  }, [show]);
+
+  const seasonDetails = useMemo(() => {
+    return {
+      name: `Season ${seasonNumber}`,
+      episodes: (episodes || []).map((ep) => ({
+        id: ep._id,
+        _id: ep._id,
+        name: ep.title || `Episode ${ep.episodeNumber}`,
+        episode_number: Number(ep.episodeNumber),
+        season_number: Number(seasonNumber),
+        overview: ep.description || '',
+        still_path: ep.thumbnail || ep.image || show?.coverImage || show?.image || '',
+        air_date: ep.airDate || ''
+      }))
+    };
+  }, [episodes, seasonNumber, show]);
+
+  const handlePlayEpisode = useCallback((ep) => {
+    if (!show) return;
+    const epNum = Number(ep?.episode_number || ep?.episodeNumber || 1);
+    const sNum = Number(ep?.season_number || seasonNumber || 1);
+    setPlayerRequest({
+      mediaType: 'series',
+      tmdbId: `kartoons-${slug}`,
+      seasonNumber: sNum,
+      episodeNumber: epNum,
+      title: `${show.title} S${sNum}E${epNum}`,
+      seriesTitle: show.title,
+      year: show.startYear,
+      kartoonsSlug: slug,
+      kartoonsEpisodeId: ep?.id || ep?._id,
+      isKartoons: true
     });
-  }, [seasonNumber]);
+  }, [show, slug, seasonNumber]);
+
+  const handlePlayClick = useCallback(() => {
+    if (!show) return;
+    const firstEp = seasonDetails?.episodes?.[0];
+    const epNum = Number(firstEp?.episode_number || 1);
+    const sNum = Number(seasonNumber || 1);
+    setPlayerRequest({
+      mediaType: 'series',
+      tmdbId: `kartoons-${slug}`,
+      seasonNumber: sNum,
+      episodeNumber: epNum,
+      title: `${show.title} S${sNum}E${epNum}`,
+      seriesTitle: show.title,
+      year: show.startYear,
+      kartoonsSlug: slug,
+      kartoonsEpisodeId: firstEp?.id || firstEp?._id,
+      isKartoons: true
+    });
+  }, [show, slug, seasonNumber, seasonDetails]);
 
   if (loading) {
-    return <div className="mx-auto max-w-6xl px-4 py-14 text-sm text-white/55">Loading Kartoons title…</div>;
+    return <DetailPageSkeleton type="series" />;
   }
-  if (error || !show) {
+
+  if (error || !show || !content) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-14 text-center">
         <p className="text-white/65">{error || 'Kartoons title not found.'}</p>
-        <button type="button" className="mt-5 rounded-full bg-white/10 px-5 py-2 text-white hover:bg-white/20" onClick={() => window.history.back()}>
+        <button
+          type="button"
+          className="mt-5 rounded-full bg-white/10 px-5 py-2 text-white hover:bg-white/20"
+          onClick={() => window.history.back()}
+        >
           Go back
         </button>
       </div>
@@ -83,70 +179,69 @@ export function KartoonDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 px-4 py-6 sm:py-10">
-      <section className="grid gap-6 rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:grid-cols-[220px_1fr] sm:gap-8 sm:p-7">
-        <img
-          src={show.coverImage || show.image || FALLBACK_POSTER}
-          alt={show.title}
-          className="mx-auto aspect-[2/3] w-full max-w-[220px] rounded-2xl bg-black object-cover"
-          onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = FALLBACK_POSTER; }}
-        />
-        <div className="self-center">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-white/55">
-            <span className="rounded-full bg-violet-400/15 px-3 py-1 font-semibold uppercase tracking-wide text-violet-200">Kartoons</span>
-            <span>{show.category || 'Series'}</span>
-            {show.startYear ? <span>• {show.startYear}</span> : null}
-            {show.rating ? <span>• ★ {show.rating.toFixed(1)}</span> : null}
-          </div>
-          <h1 className="mt-4 text-3xl font-bold text-white sm:text-5xl">{show.title}</h1>
-          {show.description ? <p className="mt-4 max-w-3xl whitespace-pre-line text-sm leading-6 text-white/65 sm:text-base">{show.description}</p> : null}
-          {show.tags.length ? (
+    <div className="space-y-10">
+      {/* 1. Hero — backdrop, poster, metadata, action buttons, play button */}
+      <DetailHero
+        content={content}
+        type="series"
+        title={show.title}
+        meta={meta}
+        status={{ watched: false, watchlist: false }}
+        pendingAction={null}
+        directorStat={<DetailStat label="Category" value={show.category || 'Animation'} />}
+        countryLabel="India"
+        languageName="Hindi"
+        ageRatingLabel="U"
+        onToggleWatched={() => toast('Marked as watched', 'success')}
+        onToggleWatchlist={() => toast('Added to watchlist', 'success')}
+        onOpenSaveModal={() => toast('Please sign in to save to collection', 'info')}
+        onPlay={handlePlayClick}
+        isPlayerOpen={!!playerRequest}
+      />
+
+      {/* 2. Overview + genres */}
+      <section className="content-section relative z-10">
+        <div className="rounded-[28px] border border-white/8 bg-[rgba(12,12,12,0.72)] p-5 md:p-6">
+          <SectionHeader title="Overview" />
+          <p className="mt-4 text-[14px] leading-[22px] text-[#B3B3B3] md:text-[16px] md:leading-[26px]">
+            {show.description || 'No overview available yet.'}
+          </p>
+          {Array.isArray(show.tags) && show.tags.length > 0 && (
             <div className="mt-5 flex flex-wrap gap-2">
-              {show.tags.map((tag) => <span key={tag} className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/60">{tag}</span>)}
+              {show.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-sm text-[#d8d8d8]"
+                >
+                  {tag}
+                </span>
+              ))}
             </div>
-          ) : null}
+          )}
         </div>
       </section>
 
-      <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-white">Episodes</h2>
-          {seasons.length > 1 ? (
-            <label className="flex items-center gap-3 text-sm text-white/60">
-              Season
-              <select value={seasonNumber} onChange={(event) => setSeasonNumber(Number(event.target.value))} className="rounded-lg border border-white/15 bg-[#151515] px-3 py-2 text-white">
-                {seasons.map((season) => <option key={season} value={season}>Season {season}</option>)}
-              </select>
-            </label>
-          ) : null}
-        </div>
-        {episodesLoading ? <p className="mt-5 text-sm text-white/50">Loading episodes…</p> : null}
-        {!episodesLoading && !episodes.length ? <p className="mt-5 text-sm text-white/50">No episodes are available for this season.</p> : null}
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {episodes.map((episode) => (
-            <button
-              key={episode._id || `${seasonNumber}-${episode.episodeNumber}`}
-              type="button"
-              onClick={() => playEpisode(episode)}
-              className="flex min-h-16 items-center gap-3 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-left text-white transition-colors hover:border-white/25 hover:bg-white/[0.06]"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">{episode.episodeNumber || '▶'}</span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{episode.title || `Episode ${episode.episodeNumber || ''}`}</span>
-              <i className="fas fa-play text-xs text-white/55" />
-            </button>
-          ))}
-        </div>
-      </section>
+      {/* 3. Seasons & Episodes */}
+      <SeasonEpisodeSection
+        content={content}
+        selectedSeason={seasonNumber}
+        setSelectedSeason={setSeasonNumber}
+        seasonDetails={seasonDetails}
+        seasonLoading={episodesLoading}
+        seasonScrollerRef={seasonScrollerRef}
+        episodeScrollerRef={episodeScrollerRef}
+        onPlayEpisode={handlePlayEpisode}
+      />
 
-      {player ? (
-        <KartoonWatchModal
-          title={show.title}
-          subtitle={player.subtitle}
-          streamType={player.streamType}
-          streamId={player.streamId}
-          onClose={() => setPlayer(null)}
-        />
-      ) : null}
+      {/* 4. Video player */}
+      {playerRequest && (
+        <PlayerErrorBoundary onClose={() => setPlayerRequest(null)}>
+          <VideoPlayerModal
+            request={playerRequest}
+            onClose={() => setPlayerRequest(null)}
+          />
+        </PlayerErrorBoundary>
+      )}
     </div>
   );
 }
