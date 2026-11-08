@@ -32,24 +32,55 @@ function handleTvLinkClick(event) {
   event.stopImmediatePropagation?.();
 }
 
-function focusPlaybackSurface(playerModal) {
+function focusPlaybackSurface(playerModal, reason = 'dpad-navigation') {
   const playback = playerModal.querySelector('iframe[tabindex="0"], video[tabindex="0"]');
-  if (playback && isVisible(playback)) {
-    applyFocus(playback, false);
-    return true;
+  if (!playback?.isConnected || !isVisible(playback)) {
+    console.warn('[Soulstash Player Focus] playback focus target is missing or hidden', {
+      reason,
+      mode: playerModal.getAttribute('data-player-mode'),
+      iframePresent: Boolean(playerModal.querySelector('iframe')),
+      videoPresent: Boolean(playerModal.querySelector('video'))
+    });
+    return false;
   }
-  return false;
+
+  try {
+    applyFocus(playback, false);
+    if (playback.tagName === 'IFRAME') playback.contentWindow?.focus?.();
+  } catch (error) {
+    console.warn('[Soulstash Player Focus] browser rejected playback focus', {
+      reason,
+      target: playback.tagName,
+      message: error?.message
+    });
+  }
+
+  const rect = playback.getBoundingClientRect();
+  console.info('[Soulstash Player Focus] playback focus attempt', {
+    reason,
+    mode: playerModal.getAttribute('data-player-mode'),
+    target: playback.tagName,
+    connected: playback.isConnected,
+    parentDocumentFocusedFrame: document.activeElement === playback,
+    activeElement: document.activeElement?.tagName || null,
+    frameCenter: { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) },
+    fullscreenElement: document.fullscreenElement?.tagName || null,
+    crossOriginFrameContents: 'not inspectable from the parent document'
+  });
+  return document.activeElement === playback;
 }
 
-function focusSourceAboveOrPlayback(playerModal, activeSource) {
+function focusSourceInDirection(playerModal, activeSource, direction) {
   const currentRect = activeSource.getBoundingClientRect();
   const sources = Array.from(playerModal.querySelectorAll('button[data-player-source="true"]'))
     .filter((button) => button !== activeSource && isVisible(button))
     .map((button) => ({ button, rect: button.getBoundingClientRect() }))
-    .filter(({ rect }) => rect.bottom <= currentRect.top + 4)
+    .filter(({ rect }) => direction === 'up'
+      ? rect.bottom <= currentRect.top + 4
+      : rect.top >= currentRect.bottom - 4)
     .sort((a, b) => {
-      const aGap = currentRect.top - a.rect.bottom;
-      const bGap = currentRect.top - b.rect.bottom;
+      const aGap = direction === 'up' ? currentRect.top - a.rect.bottom : a.rect.top - currentRect.bottom;
+      const bGap = direction === 'up' ? currentRect.top - b.rect.bottom : b.rect.top - currentRect.bottom;
       if (Math.abs(aGap - bGap) > 4) return aGap - bGap;
       const aCenter = a.rect.left + a.rect.width / 2;
       const bCenter = b.rect.left + b.rect.width / 2;
@@ -61,7 +92,7 @@ function focusSourceAboveOrPlayback(playerModal, activeSource) {
     applyFocus(sources[0].button);
     return true;
   }
-  return focusPlaybackSurface(playerModal);
+  return focusPlaybackSurface(playerModal, `source-${direction}-edge`);
 }
 
 function showRing() {
@@ -143,6 +174,14 @@ function handleKeyDown(e) {
       return;
     }
 
+    if (playerModal.getAttribute('data-player-mode') === '3' && key === 'ArrowDown') {
+      e.preventDefault();
+      e.stopPropagation();
+      showRing();
+      focusPlaybackSurface(playerModal, 'mode-3-recover-focus');
+      return;
+    }
+
     if (active?.tagName === 'VIDEO' && document.documentElement.classList.contains('layout-tv-mode')) {
       if (key === 'ArrowLeft' || key === 'ArrowRight') {
         e.preventDefault();
@@ -213,14 +252,42 @@ function handleKeyDown(e) {
       return;
     }
 
-    if (active.matches('[data-player-source-toggle="true"]') && key === 'ArrowDown') {
-      const activeSource = playerModal.querySelector('button[data-active-source="true"]:not(:disabled)');
-      if (activeSource && isVisible(activeSource)) {
-        showRing();
-        applyFocus(activeSource);
-      } else if (active.getAttribute('aria-expanded') !== 'true') {
-        active.click();
+    if (key === 'ArrowDown' && active.closest('[data-player-controls]')) {
+      if (active.matches('[data-player-size="true"]')) {
+        const sourceToggle = playerModal.querySelector('[data-player-source-toggle="true"]');
+        if (sourceToggle && isVisible(sourceToggle)) {
+          showRing();
+          applyFocus(sourceToggle);
+        }
+      } else if (active.matches('[data-player-source-toggle="true"]') && active.getAttribute('aria-expanded') === 'true') {
+        const selected = playerModal.querySelector('button[data-active-source="true"]:not(:disabled)') ||
+          playerModal.querySelector('button[data-player-source="true"]:not(:disabled)');
+        if (selected && isVisible(selected)) {
+          showRing();
+          applyFocus(selected);
+        } else {
+          focusPlaybackSurface(playerModal, 'source-toggle-down-empty');
+        }
+      } else {
+        focusPlaybackSurface(playerModal, 'toolbar-down');
       }
+      return;
+    }
+
+    if (key === 'ArrowDown' && active.closest('[data-player-sources-panel]')) {
+      if (active.closest('[data-player-source]')) {
+        showRing();
+        focusSourceInDirection(playerModal, active, 'down');
+      } else {
+        showRing();
+        focusPlaybackSurface(playerModal, 'sources-panel-down');
+      }
+      return;
+    }
+
+    if (key === 'ArrowDown' && active.closest('[data-player-modal]')) {
+      showRing();
+      focusPlaybackSurface(playerModal, 'player-content-down');
       return;
     }
 
@@ -237,21 +304,9 @@ function handleKeyDown(e) {
       return;
     }
 
-    if (active.closest('[data-player-controls]') && key === 'ArrowDown') {
-      const sourcesBtn = playerModal.querySelector(
-        'button[data-player-source-toggle="true"]'
-      );
-      if (sourcesBtn && isVisible(sourcesBtn)) {
-        showRing();
-        applyFocus(sourcesBtn);
-      }
-      return;
-    }
-
     if (active.closest('[data-player-source]') && key === 'ArrowUp') {
-      if (focusSourceAboveOrPlayback(playerModal, active)) {
-        showRing();
-      }
+      showRing();
+      focusSourceInDirection(playerModal, active, 'up');
       return;
     }
 

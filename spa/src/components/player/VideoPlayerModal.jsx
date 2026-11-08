@@ -108,9 +108,78 @@ export function VideoPlayerModal({ request, onClose }) {
     setPlayerDisplayMode(mode);
   }, []);
 
+  const focusPlaybackContext = useCallback((reason, preferredTarget = null) => {
+    const resolveTarget = () => {
+      if (preferredTarget?.isConnected) return preferredTarget;
+      const target = isDirectMediaUrl(activeUrl) ? directVideoRef.current : iframeRef.current;
+      return target?.isConnected ? target : null;
+    };
+
+    const initialTarget = resolveTarget();
+    if (!initialTarget) {
+      console.warn('[Soulstash Player Focus] playback target unavailable', {
+        reason,
+        mode: playerDisplayModeRef.current,
+        activeUrlPresent: Boolean(activeUrl),
+        iframePresent: Boolean(iframeRef.current?.isConnected),
+        videoPresent: Boolean(directVideoRef.current?.isConnected)
+      });
+      return false;
+    }
+
+    // Wait for the mode/fullscreen layout to settle, then re-read the ref in
+    // case a source change replaced the iframe while the request was pending.
+    window.requestAnimationFrame(() => {
+      const target = resolveTarget();
+      if (!target) {
+        console.warn('[Soulstash Player Focus] playback target disappeared before focus', {
+          reason,
+          mode: playerDisplayModeRef.current
+        });
+        return;
+      }
+
+      let focusError = null;
+      try {
+        target.focus({ preventScroll: true });
+        if (target.tagName === 'IFRAME') target.contentWindow?.focus?.();
+      } catch (error) {
+        focusError = error;
+      }
+
+      const rect = target.getBoundingClientRect();
+      console.info('[Soulstash Player Focus] playback focus result', {
+        reason,
+        mode: playerDisplayModeRef.current,
+        target: target.tagName,
+        connected: target.isConnected,
+        parentDocumentFocusedFrame: document.activeElement === target,
+        activeElement: document.activeElement?.tagName || null,
+        frameCenter: {
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2)
+        },
+        fullscreenElement: (document.fullscreenElement || document.webkitFullscreenElement)?.tagName || null,
+        focusError: focusError?.message || null,
+        crossOriginFrameContents: target.tagName === 'IFRAME'
+          ? 'not inspectable or directly focusable from the parent document'
+          : 'same-origin video element'
+      });
+    });
+    return true;
+  }, [activeUrl]);
+
   const focusSizeControl = useCallback(() => {
     window.requestAnimationFrame(() => {
-      fullscreenButtonRef.current?.focus({ preventScroll: true });
+      const target = fullscreenButtonRef.current;
+      if (!target?.isConnected) {
+        console.warn('[Soulstash Player Focus] size control unavailable');
+        return;
+      }
+      target.focus({ preventScroll: true });
+      console.info('[Soulstash Player Focus] size control focused', {
+        parentDocumentFocusedControl: document.activeElement === target
+      });
     });
   }, []);
 
@@ -183,6 +252,7 @@ export function VideoPlayerModal({ request, onClose }) {
     if (mode === 1) {
       setSourcesExpanded(false);
       updatePlayerDisplayMode(2);
+      console.info('[Soulstash Player Focus] player mode transition', { from: 1, to: 2 });
       focusSizeControl();
       return;
     }
@@ -190,20 +260,38 @@ export function VideoPlayerModal({ request, onClose }) {
     if (mode === 2) {
       setSourcesExpanded(false);
       const target = isDirectMediaUrl(activeUrl) ? directVideoRef.current : iframeRef.current;
-      if (!target) return;
+      if (!target?.isConnected) {
+        console.warn('[Soulstash Player Focus] mode 3 requested without a live playback target', {
+          activeUrlPresent: Boolean(activeUrl),
+          iframePresent: Boolean(iframeRef.current?.isConnected),
+          videoPresent: Boolean(directVideoRef.current?.isConnected)
+        });
+        return;
+      }
       try {
         const request = target.requestFullscreen || target.webkitRequestFullscreen;
-        if (request) await Promise.resolve(request.call(target));
+        if (request) {
+          await Promise.resolve(request.call(target));
+          console.info('[Soulstash Player Focus] fullscreen request resolved', {
+            target: target.tagName,
+            fullscreenElement: (document.fullscreenElement || document.webkitFullscreenElement)?.tagName || null
+          });
+        } else {
+          console.info('[Soulstash Player Focus] fullscreen API unavailable; using mode 3 player layout', {
+            target: target.tagName
+          });
+        }
       } catch (err) {
         console.warn('[Player] Stream fullscreen request failed; using the full player view:', err);
       }
       updatePlayerDisplayMode(3);
-      window.requestAnimationFrame(() => target.focus?.({ preventScroll: true }));
+      console.info('[Soulstash Player Focus] player mode transition', { from: 2, to: 3, target: target.tagName });
+      focusPlaybackContext('mode-3-enter', target);
       return;
     }
 
     returnToDefaultPlayerMode();
-  }, [activeUrl, focusSizeControl, returnToDefaultPlayerMode, updatePlayerDisplayMode]);
+  }, [activeUrl, focusPlaybackContext, focusSizeControl, returnToDefaultPlayerMode, updatePlayerDisplayMode]);
 
   const handleToggleDirectPlayback = useCallback(() => {
     const video = directVideoRef.current;
@@ -215,15 +303,16 @@ export function VideoPlayerModal({ request, onClose }) {
   useEffect(() => {
     const handleFs = () => {
       const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
-      if (fullscreenElement === iframeRef.current || fullscreenElement === directVideoRef.current) {
+      if (fullscreenElement && (fullscreenElement === iframeRef.current || fullscreenElement === directVideoRef.current)) {
         setSourcesExpanded(false);
         updatePlayerDisplayMode(3);
-        window.requestAnimationFrame(() => fullscreenElement.focus?.({ preventScroll: true }));
-      } else if (fullscreenElement === playerBoxRef.current) {
+        focusPlaybackContext('fullscreen-change', fullscreenElement);
+      } else if (fullscreenElement && fullscreenElement === playerBoxRef.current) {
         updatePlayerDisplayMode(2);
       } else if (!fullscreenElement && playerDisplayModeRef.current === 3) {
         setSourcesExpanded(false);
         updatePlayerDisplayMode(1);
+        console.info('[Soulstash Player Focus] fullscreen exited; returning to mode 1');
         if (isTv) window.setTimeout(focusSizeControl, 40);
       }
     };
@@ -234,7 +323,7 @@ export function VideoPlayerModal({ request, onClose }) {
       document.removeEventListener('fullscreenchange', handleFs);
       document.removeEventListener('webkitfullscreenchange', handleFs);
     };
-  }, [focusSizeControl, isTv, updatePlayerDisplayMode]);
+  }, [focusPlaybackContext, focusSizeControl, isTv, updatePlayerDisplayMode]);
 
   useEffect(() => {
     setSelectedGroup('hindi');
