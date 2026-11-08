@@ -1509,8 +1509,6 @@ export function VideoPlayerModal({ request, onClose }) {
                   ref={iframeRef}
                   key={`${activeUrl}:${iframeReloadKey}`}
                   tabIndex={0}
-                  credentialless={isTv ? '' : undefined}
-                  sandbox={isTv ? 'allow-scripts allow-same-origin allow-forms allow-presentation' : undefined}
                   src={activeUrl}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onLoad={() => {
