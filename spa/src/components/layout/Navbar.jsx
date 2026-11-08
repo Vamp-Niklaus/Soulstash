@@ -24,6 +24,7 @@ export function ReactNavbar() {
   const [tvProfileOpen, setTvProfileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const profileMenuRef = useRef(null);
+  const profileTriggerRef = useRef(null);
   const tvProfileRef = useRef(null);
   const navRef = useRef(null);
 
@@ -172,6 +173,44 @@ export function ReactNavbar() {
     setProfileDropdownOpen(false);
     toast('Logged out successfully');
     navigate('/login');
+  };
+
+  const handleProfileTriggerKeyDown = (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      setProfileDropdownOpen(true);
+      window.requestAnimationFrame(() => {
+        profileMenuRef.current?.querySelector('[data-profile-menu-item]')?.focus();
+      });
+    } else if (event.key === 'Escape' && profileDropdownOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      setProfileDropdownOpen(false);
+    }
+  };
+
+  const handleProfileMenuKeyDown = (event) => {
+    const items = [...(profileMenuRef.current?.querySelectorAll('[data-profile-menu-item]') || [])];
+    const currentIndex = items.indexOf(event.target.closest('[data-profile-menu-item]'));
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!items.length) return;
+      if (event.key === 'ArrowUp' && currentIndex <= 0) {
+        profileTriggerRef.current?.focus();
+        return;
+      }
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      const nextIndex = (currentIndex + direction + items.length) % items.length;
+      items[nextIndex]?.focus();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setProfileDropdownOpen(false);
+      profileTriggerRef.current?.focus();
+    }
   };
 
   if (!navReady) {
@@ -380,8 +419,13 @@ export function ReactNavbar() {
                   <button
                     type="button"
                     className="profile-btn"
+                    ref={profileTriggerRef}
+                    data-tv-ignore
                     onClick={() => setProfileDropdownOpen((prev) => !prev)}
+                    onKeyDown={handleProfileTriggerKeyDown}
                     aria-label="User profile menu"
+                    aria-haspopup="menu"
+                    aria-expanded={profileDropdownOpen}
                   >
                     <img
                       src={auth?.user?.avatar || FALLBACK_AVATAR}
@@ -393,6 +437,9 @@ export function ReactNavbar() {
                   {/* Desktop Profile Dropdown (Profile, Settings, Logout) */}
                   {profileDropdownOpen && (
                     <div
+                      data-tv-ignore
+                      role="menu"
+                      onKeyDown={handleProfileMenuKeyDown}
                       className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[99999] shadow-2xl animate-in fade-in zoom-in-95 duration-150"
                       style={{ backgroundColor: '#121418', background: '#121418', opacity: 1, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
                     >
@@ -401,6 +448,8 @@ export function ReactNavbar() {
                       </div>
                       <button
                         type="button"
+                        role="menuitem"
+                        data-profile-menu-item
                         onClick={() => { setProfileDropdownOpen(false); navigate(`/user/${username}`); }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
                       >
@@ -409,6 +458,8 @@ export function ReactNavbar() {
                       </button>
                       <button
                         type="button"
+                        role="menuitem"
+                        data-profile-menu-item
                         onClick={() => { setProfileDropdownOpen(false); setSettingsOpen(true); }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
                       >
@@ -417,6 +468,8 @@ export function ReactNavbar() {
                       </button>
                       <button
                         type="button"
+                        role="menuitem"
+                        data-profile-menu-item
                         onClick={handleLogout}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-500/10 transition-colors text-left font-medium"
                       >
@@ -432,15 +485,23 @@ export function ReactNavbar() {
                   <button
                     type="button"
                     className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-all border border-white/15"
+                    ref={profileTriggerRef}
+                    data-tv-ignore
                     onClick={() => setProfileDropdownOpen((prev) => !prev)}
+                    onKeyDown={handleProfileTriggerKeyDown}
                     title="Settings & Menu"
                     aria-label="Settings menu"
+                    aria-haspopup="menu"
+                    aria-expanded={profileDropdownOpen}
                   >
                     <i className="fas fa-cog text-sm" />
                   </button>
 
                   {profileDropdownOpen && (
                     <div
+                      data-tv-ignore
+                      role="menu"
+                      onKeyDown={handleProfileMenuKeyDown}
                       className="absolute right-0 top-14 w-48 rounded-2xl border border-white/20 profile-dropdown-solid p-1.5 text-xs z-[99999] shadow-2xl animate-in fade-in zoom-in-95 duration-150"
                       style={{ backgroundColor: '#121418', background: '#121418', opacity: 1, backdropFilter: 'none', WebkitBackdropFilter: 'none' }}
                     >
@@ -449,6 +510,8 @@ export function ReactNavbar() {
                       </div>
                       <button
                         type="button"
+                        role="menuitem"
+                        data-profile-menu-item
                         onClick={() => { setProfileDropdownOpen(false); setSettingsOpen(true); }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
                       >
@@ -457,6 +520,8 @@ export function ReactNavbar() {
                       </button>
                       <button
                         type="button"
+                        role="menuitem"
+                        data-profile-menu-item
                         onClick={() => { setProfileDropdownOpen(false); navigate('/login'); }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-amber-400 hover:bg-white/10 transition-colors text-left font-medium"
                       >
@@ -465,6 +530,8 @@ export function ReactNavbar() {
                       </button>
                       <button
                         type="button"
+                        role="menuitem"
+                        data-profile-menu-item
                         onClick={() => { setProfileDropdownOpen(false); navigate('/register'); }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-white/80 hover:bg-white/10 hover:text-white transition-colors text-left"
                       >

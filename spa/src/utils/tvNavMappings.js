@@ -256,8 +256,18 @@ export function moveFocus(dir) {
   }
 
   if (fromZ === 'content' && dir === 'ArrowLeft') {
-    const sidebar = cands.filter(el => getZone(el) === 'sidebar');
-    if (sidebar.length) { cands = sidebar; }
+    const leftInRow = cands.filter(el => {
+      if (getZone(el) !== 'content') return false;
+      const rect = el.getBoundingClientRect();
+      const verticalOverlap = Math.min(fromR.bottom, rect.bottom) - Math.max(fromR.top, rect.top);
+      return rect.right <= fromR.left + 2 && verticalOverlap > 0;
+    });
+    if (leftInRow.length) {
+      cands = leftInRow;
+    } else {
+      const sidebar = cands.filter(el => getZone(el) === 'sidebar');
+      if (sidebar.length) cands = sidebar;
+    }
   }
 
   let best = null, bestScore = Infinity;

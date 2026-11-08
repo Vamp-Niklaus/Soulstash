@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { fetchKartoonsEpisodes, fetchKartoonsShowDetail } from '../../api/kartoons.js';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { fetchKartoonsEpisodes, fetchKartoonsMovieDetail, fetchKartoonsShowDetail } from '../../api/kartoons.js';
 import { apiFetch } from '../../api/client.js';
 import { useMediaAction } from '../../hooks/useMediaAction.js';
 import { DetailHero } from './DetailHero.jsx';
@@ -17,7 +17,10 @@ import { createEmptyCollectionDraft } from '../../utils/formatters.js';
 
 export function KartoonDetailPage() {
   const { slug = '' } = useParams();
+  const [searchParams] = useSearchParams();
+  const contentKindHint = searchParams.get('type') === 'movie' ? 'movie' : 'series';
   const [show, setShow] = useState(null);
+  const [contentKind, setContentKind] = useState('series');
   const [seasonNumber, setSeasonNumber] = useState(1);
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,22 +36,53 @@ export function KartoonDetailPage() {
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    fetchKartoonsShowDetail(slug, { signal: controller.signal })
-      .then((item) => {
-        setShow(item);
-        const seasons = Array.isArray(item.seasons) ? item.seasons : [];
-        const firstSeason = Number(seasons[0]?.seasonNumber) || 1;
-        setSeasonNumber(firstSeason);
-        document.title = `${item.title || 'Kartoons'} | Soulstash`;
-      })
-      .catch((requestError) => {
-        if (requestError?.name !== 'AbortError') setError(requestError.message || 'Unable to load this Kartoons title.');
-      })
-      .finally(() => {
+    setShow(null);
+    setTmdbMatch(null);
+    setEpisodes([]);
+    setPlayerRequest(null);
+    setContentKind(contentKindHint);
+
+    const loadTitle = async () => {
+      const loaders = contentKindHint === 'movie'
+        ? [
+            ['movie', fetchKartoonsMovieDetail],
+            ['series', fetchKartoonsShowDetail]
+          ]
+        : [
+            ['series', fetchKartoonsShowDetail],
+            ['movie', fetchKartoonsMovieDetail]
+          ];
+      let lastError = null;
+      try {
+        for (const [kind, loader] of loaders) {
+          try {
+            const item = await loader(slug, { signal: controller.signal });
+            if (controller.signal.aborted) return;
+            setContentKind(kind);
+            setShow(item);
+            if (kind === 'series') {
+              const seasons = Array.isArray(item.seasons) ? item.seasons : [];
+              const firstSeason = Number(seasons[0]?.seasonNumber) || 1;
+              setSeasonNumber(firstSeason);
+            }
+            document.title = `${item.title || 'Kartoons'} | Soulstash`;
+            return;
+          } catch (requestError) {
+            if (controller.signal.aborted || requestError?.name === 'AbortError') return;
+            lastError = requestError;
+          }
+        }
+        if (!controller.signal.aborted) {
+          setError(lastError?.message || 'Unable to load this Kartoons title.');
+        }
+      } finally {
         if (!controller.signal.aborted) setLoading(false);
-      });
+      }
+    };
+
+    loadTitle();
     return () => controller.abort();
-  }, [slug]);
+  }, [slug, contentKindHint]);
 
   // Background TMDB pairing match
   useEffect(() => {
@@ -66,6 +100,11 @@ export function KartoonDetailPage() {
       .then((res) => {
         const results = Array.isArray(res?.results) ? res.results : [];
         const match = results.find((r) => {
+          const resultType = String(r.media_type || r.type || '').toLowerCase();
+          const correctType = contentKind === 'movie'
+            ? ['movie', 'film'].includes(resultType)
+            : ['tv', 'series', 'show'].includes(resultType);
+          if (!correctType) return false;
           const t1 = String(r.title || r.name || '').toLowerCase();
           const t2 = cleanTitle.toLowerCase();
           if (t1 === t2) return true;
@@ -80,10 +119,10 @@ export function KartoonDetailPage() {
       .catch(() => {});
 
     return () => controller.abort();
-  }, [show?.title, show?.startYear]);
+  }, [show?.title, show?.startYear, contentKind]);
 
   useEffect(() => {
-    if (!show || !seasonNumber) return undefined;
+    if (!show || contentKind !== 'series' || !seasonNumber) return undefined;
     const controller = new AbortController();
     setEpisodesLoading(true);
     setEpisodes([]);
@@ -96,7 +135,7 @@ export function KartoonDetailPage() {
         if (!controller.signal.aborted) setEpisodesLoading(false);
       });
     return () => controller.abort();
-  }, [show, slug, seasonNumber]);
+  }, [show, slug, seasonNumber, contentKind]);
 
   const seasonsList = useMemo(() => {
     const values = (show?.seasons || [])
@@ -113,8 +152,10 @@ export function KartoonDetailPage() {
 
   const content = useMemo(() => {
     if (!show) return null;
+    const isMovie = contentKind === 'movie';
     return {
       id: `kartoons-${slug}`,
+      media_type: isMovie ? 'Movie' : 'Series',
       title: show.title,
       name: show.title,
       backdrop_path: show.coverImage || show.image,
@@ -125,14 +166,15 @@ export function KartoonDetailPage() {
       },
       overview: show.description,
       vote_average: show.rating,
-      first_air_date: show.startYear ? `${show.startYear}-01-01` : '',
-      number_of_seasons: seasonsList.length || 1,
-      number_of_episodes: show.episodeCount || seasonsList.reduce((acc, s) => acc + (s.episode_count || 0), 0) || episodes.length,
-      seasons: seasonsList.length ? seasonsList : [{ season_number: 1, name: 'Season 1', id: 1 }],
+      first_air_date: !isMovie && show.startYear ? `${show.startYear}-01-01` : '',
+      release_date: isMovie && show.startYear ? `${show.startYear}-01-01` : '',
+      number_of_seasons: isMovie ? 0 : (seasonsList.length || 1),
+      number_of_episodes: isMovie ? 0 : (show.episodeCount || seasonsList.reduce((acc, s) => acc + (s.episode_count || 0), 0) || episodes.length),
+      seasons: isMovie ? [] : (seasonsList.length ? seasonsList : [{ season_number: 1, name: 'Season 1', id: 1 }]),
       genres: (show.tags || []).map((t) => ({ id: t, name: t })),
-      status: show.status || 'Ended'
+      status: show.status || (isMovie ? 'Released' : 'Ended')
     };
-  }, [show, slug, seasonsList, episodes.length]);
+  }, [show, slug, seasonsList, episodes.length, contentKind]);
 
   const effectiveId = tmdbMatch?.id ? tmdbMatch.id : `kartoons-${slug}`;
   const effectiveContent = useMemo(() => {
@@ -142,11 +184,11 @@ export function KartoonDetailPage() {
         ...content,
         id: tmdbMatch.id,
         tmdbId: tmdbMatch.id,
-        media_type: tmdbMatch.media_type || 'Series'
+        media_type: contentKind === 'movie' ? 'Movie' : 'Series'
       };
     }
     return content;
-  }, [content, tmdbMatch]);
+  }, [content, tmdbMatch, contentKind]);
 
   const {
     status,
@@ -163,17 +205,17 @@ export function KartoonDetailPage() {
     toggleWatchlist,
     handleToggleCustomCollection,
     handleCreateCustomCollection
-  } = useMediaAction(effectiveId, 'series', effectiveContent);
+  } = useMediaAction(effectiveId, contentKind, effectiveContent);
 
   const meta = useMemo(() => {
     if (!show) return [];
     return [
-      'Series',
+      contentKind === 'movie' ? 'Movie' : 'Series',
       show.startYear ? String(show.startYear) : '',
       show.rating ? `★ ${Number(show.rating).toFixed(1)}` : '',
       'Hindi'
     ].filter(Boolean);
-  }, [show]);
+  }, [show, contentKind]);
 
   const seasonDetails = useMemo(() => {
     return {
@@ -192,7 +234,7 @@ export function KartoonDetailPage() {
   }, [episodes, seasonNumber, show]);
 
   const handlePlayEpisode = useCallback((ep) => {
-    if (!show) return;
+    if (!show || contentKind !== 'series') return;
     const epNum = Number(ep?.episode_number || ep?.episodeNumber || 1);
     const sNum = Number(ep?.season_number || seasonNumber || 1);
     setPlayerRequest({
@@ -207,10 +249,21 @@ export function KartoonDetailPage() {
       kartoonsEpisodeId: ep?.id || ep?._id,
       isKartoons: true
     });
-  }, [show, slug, seasonNumber, tmdbMatch]);
+  }, [show, slug, seasonNumber, tmdbMatch, contentKind]);
 
   const handlePlayClick = useCallback(() => {
     if (!show) return;
+    if (contentKind === 'movie') {
+      setPlayerRequest({
+        mediaType: 'movie',
+        tmdbId: tmdbMatch?.id ? tmdbMatch.id : `kartoons-${slug}`,
+        title: show.title,
+        year: show.startYear,
+        kartoonsSlug: slug,
+        isKartoons: true
+      });
+      return;
+    }
     const firstEp = seasonDetails?.episodes?.[0];
     const epNum = Number(firstEp?.episode_number || 1);
     const sNum = Number(seasonNumber || 1);
@@ -226,7 +279,7 @@ export function KartoonDetailPage() {
       kartoonsEpisodeId: firstEp?.id || firstEp?._id,
       isKartoons: true
     });
-  }, [show, slug, seasonNumber, seasonDetails, tmdbMatch]);
+  }, [show, slug, seasonNumber, seasonDetails, tmdbMatch, contentKind]);
 
   if (loading) {
     return <DetailPageSkeleton type="series" />;
@@ -252,7 +305,7 @@ export function KartoonDetailPage() {
       {/* 1. Hero — backdrop, poster, metadata, action buttons, play button */}
       <DetailHero
         content={effectiveContent}
-        type="series"
+        type={contentKind}
         title={show.title}
         meta={meta}
         status={status}
@@ -291,16 +344,18 @@ export function KartoonDetailPage() {
       </section>
 
       {/* 3. Seasons & Episodes */}
-      <SeasonEpisodeSection
-        content={content}
-        selectedSeason={seasonNumber}
-        setSelectedSeason={setSeasonNumber}
-        seasonDetails={seasonDetails}
-        seasonLoading={episodesLoading}
-        seasonScrollerRef={seasonScrollerRef}
-        episodeScrollerRef={episodeScrollerRef}
-        onPlayEpisode={handlePlayEpisode}
-      />
+      {contentKind === 'series' && (
+        <SeasonEpisodeSection
+          content={content}
+          selectedSeason={seasonNumber}
+          setSelectedSeason={setSeasonNumber}
+          seasonDetails={seasonDetails}
+          seasonLoading={episodesLoading}
+          seasonScrollerRef={seasonScrollerRef}
+          episodeScrollerRef={episodeScrollerRef}
+          onPlayEpisode={handlePlayEpisode}
+        />
+      )}
 
       {/* 4. Video player */}
       {playerRequest && (

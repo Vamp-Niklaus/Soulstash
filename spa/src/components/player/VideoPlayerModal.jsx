@@ -10,8 +10,7 @@ import { toast } from '../../utils/toast.js';
 import { apiFetch } from '../../api/client.js';
 import { ActionButton } from '../ui/ActionButton.jsx';
 import {
-  kartoonEpisodePlayerUrl,
-  kartoonMoviePlayerUrl,
+  fetchKartoonsStremioStreams,
   resolveKartoonsEpisodeId,
   resolveKartoonsMovieId,
   searchKartoonsShows,
@@ -56,8 +55,10 @@ export function VideoPlayerModal({ request, onClose }) {
   const [hindiSources, setHindiSources] = useState([]);
   const [animeSources, setAnimeSources] = useState([]);
   const [kartoonSources, setKartoonSources] = useState([]);
+  const [kartoonResolveDone, setKartoonResolveDone] = useState(false);
   const [anilistId, setAnilistId] = useState(null);
   const [activeUrl, setActiveUrl] = useState('');
+  const [hasManualSourceSelection, setHasManualSourceSelection] = useState(false);
   const [sourceSignature, setSourceSignature] = useState('');
   const [failedUrls, setFailedUrls] = useState(() => new Set());
   const [verifiedUrls, setVerifiedUrls] = useState(() => new Set());
@@ -67,6 +68,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const [scale, setScale] = useState(1.0);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [isStreamLoading, setIsStreamLoading] = useState(true);
+  const [isDirectVideoPlaying, setIsDirectVideoPlaying] = useState(false);
   const iframeRef = useRef(null);
   const directVideoRef = useRef(null);
   const hlsInstanceRef = useRef(null);
@@ -109,11 +111,13 @@ export function VideoPlayerModal({ request, onClose }) {
     wakeTvControls();
     const handleActivity = () => wakeTvControls();
     window.addEventListener('mousemove', handleActivity);
-    window.addEventListener('keydown', handleActivity);
+    // The TV spatial-nav handler runs during document capture and may stop
+    // propagation, so wake the chrome before the event reaches the document.
+    window.addEventListener('keydown', handleActivity, true);
     return () => {
       if (tvHideTimerRef.current) clearTimeout(tvHideTimerRef.current);
       window.removeEventListener('mousemove', handleActivity);
-      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('keydown', handleActivity, true);
     };
   }, [isTv, wakeTvControls]);
 
@@ -131,6 +135,13 @@ export function VideoPlayerModal({ request, onClose }) {
     } catch (err) {
       console.warn('[Player] Fullscreen toggle error:', err);
     }
+  }, []);
+
+  const handleToggleDirectPlayback = useCallback(() => {
+    const video = directVideoRef.current;
+    if (!video) return;
+    if (video.paused) video.play().catch(() => {});
+    else video.pause();
   }, []);
 
   useEffect(() => {
@@ -165,8 +176,10 @@ export function VideoPlayerModal({ request, onClose }) {
     setHindiSources([]);
     setAnimeSources([]);
     setKartoonSources([]);
+    setKartoonResolveDone(false);
     setAnilistId(null);
     setActiveUrl('');
+    setHasManualSourceSelection(false);
     setSourceSignature('');
     setFailedUrls(new Set());
     setVerifiedUrls(new Set());
@@ -460,7 +473,7 @@ export function VideoPlayerModal({ request, onClose }) {
     fetchAnime();
   }, [request]);
 
-  // Kartoons Resolution (Single embed source in Hindi section)
+  // Resolve direct Kartoon streams so the shared player keeps the app controls without embedding the provider site.
   useEffect(() => {
     let cancelled = false;
     const resolveKartoons = async () => {
@@ -468,27 +481,25 @@ export function VideoPlayerModal({ request, onClose }) {
         const isMovie = request?.mediaType === 'movie';
         const season = Number(request?.seasonNumber) || 1;
         const episode = Number(request?.episodeNumber) || 1;
-        let kartoonUrl = null;
+        const streamType = isMovie ? 'movie' : 'series';
+        let streamId = null;
 
-        // 1. If explicit kartoonsEpisodeId is provided
+        // 1. If the request already identifies a Kartoon episode, use that stable episode ID.
         if (request?.kartoonsEpisodeId) {
-          kartoonUrl = kartoonEpisodePlayerUrl(request.kartoonsEpisodeId);
+          streamId = request.kartoonsEpisodeId;
         }
 
-        // 2. If explicit kartoonsSlug is provided
-        if (!kartoonUrl && request?.kartoonsSlug) {
+        // 2. Resolve a stream ID from an explicit Kartoon slug.
+        if (!streamId && request?.kartoonsSlug) {
           if (isMovie) {
-            kartoonUrl = kartoonMoviePlayerUrl(request.kartoonsSlug);
+            streamId = await resolveKartoonsMovieId(request.kartoonsSlug).catch(() => null);
           } else {
-            const epId = await resolveKartoonsEpisodeId(request.kartoonsSlug, season, episode).catch(() => null);
-            if (epId) {
-              kartoonUrl = kartoonEpisodePlayerUrl(epId);
-            }
+            streamId = await resolveKartoonsEpisodeId(request.kartoonsSlug, season, episode).catch(() => null);
           }
         }
 
-        // 3. Otherwise, search Kartoons by title (e.g. Dragon Ball, Ben 10, etc.)
-        if (!kartoonUrl && (request?.title || request?.seriesTitle)) {
+        // 3. Otherwise, search Kartoons by title (e.g. Dragon Ball, Ben 10, etc.).
+        if (!streamId && (request?.title || request?.seriesTitle)) {
           const rawTitle = String(request.seriesTitle || request.title || '');
           const cleanTitle = rawTitle
             .replace(/\s*S\d+E\d+.*$/i, '')
@@ -502,36 +513,46 @@ export function VideoPlayerModal({ request, onClose }) {
               const res = await searchKartoonsMovies(cleanTitle).catch(() => ({ data: [] }));
               const match = findKartoonsMatch(request, res?.data || []);
               if (match?.slug) {
-                kartoonUrl = kartoonMoviePlayerUrl(match.slug);
+                streamId = await resolveKartoonsMovieId(match.slug).catch(() => null);
               }
             } else {
               const res = await searchKartoonsShows(cleanTitle).catch(() => ({ data: [] }));
               const match = findKartoonsMatch(request, res?.data || []);
               if (match?.slug) {
-                const epId = await resolveKartoonsEpisodeId(match.slug, season, episode).catch(() => null);
-                if (epId) {
-                  kartoonUrl = kartoonEpisodePlayerUrl(epId);
-                }
+                streamId = await resolveKartoonsEpisodeId(match.slug, season, episode).catch(() => null);
               }
             }
           }
         }
 
-        if (cancelled || !kartoonUrl) return;
+        if (cancelled || !streamId) return;
 
-        const kSources = [{
-          id: 'kartoon',
-          key: 'kartoon',
-          label: 'Kartoon',
-          url: kartoonUrl,
-          embeddable: true,
-          isDirect: false,
-          group: 'hindi'
-        }];
+        const streams = (await fetchKartoonsStremioStreams(streamType, streamId).catch(() => []))
+          .filter((stream) => stream?.url && isDirectMediaUrl(stream.url));
+        if (cancelled || !streams.length) return;
+
+        const seenURLs = new Set();
+        const kSources = streams
+          .filter((stream) => {
+            if (seenURLs.has(stream.url)) return false;
+            seenURLs.add(stream.url);
+            return true;
+          })
+          .map((stream, index) => ({
+            id: index === 0 ? 'kartoon' : `kartoon-${index + 1}`,
+            key: 'kartoon',
+            label: index === 0 ? 'Kartoon' : `Kartoon · ${stream.label || `Server ${index + 1}`}`,
+            url: stream.url,
+            embeddable: false,
+            isDirect: true,
+            group: 'hindi'
+          }));
 
         setKartoonSources(kSources);
       } catch (err) {
         console.warn('[Soulstash Player] Kartoons resolution failed:', err.message);
+      } finally {
+        if (!cancelled) setKartoonResolveDone(true);
       }
     };
 
@@ -887,7 +908,7 @@ export function VideoPlayerModal({ request, onClose }) {
     return lowerKey.includes('vidbolt') || lowerLabel.includes('vidbolt') || url.includes('vidbolt');
   };
 
-  // Race every available stream once across displayed sources; Kartoon is prioritized if present, then VidBolt!
+  // Prefer Kartoon streams whenever available, then VidBolt. Manual source selection takes precedence.
   // Importantly, switching categories or viewing sources does NOT switch or interrupt the playing stream!
   const raceTokenRef = useRef(0);
   const playableKey = displayedSources.filter((s) => s.url && !failedUrls.has(s.url)).map((s) => s.url).join('|');
@@ -901,13 +922,18 @@ export function VideoPlayerModal({ request, onClose }) {
     const playable = displayedSources.filter((s) => s.url && !failedUrls.has(s.url));
     if (!playable.length) return undefined;
 
-    // Prioritize Kartoon as default player if available
+    // Kartoon may resolve after the TMDB sources; switch to it unless the user chose another source.
     const kartoonSource = playable.find(isKartoonSource);
-    if (kartoonSource && !failedUrls.has(kartoonSource.url)) {
-      setActiveUrl(kartoonSource.url);
-      setVerifiedUrls((prev) => new Set(prev).add(kartoonSource.url));
+    if (kartoonSource && !hasManualSourceSelection) {
+      if (activeUrl !== kartoonSource.url) {
+        setActiveUrl(kartoonSource.url);
+        setVerifiedUrls((prev) => new Set(prev).add(kartoonSource.url));
+      }
       return undefined;
     }
+
+    // Preserve an already playing source after the one-time preferred-source decision.
+    if (activeUrl && !failedUrls.has(activeUrl)) return undefined;
 
     // Prioritize VidBolt as default player if available
     const vidboltSource = playable.find(isVidboltSource);
@@ -950,7 +976,7 @@ export function VideoPlayerModal({ request, onClose }) {
       window.clearTimeout(timer);
       controllers.forEach((c) => c.abort());
     };
-  }, [playableKey, activeUrl, failedUrls, displayedSources]);
+  }, [playableKey, activeUrl, failedUrls, displayedSources, hasManualSourceSelection]);
 
   const defaultSource =
     displayedSources.find((s) => s.url && !s.failed && isKartoonSource(s)) ||
@@ -1077,6 +1103,7 @@ export function VideoPlayerModal({ request, onClose }) {
       ? `min(94vw, 1340px, calc(${desktopMediaMaxH} * 16 / 9))`
       : 'min(96vw, calc(96vw))',
     maxWidth: isDesktopViewport ? '1340px' : '96vw',
+    height: sourcesExpanded ? (isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh') : undefined,
     maxHeight: isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh',
     margin: '0 auto',
     display: 'flex',
@@ -1084,8 +1111,8 @@ export function VideoPlayerModal({ request, onClose }) {
   };
   const mediaAreaStyle = isTv ? {
     width: '100%',
-    height: '100%',
     flex: '1 1 0%',
+    minHeight: 0,
     backgroundColor: 'black'
   } : {
     width: '100%',
@@ -1111,13 +1138,21 @@ export function VideoPlayerModal({ request, onClose }) {
   };
 
   const handleSwitchSource = () => {
-    const candidates = currentPlayableSources.filter((s) => !failedUrls.has(s.url));
+    const candidates = displayedSources.filter((s) => s.url && !failedUrls.has(s.url));
     if (!candidates.length) return;
     const currentIndex = candidates.findIndex((source) => source.url === activeUrl);
     const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % candidates.length : 0;
+    setHasManualSourceSelection(true);
     setActiveUrl(candidates[nextIndex]?.url || '');
     setIframeReloadKey(0);
   };
+
+  const handleSelectSource = useCallback((source) => {
+    if (!source?.url || source.failed || failedUrls.has(source.url)) return;
+    setHasManualSourceSelection(true);
+    setActiveUrl(source.url);
+    setIframeReloadKey((current) => current + 1);
+  }, [failedUrls]);
 
   const reloadActiveSource = useCallback(() => {
     if (!activeUrl) return;
@@ -1288,7 +1323,7 @@ export function VideoPlayerModal({ request, onClose }) {
             data-player-controls="true"
             data-player-drag-handle="true"
             className={`flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/80 px-3 sm:px-4 select-none transition-opacity duration-300 ${
-              isTv && !tvControlsVisible && !sourcesExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              isTv && !tvControlsVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}
             style={{ height: controlsHeight, touchAction: 'none' }}
             onPointerDown={handlePlayerPointerDown}
@@ -1318,6 +1353,18 @@ export function VideoPlayerModal({ request, onClose }) {
               >
                 <i className={`fas ${isFullscreen ? 'fa-compress-arrows-alt' : 'fa-expand'} text-xs`} />
               </button>
+              {isTv && canUseVideoJs && activeUrl && (
+                <button
+                  type="button"
+                  data-player-action="true"
+                  onClick={handleToggleDirectPlayback}
+                  className={iconButtonClass}
+                  aria-label={isDirectVideoPlaying ? 'Pause playback' : 'Play playback'}
+                  title={isDirectVideoPlaying ? 'Pause playback' : 'Play playback'}
+                >
+                  <i className={`fas ${isDirectVideoPlaying ? 'fa-pause' : 'fa-play'} text-xs`} />
+                </button>
+              )}
               <button
                 type="button"
                 data-player-action="true"
@@ -1329,7 +1376,7 @@ export function VideoPlayerModal({ request, onClose }) {
               >
                 <i className="fas fa-redo text-xs"></i>
               </button>
-              {!canUseVideoJs && activeUrl && (
+              {activeUrl && (
                 <button
                   type="button"
                   data-player-action="true"
@@ -1375,7 +1422,7 @@ export function VideoPlayerModal({ request, onClose }) {
             className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden bg-black"
             style={mediaAreaStyle}
           >
-            {(isFetching || (isPureKartoons && !activeUrl && !failedUrls.size)) ? (
+            {(isFetching || (isPureKartoons && !activeUrl && !kartoonResolveDone)) ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-6">
                 <div className="batman-loader-wrapper">
                   <div className="batman-loader" />
@@ -1392,14 +1439,27 @@ export function VideoPlayerModal({ request, onClose }) {
               <div className="relative flex h-full w-full items-center justify-center bg-black">
                 <video
                   ref={directVideoRef}
-                  controls
+                  controls={!isTv}
+                  tabIndex={-1}
                   autoPlay
                   playsInline
-                  onWaiting={() => setIsStreamLoading(true)}
-                  onPlaying={() => setIsStreamLoading(false)}
+                  onWaiting={() => {
+                    setIsStreamLoading(true);
+                    setIsDirectVideoPlaying(false);
+                  }}
+                  onPlaying={() => {
+                    setIsStreamLoading(false);
+                    setIsDirectVideoPlaying(true);
+                  }}
+                  onPause={() => setIsDirectVideoPlaying(false)}
                   onLoadedData={() => setIsStreamLoading(false)}
                   onCanPlay={() => setIsStreamLoading(false)}
                   className="w-full h-full bg-black object-contain"
+                  style={{
+                    transform: scale !== 1.0 ? `scale(${scale})` : 'none',
+                    transformOrigin: 'center center',
+                    transition: 'transform 0.2s ease'
+                  }}
                 />
               </div>
             ) : !canEmbedSource ? (
@@ -1423,6 +1483,14 @@ export function VideoPlayerModal({ request, onClose }) {
                   key={`${activeUrl}:${iframeReloadKey}`}
                   src={activeUrl}
                   tabIndex={-1}
+                  onFocus={() => {
+                    if (!isTv) return;
+                    iframeRef.current?.blur();
+                    const returnFocus = playerBoxRef.current?.querySelector(
+                      'button[data-active-source="true"], button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]'
+                    );
+                    returnFocus?.focus();
+                  }}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onLoad={() => {
                     console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
@@ -1499,7 +1567,12 @@ export function VideoPlayerModal({ request, onClose }) {
               </button>
             </div>
           ) : (
-            <div className="shrink-0 flex flex-col min-h-0 max-h-[38vh] border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none">
+            <div
+              aria-hidden={isTv && !tvControlsVisible}
+              className={`shrink-0 flex flex-col min-h-0 max-h-[38vh] overflow-hidden border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none transition-opacity duration-300 ${
+                isTv && !tvControlsVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
+              }`}
+            >
               {/* Header row: sources label + hide button */}
               <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
                 <div className="flex items-center gap-2">
@@ -1550,8 +1623,7 @@ export function VideoPlayerModal({ request, onClose }) {
                             data-active-source={isActive}
                             onClick={() => {
                               if (!source.url || isFailed) return;
-                              setActiveUrl(source.url);
-                              setIframeReloadKey((k) => k + 1);
+                              handleSelectSource(source);
                             }}
                             disabled={!source.url || isFailed}
                             className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all ${
@@ -1596,8 +1668,7 @@ export function VideoPlayerModal({ request, onClose }) {
                             data-active-source={isActive}
                             onClick={() => {
                               if (!source.url || isFailed) return;
-                              setActiveUrl(source.url);
-                              setIframeReloadKey((k) => k + 1);
+                              handleSelectSource(source);
                             }}
                             disabled={!source.url || isFailed}
                             className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all ${
@@ -1642,8 +1713,7 @@ export function VideoPlayerModal({ request, onClose }) {
                             data-active-source={isActive}
                             onClick={() => {
                               if (!source.url || isFailed) return;
-                              setActiveUrl(source.url);
-                              setIframeReloadKey((k) => k + 1);
+                              handleSelectSource(source);
                             }}
                             disabled={!source.url || isFailed}
                             className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-3 py-1 text-[11px] sm:text-xs font-semibold transition-all ${

@@ -91,7 +91,9 @@ export function NavbarSearchOverlay({
     if (item.media_type === 'User') { navigate(`/user/${encodeURIComponent(item.username || item.title || item.name)}`); return; }
     // Pure Kartoons-only result → go to Kartoons detail page
     if (item.source === 'kartoons' && item.kartoons?.slug) {
-      navigate(`/kartoons/${encodeURIComponent(item.kartoons.slug)}`);
+      const type = String(item.media_type || item.type || '').toLowerCase();
+      const movieQuery = ['movie', 'film'].includes(type) ? '?type=movie' : '';
+      navigate(`/kartoons/${encodeURIComponent(item.kartoons.slug)}${movieQuery}`);
       return;
     }
     navigate(mediaRoute(item));

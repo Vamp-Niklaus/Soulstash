@@ -1,7 +1,6 @@
 const KARTOONS_API = 'https://api.kartoons.me/api';
 const KARTOONS_STREMIO = `${KARTOONS_API}/stremio`;
 const KARTOONS_TOKEN = 'OK_DGA031TQOAsyYaGa3LrOu9xdIjNCDRsxbos0-XCs';
-export const KARTOONS_ORIGIN = 'https://kartoons.to';
 
 // Cache for Stremio streams (5 min — m3u8 hashes rotate)
 const _streamCache = {};
@@ -40,7 +39,6 @@ export async function fetchKartoonsStremioStreams(type, id, force = false) {
   _streamCache[cacheKey] = { at: Date.now(), streams };
   return streams;
 }
-
 /**
  * Resolve a movie _id from its slug using the Stremio movie catalog.
  * The slug's trailing hex segment is the start of the Mongo ObjectId.
@@ -135,6 +133,32 @@ export async function searchKartoonsMovies(query, { signal } = {}) {
   };
 }
 
+export async function fetchKartoonsMovieDetail(slug, { signal } = {}) {
+  const value = String(slug || '').trim();
+  const titleQuery = value
+    .replace(/-[a-f0-9]{5,24}$/i, '')
+    .replace(/-/g, ' ')
+    .trim();
+  if (!value || titleQuery.length < 2) throw new Error('Kartoons movie not found');
+
+  const { data } = await searchKartoonsMovies(titleQuery, { signal });
+  const item = data.find((candidate) => candidate.slug === value);
+  if (!item) throw new Error('Kartoons movie not found');
+
+  return {
+    id: item._id || item.slug || '',
+    slug: item.slug || '',
+    title: item.title || 'Unknown title',
+    category: item.category || '',
+    image: item.image || '',
+    coverImage: item.coverImage || item.image || '',
+    startYear: Number(item.startYear || item.releaseYear) || null,
+    rating: Number(item.rating) || 0,
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    description: item.description || item.overview || ''
+  };
+}
+
 export function getKartoonsSearchQueries(query) {
   const value = String(query || '').trim();
   const normalized = normalizeKartoonsSearchTerm(value).replace(/\b(19\d{2}|20\d{2})\b/g, '').replace(/\s+/g, ' ').trim();
@@ -191,12 +215,4 @@ export function normalizeKartoonsShow(item = {}) {
     description: item.description || '',
     episodeCount: Number(item.episodeCount) || 0
   };
-}
-
-export function kartoonEpisodePlayerUrl(episodeId) {
-  return `${KARTOONS_ORIGIN}/player?episodeId=${encodeURIComponent(episodeId)}`;
-}
-
-export function kartoonMoviePlayerUrl(slug) {
-  return `${KARTOONS_ORIGIN}/player?movieId=${encodeURIComponent(slug)}`;
 }
