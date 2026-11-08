@@ -67,22 +67,14 @@ function handleKeyDown(e) {
     const playerFocusables = getFocusableIn(playerModal);
 
     if (active && active.tagName === 'IFRAME') {
-      if (key === 'ArrowUp') {
-        e.preventDefault();
-        e.stopPropagation();
-        showRing();
-        focusFirstPlayerControl(playerModal, showRing);
-        return;
-      }
-      if (BACK.has(key)) {
-        e.preventDefault();
-        e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
+      showRing();
+      if (BACK.has(key) || key === 'Escape') {
         const closeBtn = playerModal.querySelector('button[aria-label="Close player"]');
         closeBtn?.click();
-        return;
-      }
-      if (ACTIVATE.has(key)) {
-        try { active.contentWindow?.focus(); } catch (_) { }
+      } else {
+        focusFirstPlayerControl(playerModal, showRing);
       }
       return;
     }
@@ -143,11 +135,23 @@ function handleKeyDown(e) {
     }
 
     if (active.closest('[data-player-controls]') && key === 'ArrowDown') {
-      const iframe = playerModal.querySelector('iframe[tabindex="0"]');
-      if (iframe && isVisible(iframe)) {
+      const sourcesBtn = playerModal.querySelector(
+        'button[aria-label="Show streams and sources"], button[data-active-source="true"], button[data-player-source="true"], button[aria-label="Hide streams"]'
+      );
+      if (sourcesBtn && isVisible(sourcesBtn)) {
         showRing();
-        applyFocus(iframe, false);
-        try { iframe.contentWindow?.focus(); } catch (_) { }
+        applyFocus(sourcesBtn);
+      }
+      return;
+    }
+
+    if ((active.closest('[data-player-source]') || active.closest('[aria-label="Show streams and sources"]') || active.closest('[aria-label="Hide streams"]')) && key === 'ArrowUp') {
+      const topControl = playerModal.querySelector(
+        'button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"], button[data-player-action="true"]'
+      );
+      if (topControl && isVisible(topControl)) {
+        showRing();
+        applyFocus(topControl);
       }
       return;
     }

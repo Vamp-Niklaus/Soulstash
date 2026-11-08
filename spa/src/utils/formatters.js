@@ -857,6 +857,13 @@ export function getHomeGridColumns(width = window.innerWidth) {
   return 3;
 }
 
+export function getTvHomeGridColumns(width = typeof window !== 'undefined' ? window.innerWidth : 1920) {
+  if (width >= 1600) return 9;
+  if (width >= 1100) return 8;
+  if (width >= 800) return 7;
+  return 6;
+}
+
 export function splitTrendingIntoColumns(items) {
   const columns = [[], [], []];
   items.forEach((item, index) => {

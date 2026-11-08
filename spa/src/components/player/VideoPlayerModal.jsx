@@ -18,6 +18,7 @@ import {
   searchKartoonsMovies
 } from '../../api/kartoons.js';
 import { findKartoonsMatch } from '../../utils/kartoonsSearch.js';
+import { useAppLayoutMode } from '../../hooks/useAppLayoutMode.js';
 
 // Assume PlayerErrorBoundary is imported
 import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
@@ -85,6 +86,79 @@ export function VideoPlayerModal({ request, onClose }) {
   const fallbackSources = Array.isArray(request?.fallbackSources)
     ? request.fallbackSources.filter((source) => source?.url)
     : [];
+
+  const { isTvLayout } = useAppLayoutMode();
+  const isTv = isTvLayout || (typeof document !== 'undefined' && document.documentElement.classList.contains('layout-tv-mode'));
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [tvControlsVisible, setTvControlsVisible] = useState(true);
+  const tvHideTimerRef = useRef(null);
+
+  const wakeTvControls = useCallback(() => {
+    setTvControlsVisible(true);
+    if (tvHideTimerRef.current) clearTimeout(tvHideTimerRef.current);
+    if (isTv) {
+      tvHideTimerRef.current = setTimeout(() => {
+        setTvControlsVisible(false);
+      }, 4000);
+    }
+  }, [isTv]);
+
+  useEffect(() => {
+    if (!isTv) return;
+    wakeTvControls();
+    const handleActivity = () => wakeTvControls();
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    return () => {
+      if (tvHideTimerRef.current) clearTimeout(tvHideTimerRef.current);
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+    };
+  }, [isTv, wakeTvControls]);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    try {
+      const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fsElement) {
+        if (document.exitFullscreen) await document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } else {
+        const target = playerBoxRef.current || document.documentElement;
+        if (target.requestFullscreen) await target.requestFullscreen().catch(() => {});
+        else if (target.webkitRequestFullscreen) target.webkitRequestFullscreen();
+      }
+    } catch (err) {
+      console.warn('[Player] Fullscreen toggle error:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFs = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFs);
+    document.addEventListener('webkitfullscreenchange', handleFs);
+    handleFs();
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFs);
+      document.removeEventListener('webkitfullscreenchange', handleFs);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isTv && playerBoxRef.current) {
+      const enterFs = () => {
+        try {
+          if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            playerBoxRef.current?.requestFullscreen?.().catch(() => {});
+          }
+        } catch (_) {}
+      };
+      const t = setTimeout(enterFs, 400);
+      return () => clearTimeout(t);
+    }
+  }, [isTv]);
 
   useEffect(() => {
     setSelectedGroup('hindi');
@@ -580,6 +654,9 @@ export function VideoPlayerModal({ request, onClose }) {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         handleCloseClick();
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        handleToggleFullscreen();
       }
     };
 
@@ -985,7 +1062,17 @@ export function VideoPlayerModal({ request, onClose }) {
   const mobileMediaMaxH = sourcesExpanded ? 'min(28vh, 200px)' : 'min(44vh, 56.25vw)';
   const mediaMaxH = isDesktopViewport ? desktopMediaMaxH : mobileMediaMaxH;
 
-  const videoBoxStyle = {
+  const videoBoxStyle = isTv ? {
+    width: '100vw',
+    maxWidth: '100vw',
+    height: '100dvh',
+    maxHeight: '100dvh',
+    margin: '0',
+    borderRadius: '0',
+    border: 'none',
+    display: 'flex',
+    flexDirection: 'column'
+  } : {
     width: isDesktopViewport
       ? `min(94vw, 1340px, calc(${desktopMediaMaxH} * 16 / 9))`
       : 'min(96vw, calc(96vw))',
@@ -995,13 +1082,18 @@ export function VideoPlayerModal({ request, onClose }) {
     display: 'flex',
     flexDirection: 'column'
   };
-  const mediaAreaStyle = {
+  const mediaAreaStyle = isTv ? {
+    width: '100%',
+    height: '100%',
+    flex: '1 1 0%',
+    backgroundColor: 'black'
+  } : {
     width: '100%',
     aspectRatio: '16 / 9',
     maxHeight: mediaMaxH,
     backgroundColor: 'black'
   };
-  const baseVerticalShift = sourcesExpanded ? 0 : (isDesktopViewport ? -16 : -10);
+  const baseVerticalShift = isTv ? 0 : (sourcesExpanded ? 0 : (isDesktopViewport ? -16 : -10));
   const sourceButtonClass = isAndroidViewport
     ? 'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors'
     : 'shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors sm:text-xs';
@@ -1178,12 +1270,16 @@ export function VideoPlayerModal({ request, onClose }) {
       >
         <div
           ref={playerBoxRef}
-          className="pointer-events-auto absolute overflow-hidden rounded-[22px] border border-white/10 bg-black shadow-2xl flex flex-col"
+          className={`pointer-events-auto absolute overflow-hidden ${
+            isTv ? 'rounded-none border-0' : 'rounded-[22px] border border-white/10'
+          } bg-black shadow-2xl flex flex-col`}
           style={{
             ...videoBoxStyle,
-            left: '50%',
-            top: '50%',
-            transform: `translate(calc(-50% + ${dragOffset.x}px), calc(-50% + ${baseVerticalShift + dragOffset.y}px))`,
+            left: isTv ? '0' : '50%',
+            top: isTv ? '0' : '50%',
+            transform: isTv
+              ? 'none'
+              : `translate(calc(-50% + ${dragOffset.x}px), calc(-50% + ${baseVerticalShift + dragOffset.y}px))`,
             transition: draggingPlayer ? 'none' : 'transform 220ms ease'
           }}
         >
@@ -1191,7 +1287,9 @@ export function VideoPlayerModal({ request, onClose }) {
           <div
             data-player-controls="true"
             data-player-drag-handle="true"
-            className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/80 px-3 sm:px-4 select-none"
+            className={`flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/80 px-3 sm:px-4 select-none transition-opacity duration-300 ${
+              isTv && !tvControlsVisible && !sourcesExpanded ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}
             style={{ height: controlsHeight, touchAction: 'none' }}
             onPointerDown={handlePlayerPointerDown}
           >
@@ -1210,6 +1308,16 @@ export function VideoPlayerModal({ request, onClose }) {
 
             {/* Window Action Buttons */}
             <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+              <button
+                type="button"
+                data-player-action="true"
+                onClick={handleToggleFullscreen}
+                className={iconButtonClass}
+                aria-label={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              >
+                <i className={`fas ${isFullscreen ? 'fa-compress-arrows-alt' : 'fa-expand'} text-xs`} />
+              </button>
               <button
                 type="button"
                 data-player-action="true"
@@ -1314,7 +1422,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   ref={iframeRef}
                   key={`${activeUrl}:${iframeReloadKey}`}
                   src={activeUrl}
-                  tabIndex={0}
+                  tabIndex={-1}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onLoad={() => {
                     console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
@@ -1371,7 +1479,9 @@ export function VideoPlayerModal({ request, onClose }) {
 
           {/* Bottom Sources Section: Toggleable sources panel */}
           {!sourcesExpanded ? (
-            <div className="shrink-0 border-t border-white/10 bg-black/95 px-3 py-2 flex items-center justify-center select-none">
+            <div className={`shrink-0 border-t border-white/10 bg-black/95 px-3 py-2 flex items-center justify-center select-none transition-opacity duration-300 ${
+              isTv && !tvControlsVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}>
               <button
                 type="button"
                 data-player-action="true"
