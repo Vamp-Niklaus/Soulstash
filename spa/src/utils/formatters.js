@@ -325,8 +325,9 @@ export function createEmptyCollectionDraft() {
  * Returns booleans indicating which default collections a piece of content is currently in.
  */
 export function getCollectionStatus(collections, contentId) {
-  const isKartoon = typeof contentId === 'string' && (contentId.startsWith('kartoons-') || contentId.startsWith('kartoons:'));
-  const targetId = isKartoon ? contentId : Number(contentId);
+  const targetStr = String(contentId || '');
+  const targetSlug = targetStr.replace(/^kartoons[-:]/, '');
+  const targetNum = Number(contentId);
   const watchedCollection = (collections || []).find((c) => c.name === 'Watched');
   const watchlistCollection = (collections || []).find((c) => c.name === 'Watchlist');
   const customCollections = (collections || []).filter((c) => !['Watched', 'Watchlist'].includes(c.name));
@@ -334,8 +335,13 @@ export function getCollectionStatus(collections, contentId) {
   const hasContent = (collection) =>
     Array.isArray(collection?.movies) &&
     collection.movies.some((item) => {
-      const itemId = item.movieId || item.seriesId || item.id;
-      return String(itemId) === String(targetId) || (!isKartoon && Number(itemId) === targetId);
+      const rawId = item.movieId || item.seriesId || item.id;
+      const strId = String(rawId || '');
+      return (
+        strId === targetStr ||
+        strId.replace(/^kartoons[-:]/, '') === targetSlug ||
+        (!Number.isNaN(targetNum) && Number(rawId) === targetNum)
+      );
     });
 
   return {
@@ -350,9 +356,19 @@ export function isContentInCollection(collections, collectionName, contentId, me
   if (!collection || !Array.isArray(collection.movies)) return false;
   const normalizedMediaType = normalizeMediaType(mediaType);
   const targetStr = String(contentId || '');
+  const targetSlug = targetStr.replace(/^kartoons[-:]/, '');
+  const targetNum = Number(contentId);
   return collection.movies.some((movie) => {
-    const mId = String(contentIdFromItem(movie) || movie?.movieId || movie?.seriesId || movie?.id || '');
-    if (mId !== targetStr && Number(mId) !== Number(contentId)) return false;
+    const rawMid = contentIdFromItem(movie) || movie?.movieId || movie?.seriesId || movie?.id || '';
+    const mId = String(rawMid);
+    const mSlug = mId.replace(/^kartoons[-:]/, '');
+
+    const idMatches =
+      mId === targetStr ||
+      mSlug === targetSlug ||
+      (!Number.isNaN(targetNum) && Number(rawMid) === targetNum);
+
+    if (!idMatches) return false;
     if (!normalizedMediaType) return true;
     return normalizeMediaType(movie?.media_type || (movie?.seriesId ? 'Series' : 'Movie')) === normalizedMediaType;
   });

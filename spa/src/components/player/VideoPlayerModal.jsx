@@ -10,7 +10,8 @@ import { toast } from '../../utils/toast.js';
 import { apiFetch } from '../../api/client.js';
 import { ActionButton } from '../ui/ActionButton.jsx';
 import {
-  fetchKartoonsStremioStreams,
+  kartoonEpisodePlayerUrl,
+  kartoonMoviePlayerUrl,
   resolveKartoonsEpisodeId,
   resolveKartoonsMovieId,
   searchKartoonsShows,
@@ -393,32 +394,27 @@ export function VideoPlayerModal({ request, onClose }) {
         const isMovie = request?.mediaType === 'movie';
         const season = Number(request?.seasonNumber) || 1;
         const episode = Number(request?.episodeNumber) || 1;
-        let kartoonStream = null;
-
-        const firstKartoonStream = async (type, id) => {
-          if (!id) return null;
-          const streams = await fetchKartoonsStremioStreams(type, id).catch(() => []);
-          return streams.find((stream) => /\.m3u8(?:[?#]|$)/i.test(stream.url || '')) || streams[0] || null;
-        };
+        let kartoonUrl = null;
 
         // 1. If explicit kartoonsEpisodeId is provided
         if (request?.kartoonsEpisodeId) {
-          kartoonStream = await firstKartoonStream('series', request.kartoonsEpisodeId);
+          kartoonUrl = kartoonEpisodePlayerUrl(request.kartoonsEpisodeId);
         }
 
         // 2. If explicit kartoonsSlug is provided
-        if (!kartoonStream && request?.kartoonsSlug) {
+        if (!kartoonUrl && request?.kartoonsSlug) {
           if (isMovie) {
-            const movieId = await resolveKartoonsMovieId(request.kartoonsSlug).catch(() => null);
-            kartoonStream = await firstKartoonStream('movie', movieId);
+            kartoonUrl = kartoonMoviePlayerUrl(request.kartoonsSlug);
           } else {
             const epId = await resolveKartoonsEpisodeId(request.kartoonsSlug, season, episode).catch(() => null);
-            kartoonStream = await firstKartoonStream('series', epId);
+            if (epId) {
+              kartoonUrl = kartoonEpisodePlayerUrl(epId);
+            }
           }
         }
 
         // 3. Otherwise, search Kartoons by title (e.g. Dragon Ball, Ben 10, etc.)
-        if (!kartoonStream && (request?.title || request?.seriesTitle)) {
+        if (!kartoonUrl && (request?.title || request?.seriesTitle)) {
           const rawTitle = String(request.seriesTitle || request.title || '');
           const cleanTitle = rawTitle
             .replace(/\s*S\d+E\d+.*$/i, '')
@@ -432,29 +428,30 @@ export function VideoPlayerModal({ request, onClose }) {
               const res = await searchKartoonsMovies(cleanTitle).catch(() => ({ data: [] }));
               const match = findKartoonsMatch(request, res?.data || []);
               if (match?.slug) {
-                const movieId = await resolveKartoonsMovieId(match.slug).catch(() => null);
-                kartoonStream = await firstKartoonStream('movie', movieId);
+                kartoonUrl = kartoonMoviePlayerUrl(match.slug);
               }
             } else {
               const res = await searchKartoonsShows(cleanTitle).catch(() => ({ data: [] }));
               const match = findKartoonsMatch(request, res?.data || []);
               if (match?.slug) {
                 const epId = await resolveKartoonsEpisodeId(match.slug, season, episode).catch(() => null);
-                kartoonStream = await firstKartoonStream('series', epId);
+                if (epId) {
+                  kartoonUrl = kartoonEpisodePlayerUrl(epId);
+                }
               }
             }
           }
         }
 
-        if (cancelled || !kartoonStream?.url) return;
+        if (cancelled || !kartoonUrl) return;
 
         const kSources = [{
           id: 'kartoon',
           key: 'kartoon',
           label: 'Kartoon',
-          url: kartoonStream.url,
-          embeddable: false,
-          isDirect: true,
+          url: kartoonUrl,
+          embeddable: true,
+          isDirect: false,
           group: 'hindi'
         }];
 
@@ -982,9 +979,10 @@ export function VideoPlayerModal({ request, onClose }) {
   }, []);
 
   const canEmbedSource = canUseVideoJs || activeSource?.embeddable !== false;
-  // Modern movie aspect ratio (16:9 widescreen) with increased desktop height and ratio
-  const desktopMediaMaxH = 'min(64vh, 660px)';
-  const mobileMediaMaxH = 'min(44vh, 56.25vw)';
+  // Modern movie aspect ratio (16:9 widescreen) with increased desktop height and ratio.
+  // Dynamically contracts when the bottom sources panel is expanded so sources never clip offscreen.
+  const desktopMediaMaxH = sourcesExpanded ? 'min(44vh, 460px)' : 'min(64vh, 660px)';
+  const mobileMediaMaxH = sourcesExpanded ? 'min(28vh, 200px)' : 'min(44vh, 56.25vw)';
   const mediaMaxH = isDesktopViewport ? desktopMediaMaxH : mobileMediaMaxH;
 
   const videoBoxStyle = {
@@ -992,6 +990,7 @@ export function VideoPlayerModal({ request, onClose }) {
       ? `min(94vw, 1340px, calc(${desktopMediaMaxH} * 16 / 9))`
       : 'min(96vw, calc(96vw))',
     maxWidth: isDesktopViewport ? '1340px' : '96vw',
+    maxHeight: isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh',
     margin: '0 auto',
     display: 'flex',
     flexDirection: 'column'
@@ -1002,7 +1001,7 @@ export function VideoPlayerModal({ request, onClose }) {
     maxHeight: mediaMaxH,
     backgroundColor: 'black'
   };
-  const baseVerticalShift = isDesktopViewport ? -16 : -10;
+  const baseVerticalShift = sourcesExpanded ? 0 : (isDesktopViewport ? -16 : -10);
   const sourceButtonClass = isAndroidViewport
     ? 'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors'
     : 'shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors sm:text-xs';
@@ -1265,7 +1264,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
           {/* Middle: Video / Stream iframe Area */}
           <div
-            className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
+            className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden bg-black"
             style={mediaAreaStyle}
           >
             {(isFetching || (isPureKartoons && !activeUrl && !failedUrls.size)) ? (
@@ -1390,7 +1389,7 @@ export function VideoPlayerModal({ request, onClose }) {
               </button>
             </div>
           ) : (
-            <div className="shrink-0 border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 flex flex-col gap-2.5 select-none">
+            <div className="shrink-0 flex flex-col min-h-0 max-h-[38vh] border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none">
               {/* Header row: sources label + hide button */}
               <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
                 <div className="flex items-center gap-2">
@@ -1419,7 +1418,7 @@ export function VideoPlayerModal({ request, onClose }) {
               {/* Grouped sources list: vertical stacked groups */}
               <div
                 ref={scrollContainerRef}
-                className="flex flex-col gap-3 max-h-[28vh] sm:max-h-[210px] overflow-y-auto filter-scrollbar pr-1"
+                className="flex flex-col gap-3 min-h-0 max-h-[26vh] sm:max-h-[200px] overflow-y-auto filter-scrollbar pr-1"
               >
                 {/* Hindi Group */}
                 {availableHindi.length > 0 && (

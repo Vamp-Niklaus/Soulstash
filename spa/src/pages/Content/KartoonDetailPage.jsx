@@ -13,6 +13,7 @@ import { PlayerErrorBoundary } from '../../components/player/PlayerErrorBoundary
 import { SaveToCollectionModal } from '../../components/ui/Modals/SaveToCollectionModal.jsx';
 import { CollectionFormModal } from '../../components/ui/Modals/CollectionFormModal.jsx';
 import { toast } from '../../utils/toast.js';
+import { createEmptyCollectionDraft } from '../../utils/formatters.js';
 
 export function KartoonDetailPage() {
   const { slug = '' } = useParams();
@@ -155,12 +156,13 @@ export function KartoonDetailPage() {
     setCreateModalOpen,
     createDraft,
     setCreateDraft,
+    createLoading,
     pendingAction,
     collections,
     toggleWatched,
     toggleWatchlist,
     handleToggleCustomCollection,
-    handleCreateCollection
+    handleCreateCustomCollection
   } = useMediaAction(effectiveId, 'series', effectiveContent);
 
   const meta = useMemo(() => {
@@ -325,10 +327,14 @@ export function KartoonDetailPage() {
 
       <CollectionFormModal
         open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        draft={createDraft}
-        setDraft={setCreateDraft}
-        onSubmit={handleCreateCollection}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setCreateDraft(createEmptyCollectionDraft());
+        }}
+        values={createDraft}
+        onChange={setCreateDraft}
+        onSubmit={handleCreateCustomCollection}
+        saving={createLoading}
       />
     </div>
   );

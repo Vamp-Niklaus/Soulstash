@@ -27,7 +27,9 @@ export function useMediaAction(id, type, content) {
   const [createDraft, setCreateDraft] = useState(createEmptyCollectionDraft());
   const [pendingAction, setPendingAction] = useState(null);
 
-  const resolvedId = typeof id === 'string' && (id.startsWith('kartoons-') || id.startsWith('kartoons:')) ? id : (Number(id) || id);
+  const resolvedId = typeof id === 'string' && !/^\d+$/.test(id)
+    ? (id.startsWith('kartoons-') || id.startsWith('kartoons:') ? id : `kartoons-${id}`)
+    : (Number(id) || id);
 
   const toggleCollectionMutation = useMutation({
     mutationFn: async ({ targetCollection, payload, opposite, oppositeActive }) => {
@@ -260,6 +262,9 @@ export function useMediaAction(id, type, content) {
     }
   }, [createDraft, createCollectionMutation, queryClient]);
 
+  const toggleWatched = useCallback(() => toggleCollection('Watched'), [toggleCollection]);
+  const toggleWatchlist = useCallback(() => toggleCollection('Watchlist'), [toggleCollection]);
+
   return {
     collections,
     status,
@@ -272,7 +277,10 @@ export function useMediaAction(id, type, content) {
     createLoading: createCollectionMutation.isPending,
     pendingAction,
     toggleCollection,
+    toggleWatched,
+    toggleWatchlist,
     handleToggleCustomCollection,
     handleCreateCustomCollection,
+    handleCreateCollection: handleCreateCustomCollection,
   };
 }

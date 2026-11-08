@@ -47,6 +47,15 @@ export function NavbarSearchOverlay({
     };
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, open, results?.length]);
 
+  const handleScroll = useCallback(() => {
+    const scroller = resultsScrollerRef.current;
+    if (!scroller || !hasNextPage || isFetchingNextPage) return;
+    const { scrollTop, scrollHeight, clientHeight } = scroller;
+    if (scrollHeight - scrollTop - clientHeight < 350) {
+      fetchNextPage?.();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   useEffect(() => {
     if (!open) return undefined;
     const originalBodyOverflow = document.body.style.overflow;
@@ -151,7 +160,7 @@ export function NavbarSearchOverlay({
               </button>
             ))}
           </div>
-          <div ref={resultsScrollerRef} className="flex-1 overflow-y-auto overscroll-contain pb-6">
+          <div ref={resultsScrollerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto overscroll-contain pb-6">
             {loading ? (
               <SearchResultSkeletonGrid columns="grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4" count={8} />
             ) : activeResults.length ? (

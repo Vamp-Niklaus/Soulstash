@@ -166,7 +166,6 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
     }
 
     const nextPage = currentPageRef.current + 1;
-    currentPageRef.current = nextPage;
     setIsFetchingNextPage(true);
 
     if (nextControllerRef.current) {
@@ -175,7 +174,6 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
     const controller = new AbortController();
     nextControllerRef.current = controller;
 
-    let itemsReceived = 0;
     try {
       const endpointType = searchTab === 'cast' ? '&type=cast' : '';
       const payload = await apiFetch(
@@ -194,34 +192,12 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
         };
       });
       if (incoming.length > 0) {
-        itemsReceived = incoming.length;
+        currentPageRef.current = nextPage;
         const nextResults = mergeSearchResults(allResultsRef.current, incoming, 400, adminMode);
         allResultsRef.current = nextResults;
         setSearchResults(nextResults);
-
-        // Advance prefetch next page as well
-        if (incoming.length >= 10) {
-          apiFetch(
-            `/api/search?q=${encodeURIComponent(searchQuery.trim())}&limit=20${endpointType}&page=${nextPage + 1}`,
-            { signal: controller.signal }
-          ).then((advPayload) => {
-            const advList = Array.isArray(advPayload?.results) ? advPayload.results : [];
-            if (advList.length > 0) {
-              const advIncoming = advList.map((item) => {
-                if (searchTab === 'cast') return { ...item, media_type: 'Person' };
-                const mType = item.media_type || (item.type === 'tv' || item.first_air_date ? 'Series' : 'Movie');
-                return { ...item, media_type: mType === 'tv' ? 'Series' : mType === 'movie' ? 'Movie' : mType };
-              });
-              currentPageRef.current = nextPage + 1;
-              allResultsRef.current = mergeSearchResults(allResultsRef.current, advIncoming, 400, adminMode);
-              setSearchResults([...allResultsRef.current]);
-            }
-          }).catch(() => {});
-        }
       }
-      if (incoming.length < 10) {
-        setHasNextPage(false);
-      }
+      setHasNextPage(incoming.length >= 10);
     } catch (err) {
       if (err?.name !== 'AbortError') {
         console.warn('[Search] fetchNextPage error:', err.message);

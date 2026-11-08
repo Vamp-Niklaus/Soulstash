@@ -45,10 +45,18 @@ function posterFile(path = '') {
 }
 
 function contentKind(item) {
-  const kind = String(item?.type || item?.media_type || '').toLowerCase();
+  const kind = String(item?.mediaType || item?.type || item?.media_type || '').toLowerCase();
   if (['tv', 'series', 'show'].includes(kind)) return 'series';
   if (['movie', 'film'].includes(kind)) return 'movie';
   return '';
+}
+
+function stripEpisodeSuffix(val = '') {
+  return String(val)
+    .replace(/\s*S\d+E\d+.*$/i, '')
+    .replace(/\s*Season\s*\d+.*$/i, '')
+    .replace(/\s*Episode\s*\d+.*$/i, '')
+    .trim();
 }
 
 function matchScore(item, kartoon) {
@@ -60,16 +68,36 @@ function matchScore(item, kartoon) {
   const kartoonYear = Number(kartoon.startYear || kartoon.releaseYear || 0);
   if (itemYear && kartoonYear && Math.abs(itemYear - kartoonYear) > 1) return 0;
 
-  const left = normalizeKartoonsTitle(item.title || item.name || item.originalTitle || item.original_name);
   const right = normalizeKartoonsTitle(kartoon.title);
-  const titleSimilarity = similarity(left, right);
-  const containsTitle = left.length >= 6 && right.length >= 6 && (left.includes(right) || right.includes(left));
-
-  // A shared poster can strengthen a title match but cannot override a title mismatch.
   const samePoster = Boolean(posterFile(item.poster_path) && posterFile(item.poster_path) === posterFile(kartoon.image));
-  if (titleSimilarity >= 0.88) return samePoster ? 1 : titleSimilarity;
-  if (containsTitle && titleSimilarity >= 0.6) return samePoster ? 0.9 : 0.8;
-  return 0;
+
+  const candidateTitles = [
+    item.seriesTitle,
+    stripEpisodeSuffix(item.title),
+    item.title,
+    item.name,
+    item.originalTitle,
+    item.original_name
+  ].filter(Boolean);
+
+  let bestScore = 0;
+  for (const raw of candidateTitles) {
+    const left = normalizeKartoonsTitle(raw);
+    const titleSimilarity = similarity(left, right);
+    const containsTitle = left.length >= 4 && right.length >= 4 && (left.includes(right) || right.includes(left));
+
+    let score = 0;
+    if (titleSimilarity >= 0.88) {
+      score = samePoster ? 1 : titleSimilarity;
+    } else if (containsTitle && titleSimilarity >= 0.55) {
+      score = samePoster ? 0.9 : 0.8;
+    } else if (samePoster && titleSimilarity >= 0.4) {
+      score = 0.75;
+    }
+    if (score > bestScore) bestScore = score;
+  }
+
+  return bestScore;
 }
 
 export function findKartoonsMatch(item, kartoonItems = []) {

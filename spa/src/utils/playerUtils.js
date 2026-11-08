@@ -140,6 +140,7 @@ export function sortSourcesInGroup(sources = [], groupKey = 'hindi') {
 }
 
 export const HINDI_SOURCE_SLOTS = [
+  { id: 'kartoon', key: 'kartoon', match: (s) => /kartoon/i.test(sourceKeyText(s)) || s.id === 'kartoon' || s.key === 'kartoon', label: 'Kartoon' },
   { id: 'h1', key: 'smwh', match: (s) => sourceKeyText(s).includes('filesforever') || sourceKeyText(s).includes('smwh') || s.key === 'smwh' || s.id === 'h1' || sourceKeyText(s) === 'h1', label: 'H1' },
   { id: 'h2', key: 'rpmshre', match: (s) => sourceKeyText(s).includes('rpmshre') || s.key === 'rpmshre' || s.id === 'h2' || sourceKeyText(s) === 'h2', label: 'H2' },
   { id: 'h3', key: 'upnshr', match: (s) => sourceKeyText(s).includes('upnshr') || s.key === 'upnshr' || s.id === 'h3' || sourceKeyText(s) === 'h3', label: 'H3' },
