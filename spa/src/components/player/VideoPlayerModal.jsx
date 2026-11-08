@@ -66,16 +66,18 @@ export function VideoPlayerModal({ request, onClose }) {
   const [draggingPlayer, setDraggingPlayer] = useState(false);
   const [iframeReloadKey, setIframeReloadKey] = useState(0);
   const [scale, setScale] = useState(1.0);
-  const [sourcesExpanded, setSourcesExpanded] = useState(() =>
-    typeof document !== 'undefined' && document.documentElement.classList.contains('layout-tv-mode')
-  );
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [playerDisplayMode, setPlayerDisplayMode] = useState(1);
   const [isStreamLoading, setIsStreamLoading] = useState(true);
   const [isDirectVideoPlaying, setIsDirectVideoPlaying] = useState(false);
   const iframeRef = useRef(null);
   const directVideoRef = useRef(null);
   const mediaAreaRef = useRef(null);
   const fullscreenButtonRef = useRef(null);
-  const fullscreenStateRef = useRef(false);
+  const sourceToggleRef = useRef(null);
+  const sourceHideRef = useRef(null);
+  const focusSourceAfterExpandRef = useRef(false);
+  const playerDisplayModeRef = useRef(1);
   const openerRef = useRef(typeof document !== 'undefined' ? document.activeElement : null);
   const hlsInstanceRef = useRef(null);
   const hlsErrorHandlerRef = useRef(null);
@@ -98,13 +100,58 @@ export function VideoPlayerModal({ request, onClose }) {
   const { isTvLayout } = useAppLayoutMode();
   const isTv = isTvLayout || (typeof document !== 'undefined' && document.documentElement.classList.contains('layout-tv-mode'));
 
-  useEffect(() => {
-    if (isTv) setSourcesExpanded(true);
-  }, [isTv]);
-
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [tvControlsVisible, setTvControlsVisible] = useState(true);
   const tvHideTimerRef = useRef(null);
+
+  const updatePlayerDisplayMode = useCallback((mode) => {
+    playerDisplayModeRef.current = mode;
+    setPlayerDisplayMode(mode);
+  }, []);
+
+  const focusSizeControl = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      fullscreenButtonRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const returnToDefaultPlayerMode = useCallback(() => {
+    let exitPromise = null;
+    try {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+        exitPromise = Promise.resolve(exit.call(document)).catch(() => {});
+      }
+    } catch (_) {}
+
+    setSourcesExpanded(false);
+    updatePlayerDisplayMode(1);
+    setTvControlsVisible(true);
+    if (tvHideTimerRef.current) clearTimeout(tvHideTimerRef.current);
+    if (isTv) {
+      tvHideTimerRef.current = setTimeout(() => setTvControlsVisible(false), 4000);
+    }
+    if (exitPromise) exitPromise.then(focusSizeControl);
+    window.setTimeout(focusSizeControl, 250);
+  }, [focusSizeControl, isTv, updatePlayerDisplayMode]);
+
+  const handlePlayerBackEvent = useCallback((event) => {
+    const playbackHasFocus = document.activeElement === iframeRef.current ||
+      document.activeElement === directVideoRef.current;
+    if (playerDisplayModeRef.current < 2 && !playbackHasFocus &&
+        !document.fullscreenElement && !document.webkitFullscreenElement) return;
+
+    event.preventDefault();
+    returnToDefaultPlayerMode();
+  }, [returnToDefaultPlayerMode]);
+
+  useEffect(() => {
+    window.addEventListener('soulstash:player-back', handlePlayerBackEvent);
+    window.addEventListener('soulstash:native-back', handlePlayerBackEvent);
+    return () => {
+      window.removeEventListener('soulstash:player-back', handlePlayerBackEvent);
+      window.removeEventListener('soulstash:native-back', handlePlayerBackEvent);
+    };
+  }, [handlePlayerBackEvent]);
 
   const wakeTvControls = useCallback(() => {
     setTvControlsVisible(true);
@@ -132,20 +179,31 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [isTv, wakeTvControls]);
 
   const handleToggleFullscreen = useCallback(async () => {
-    try {
-      const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
-      if (fsElement) {
-        if (document.exitFullscreen) await document.exitFullscreen().catch(() => {});
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      } else {
-        const target = directVideoRef.current || iframeRef.current || mediaAreaRef.current || document.documentElement;
-        if (target.requestFullscreen) await target.requestFullscreen().catch(() => {});
-        else if (target.webkitRequestFullscreen) target.webkitRequestFullscreen();
-      }
-    } catch (err) {
-      console.warn('[Player] Fullscreen toggle error:', err);
+    const mode = playerDisplayModeRef.current;
+    if (mode === 1) {
+      setSourcesExpanded(false);
+      updatePlayerDisplayMode(2);
+      focusSizeControl();
+      return;
     }
-  }, []);
+
+    if (mode === 2) {
+      setSourcesExpanded(false);
+      const target = isDirectMediaUrl(activeUrl) ? directVideoRef.current : iframeRef.current;
+      if (!target) return;
+      try {
+        const request = target.requestFullscreen || target.webkitRequestFullscreen;
+        if (request) await Promise.resolve(request.call(target));
+      } catch (err) {
+        console.warn('[Player] Stream fullscreen request failed; using the full player view:', err);
+      }
+      updatePlayerDisplayMode(3);
+      window.requestAnimationFrame(() => target.focus?.({ preventScroll: true }));
+      return;
+    }
+
+    returnToDefaultPlayerMode();
+  }, [activeUrl, focusSizeControl, returnToDefaultPlayerMode, updatePlayerDisplayMode]);
 
   const handleToggleDirectPlayback = useCallback(() => {
     const video = directVideoRef.current;
@@ -156,12 +214,17 @@ export function VideoPlayerModal({ request, onClose }) {
 
   useEffect(() => {
     const handleFs = () => {
-      const next = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
-      const wasFullscreen = fullscreenStateRef.current;
-      fullscreenStateRef.current = next;
-      setIsFullscreen(next);
-      if (wasFullscreen && !next && isTv) {
-        window.requestAnimationFrame(() => fullscreenButtonRef.current?.focus());
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fullscreenElement === iframeRef.current || fullscreenElement === directVideoRef.current) {
+        setSourcesExpanded(false);
+        updatePlayerDisplayMode(3);
+        window.requestAnimationFrame(() => fullscreenElement.focus?.({ preventScroll: true }));
+      } else if (fullscreenElement === playerBoxRef.current) {
+        updatePlayerDisplayMode(2);
+      } else if (!fullscreenElement && playerDisplayModeRef.current === 3) {
+        setSourcesExpanded(false);
+        updatePlayerDisplayMode(1);
+        if (isTv) window.setTimeout(focusSizeControl, 40);
       }
     };
     document.addEventListener('fullscreenchange', handleFs);
@@ -171,21 +234,7 @@ export function VideoPlayerModal({ request, onClose }) {
       document.removeEventListener('fullscreenchange', handleFs);
       document.removeEventListener('webkitfullscreenchange', handleFs);
     };
-  }, [isTv]);
-
-  useEffect(() => {
-    if (isTv && playerBoxRef.current) {
-      const enterFs = () => {
-        try {
-          if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-            playerBoxRef.current?.requestFullscreen?.().catch(() => {});
-          }
-        } catch (_) {}
-      };
-      const t = setTimeout(enterFs, 400);
-      return () => clearTimeout(t);
-    }
-  }, [isTv]);
+  }, [focusSizeControl, isTv, updatePlayerDisplayMode]);
 
   useEffect(() => {
     setSelectedGroup('hindi');
@@ -195,6 +244,8 @@ export function VideoPlayerModal({ request, onClose }) {
     setKartoonResolveDone(false);
     setAnilistId(null);
     setActiveUrl('');
+    setSourcesExpanded(false);
+    updatePlayerDisplayMode(1);
     setHasManualSourceSelection(false);
     setSourceSignature('');
     setFailedUrls(new Set());
@@ -205,7 +256,7 @@ export function VideoPlayerModal({ request, onClose }) {
     dragStateRef.current = null;
     setScale(1.0);
     setNativeScale(1.0);
-  }, [request]);
+  }, [request, updatePlayerDisplayMode]);
 
   // Anime / AniList / MultiNime Resolution with multi-step search fallback
   useEffect(() => {
@@ -666,12 +717,10 @@ export function VideoPlayerModal({ request, onClose }) {
 
     const handlePopState = () => {
       if (isClosingRef.current) return;
-      // If we are in fullscreen, the back button should ONLY exit fullscreen
-      if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
-        try {
-          if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-        } catch (e) {}
+      const playbackHasFocus = document.activeElement === iframeRef.current ||
+        document.activeElement === directVideoRef.current;
+      if (playerDisplayModeRef.current > 1 || playbackHasFocus || document.fullscreenElement || document.webkitFullscreenElement) {
+        returnToDefaultPlayerMode();
         try {
           window.history.pushState({ playerOpen: true }, '');
         } catch (e) {}
@@ -693,7 +742,9 @@ export function VideoPlayerModal({ request, onClose }) {
 
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
-        handleCloseClick();
+        const backEvent = new CustomEvent('soulstash:player-back', { cancelable: true });
+        window.dispatchEvent(backEvent);
+        if (!backEvent.defaultPrevented) handleCloseClick();
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         handleToggleFullscreen();
@@ -707,7 +758,7 @@ export function VideoPlayerModal({ request, onClose }) {
       window.removeEventListener('popstate', handlePopState);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleCloseClick]);
+  }, [handleCloseClick, handleToggleFullscreen, returnToDefaultPlayerMode]);
 
   const handleToggleZoom = () => {
     setScale((prev) => {
@@ -1106,24 +1157,25 @@ export function VideoPlayerModal({ request, onClose }) {
   const desktopMediaMaxH = sourcesExpanded ? 'min(44vh, 460px)' : 'min(64vh, 660px)';
   const mobileMediaMaxH = sourcesExpanded ? 'min(28vh, 200px)' : 'min(44vh, 56.25vw)';
   const mediaMaxH = isDesktopViewport ? desktopMediaMaxH : mobileMediaMaxH;
+  const isExpandedPlayerShell = playerDisplayMode >= 2;
 
   const videoBoxStyle = isTv ? {
-    width: 'min(94vw, 1760px)',
-    maxWidth: '94vw',
-    height: '80dvh',
-    maxHeight: '80dvh',
+    width: isExpandedPlayerShell ? '100vw' : 'min(94vw, 1760px)',
+    maxWidth: isExpandedPlayerShell ? '100vw' : '94vw',
+    height: isExpandedPlayerShell ? '100dvh' : '80dvh',
+    maxHeight: isExpandedPlayerShell ? '100dvh' : '80dvh',
     margin: '0',
     borderRadius: '0',
     border: 'none',
     display: 'flex',
     flexDirection: 'column'
   } : {
-    width: isDesktopViewport
+    width: isExpandedPlayerShell ? '100vw' : isDesktopViewport
       ? `min(94vw, 1340px, calc(${desktopMediaMaxH} * 16 / 9))`
       : 'min(96vw, calc(96vw))',
-    maxWidth: isDesktopViewport ? '1340px' : '96vw',
-    height: sourcesExpanded ? (isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh') : undefined,
-    maxHeight: isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh',
+    maxWidth: isExpandedPlayerShell ? '100vw' : isDesktopViewport ? '1340px' : '96vw',
+    height: isExpandedPlayerShell ? '100dvh' : sourcesExpanded ? (isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh') : undefined,
+    maxHeight: isExpandedPlayerShell ? '100dvh' : isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh',
     margin: '0 auto',
     display: 'flex',
     flexDirection: 'column'
@@ -1172,6 +1224,32 @@ export function VideoPlayerModal({ request, onClose }) {
     setActiveUrl(source.url);
     setIframeReloadKey((current) => current + 1);
   }, [failedUrls]);
+
+  const handleOpenSources = useCallback(() => {
+    focusSourceAfterExpandRef.current = true;
+    setSourcesExpanded(true);
+  }, []);
+
+  const handleCloseSources = useCallback(() => {
+    focusSourceAfterExpandRef.current = false;
+    setSourcesExpanded(false);
+    window.requestAnimationFrame(() => sourceToggleRef.current?.focus({ preventScroll: true }));
+  }, []);
+
+  useEffect(() => {
+    if (!sourcesExpanded || !focusSourceAfterExpandRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      const panel = playerBoxRef.current?.querySelector('[data-player-sources-panel]');
+      const target = panel?.querySelector('button[data-active-source="true"]:not(:disabled)') ||
+        panel?.querySelector('button[data-player-source="true"]:not(:disabled)') ||
+        sourceHideRef.current;
+      if (!target) return;
+      focusSourceAfterExpandRef.current = false;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeUrl, displayedSources.length, selectedGroup, sourcesExpanded]);
 
   const reloadActiveSource = useCallback(() => {
     if (!activeUrl) return;
@@ -1299,7 +1377,7 @@ export function VideoPlayerModal({ request, onClose }) {
       if (!isKeyboardNav) return;
       if (modal.contains(document.activeElement)) return;
       const sourceButton =
-        playerBoxRef.current?.querySelector('button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]') ||
+        playerBoxRef.current?.querySelector('button[data-player-size="true"]') ||
         playerBoxRef.current?.querySelector('button[data-active-source="true"]:not(:disabled)') ||
         playerBoxRef.current?.querySelector('button[data-player-source="true"]:not(:disabled)') ||
         playerBoxRef.current?.querySelector('button[data-player-action="true"]:not(:disabled), a[data-player-action="true"]');
@@ -1309,14 +1387,14 @@ export function VideoPlayerModal({ request, onClose }) {
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeUrl, displayedSources.length, selectedGroup]);
+  }, [activeUrl, displayedSources.length, playerDisplayMode, selectedGroup]);
 
   const errorDisplay = sourceError 
     ? (fallbackSources.length ? '' : sourceError?.message || 'Failed to load sources.')
     : '';
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[1000000] bg-transparent" data-player-modal="true">
+    <div className="pointer-events-none fixed inset-0 z-[1000000] bg-transparent" data-player-modal="true" data-player-mode={playerDisplayMode}>
       <div
         className="relative h-full w-full"
         style={{
@@ -1326,13 +1404,13 @@ export function VideoPlayerModal({ request, onClose }) {
         <div
           ref={playerBoxRef}
           className={`pointer-events-auto absolute overflow-hidden ${
-            isTv ? 'rounded-none border-0' : 'rounded-[22px] border border-white/10'
+            isExpandedPlayerShell || isTv ? 'rounded-none border-0' : 'rounded-[22px] border border-white/10'
           } bg-black shadow-2xl flex flex-col`}
           style={{
             ...videoBoxStyle,
-            left: '50%',
-            top: isTv ? '10dvh' : '50%',
-            transform: isTv
+            left: isExpandedPlayerShell ? '0' : '50%',
+            top: isExpandedPlayerShell ? '0' : isTv ? '10dvh' : '50%',
+            transform: isExpandedPlayerShell ? 'none' : isTv
               ? 'translateX(-50%)'
               : `translate(calc(-50% + ${dragOffset.x}px), calc(-50% + ${baseVerticalShift + dragOffset.y}px))`,
             transition: draggingPlayer ? 'none' : 'transform 220ms ease'
@@ -1345,7 +1423,7 @@ export function VideoPlayerModal({ request, onClose }) {
             className={`flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-black/80 px-3 sm:px-4 select-none transition-opacity duration-300 ${
               isTv && !tvControlsVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}
-            style={{ height: controlsHeight, touchAction: 'none' }}
+            style={{ height: controlsHeight, touchAction: 'none', display: playerDisplayMode === 3 ? 'none' : undefined }}
             onPointerDown={handlePlayerPointerDown}
           >
             {/* Title & Episode info */}
@@ -1366,13 +1444,31 @@ export function VideoPlayerModal({ request, onClose }) {
               <button
                 type="button"
                 data-player-action="true"
+                data-player-size="true"
                 ref={fullscreenButtonRef}
                 onClick={handleToggleFullscreen}
                 className={iconButtonClass}
-                aria-label={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                aria-label={`Player size ${playerDisplayMode} of 3`}
+                title={`Player size ${playerDisplayMode} of 3`}
               >
-                <i className={`fas ${isFullscreen ? 'fa-compress-arrows-alt' : 'fa-expand'} text-xs`} />
+                <i className={`fas ${playerDisplayMode === 1 ? 'fa-expand' : 'fa-compress-arrows-alt'} text-xs`} />
+              </button>
+              <button
+                type="button"
+                data-player-action="true"
+                data-player-source-toggle="true"
+                ref={sourceToggleRef}
+                onClick={sourcesExpanded ? handleCloseSources : handleOpenSources}
+                className={`${actionButtonClass} inline-flex items-center gap-1.5`}
+                aria-label={sourcesExpanded ? 'Hide streams and sources' : 'Show streams and sources'}
+                aria-expanded={sourcesExpanded}
+                title={sourcesExpanded ? 'Hide Streams & Sources' : 'Show Streams & Sources'}
+              >
+                <i className="fas fa-layer-group text-[11px]" />
+                <span>Sources</span>
+                <span className="font-mono text-[10px] opacity-70">
+                  {displayedSources.filter((source) => source.url && !failedUrls.has(source.url)).length}
+                </span>
               </button>
               {isTv && canUseVideoJs && activeUrl && (
                 <button
@@ -1565,29 +1661,9 @@ export function VideoPlayerModal({ request, onClose }) {
           </div>
 
           {/* Bottom Sources Section: Toggleable sources panel */}
-          {!sourcesExpanded ? (
-            <div className={`shrink-0 border-t border-white/10 bg-black/95 px-3 py-2 flex items-center justify-center select-none transition-opacity duration-300 ${
-              isTv && !tvControlsVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-            }`}>
-              <button
-                type="button"
-                data-player-action="true"
-                onClick={() => setSourcesExpanded(true)}
-                className="inline-flex items-center gap-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-4 py-1.5 text-xs font-semibold text-white/90 transition-all shadow-sm"
-                aria-label="Show streams and sources"
-                title="Show Streams & Sources"
-              >
-                <i className="fas fa-layer-group text-[11px] text-white/70" />
-                <span>Streams &amp; Sources</span>
-                <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] text-white font-mono">
-                  {displayedSources.filter((s) => s.url && !failedUrls.has(s.url)).length}
-                </span>
-                <i className="fas fa-chevron-down text-[10px] text-white/60 ml-0.5" />
-              </button>
-            </div>
-          ) : (
-            <div className="shrink-0 flex flex-col min-h-0 max-h-[38vh] overflow-hidden border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none">
-              {/* Header row: sources label + hide button */}
+          {sourcesExpanded && playerDisplayMode !== 3 && (
+            <div data-player-sources-panel="true" className="shrink-0 flex flex-col min-h-0 max-h-[38vh] overflow-hidden border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none">
+              {/* Sources heading */}
               <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
                 <div className="flex items-center gap-2">
                   <i className="fas fa-layer-group text-xs text-white/70" />
@@ -1599,19 +1675,6 @@ export function VideoPlayerModal({ request, onClose }) {
                   </span>
                 </div>
 
-                {!isTv && (
-                  <button
-                    type="button"
-                    data-player-action="true"
-                    onClick={() => setSourcesExpanded(false)}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1 text-[11px] font-semibold text-white/80 hover:text-white transition-all"
-                    aria-label="Hide streams"
-                    title="Hide Streams"
-                  >
-                    <span>Hide</span>
-                    <i className="fas fa-chevron-up text-[10px]" />
-                  </button>
-                )}
               </div>
 
               {/* Grouped sources list: vertical stacked groups */}
@@ -1753,6 +1816,20 @@ export function VideoPlayerModal({ request, onClose }) {
                     </div>
                   </div>
                 )}
+              </div>
+              <div className="shrink-0 flex justify-end border-t border-white/10 pt-2">
+                <button
+                  ref={sourceHideRef}
+                  type="button"
+                  data-player-action="true"
+                  onClick={handleCloseSources}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1.5 text-[11px] font-semibold text-white/80 hover:text-white transition-all"
+                  aria-label="Hide streams"
+                  title="Hide Streams"
+                >
+                  <i className="fas fa-times text-[10px]" />
+                  <span>Hide sources</span>
+                </button>
               </div>
             </div>
           )}

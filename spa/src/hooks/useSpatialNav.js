@@ -32,6 +32,38 @@ function handleTvLinkClick(event) {
   event.stopImmediatePropagation?.();
 }
 
+function focusPlaybackSurface(playerModal) {
+  const playback = playerModal.querySelector('iframe[tabindex="0"], video[tabindex="0"]');
+  if (playback && isVisible(playback)) {
+    applyFocus(playback, false);
+    return true;
+  }
+  return false;
+}
+
+function focusSourceAboveOrPlayback(playerModal, activeSource) {
+  const currentRect = activeSource.getBoundingClientRect();
+  const sources = Array.from(playerModal.querySelectorAll('button[data-player-source="true"]'))
+    .filter((button) => button !== activeSource && isVisible(button))
+    .map((button) => ({ button, rect: button.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.bottom <= currentRect.top + 4)
+    .sort((a, b) => {
+      const aGap = currentRect.top - a.rect.bottom;
+      const bGap = currentRect.top - b.rect.bottom;
+      if (Math.abs(aGap - bGap) > 4) return aGap - bGap;
+      const aCenter = a.rect.left + a.rect.width / 2;
+      const bCenter = b.rect.left + b.rect.width / 2;
+      const currentCenter = currentRect.left + currentRect.width / 2;
+      return Math.abs(aCenter - currentCenter) - Math.abs(bCenter - currentCenter);
+    });
+
+  if (sources[0]) {
+    applyFocus(sources[0].button);
+    return true;
+  }
+  return focusPlaybackSurface(playerModal);
+}
+
 function showRing() {
   if (!_navActive) {
     _navActive = true;
@@ -94,35 +126,20 @@ function handleKeyDown(e) {
       e.preventDefault();
       e.stopPropagation();
       showRing();
-      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
-      if (fullscreenElement) {
-        const exit = document.exitFullscreen || document.webkitExitFullscreen;
-        if (exit) Promise.resolve(exit.call(document)).catch(() => {});
-        const fullscreenButton = playerModal.querySelector('button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]');
-        window.requestAnimationFrame(() => fullscreenButton?.focus());
-      } else if (active?.tagName === 'IFRAME' || active?.tagName === 'VIDEO') {
-        const fullscreenButton = playerModal.querySelector('button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]');
-        applyFocus(fullscreenButton || getPreferredModalFocus(playerModal));
-      } else {
-        playerModal.querySelector('button[aria-label="Close player"]')?.click();
+      const backEvent = new CustomEvent('soulstash:player-back', { cancelable: true });
+      window.dispatchEvent(backEvent);
+      if (!backEvent.defaultPrevented) {
+        if (active?.tagName === 'IFRAME' || active?.tagName === 'VIDEO') {
+          applyFocus(playerModal.querySelector('[data-player-size="true"]') || getPreferredModalFocus(playerModal));
+        } else {
+          playerModal.querySelector('button[aria-label="Close player"]')?.click();
+        }
       }
       return;
     }
 
     if (active && active.tagName === 'IFRAME') {
-      if (key === 'ArrowUp' || key === 'ArrowDown') {
-        e.preventDefault();
-        e.stopPropagation();
-        showRing();
-        if (key === 'ArrowUp') {
-          focusFirstPlayerControl(playerModal, showRing);
-        } else {
-          const source = playerModal.querySelector(
-            'button[data-active-source="true"], button[data-player-source="true"], button[aria-label="Hide streams"]'
-          );
-          if (source && isVisible(source)) applyFocus(source);
-        }
-      }
+      // Let the provider's cross-origin player own its D-pad/keyboard input.
       return;
     }
 
@@ -137,6 +154,7 @@ function handleKeyDown(e) {
         return;
       }
       if (key === 'ArrowUp' || key === 'ArrowDown') {
+        if (playerModal.getAttribute('data-player-mode') === '3') return;
         e.preventDefault();
         e.stopPropagation();
         showRing();
@@ -144,7 +162,7 @@ function handleKeyDown(e) {
           focusFirstPlayerControl(playerModal, showRing);
         } else {
           const source = playerModal.querySelector(
-            'button[data-active-source="true"], button[data-player-source="true"], button[aria-label="Hide streams"]'
+            'button[data-active-source="true"], button[data-player-source-toggle="true"]'
           );
           if (source && isVisible(source)) applyFocus(source);
         }
@@ -195,6 +213,17 @@ function handleKeyDown(e) {
       return;
     }
 
+    if (active.matches('[data-player-source-toggle="true"]') && key === 'ArrowDown') {
+      const activeSource = playerModal.querySelector('button[data-active-source="true"]:not(:disabled)');
+      if (activeSource && isVisible(activeSource)) {
+        showRing();
+        applyFocus(activeSource);
+      } else if (active.getAttribute('aria-expanded') !== 'true') {
+        active.click();
+      }
+      return;
+    }
+
     if (active.closest('[data-player-controls]') && (key === 'ArrowLeft' || key === 'ArrowRight')) {
       const controls = getFocusableIn(active.closest('[data-player-controls]'));
       const index = controls.indexOf(active);
@@ -210,7 +239,7 @@ function handleKeyDown(e) {
 
     if (active.closest('[data-player-controls]') && key === 'ArrowDown') {
       const sourcesBtn = playerModal.querySelector(
-        'button[aria-label="Show streams and sources"], button[data-active-source="true"], button[data-player-source="true"], button[aria-label="Hide streams"]'
+        'button[data-player-source-toggle="true"]'
       );
       if (sourcesBtn && isVisible(sourcesBtn)) {
         showRing();
@@ -219,13 +248,9 @@ function handleKeyDown(e) {
       return;
     }
 
-    if ((active.closest('[data-player-source]') || active.closest('[aria-label="Show streams and sources"]') || active.closest('[aria-label="Hide streams"]')) && key === 'ArrowUp') {
-      const topControl = playerModal.querySelector(
-        'button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"], button[data-player-action="true"]'
-      );
-      if (topControl && isVisible(topControl)) {
+    if (active.closest('[data-player-source]') && key === 'ArrowUp') {
+      if (focusSourceAboveOrPlayback(playerModal, active)) {
         showRing();
-        applyFocus(topControl);
       }
       return;
     }

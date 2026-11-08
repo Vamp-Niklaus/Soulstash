@@ -65,8 +65,19 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void handleOnBackPressed() {
                 WebView webView = bridge.getWebView();
-                if (webView != null && webView.canGoBack()) {
-                    webView.goBack();
+                if (webView != null) {
+                    webView.evaluateJavascript(
+                        "(function(){var event=new CustomEvent('soulstash:native-back',{cancelable:true});return window.dispatchEvent(event);})()",
+                        handled -> {
+                            if ("false".equals(handled)) return;
+                            if (webView.canGoBack()) {
+                                webView.goBack();
+                            } else {
+                                setEnabled(false);
+                                getOnBackPressedDispatcher().onBackPressed();
+                            }
+                        }
+                    );
                 } else {
                     setEnabled(false);
                     getOnBackPressedDispatcher().onBackPressed();

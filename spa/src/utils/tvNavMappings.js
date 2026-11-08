@@ -38,10 +38,10 @@ export function getPlayerModal() {
 
 export function focusFirstPlayerControl(playerModal, showRingFn) {
   const modal = playerModal || getPlayerModal();
-  const fullscreen = modal?.querySelector('button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]');
-  if (fullscreen && isVisible(fullscreen)) {
+  const sizeControl = modal?.querySelector('button[data-player-size="true"]');
+  if (sizeControl && isVisible(sizeControl)) {
     if (showRingFn) showRingFn();
-    applyFocus(fullscreen, false);
+    applyFocus(sizeControl, false);
     return true;
   }
   return restorePlayerStreamFocus(modal, showRingFn);
@@ -167,18 +167,10 @@ export function moveFocus(dir) {
 
   if (modal?.matches('[data-player-modal]') && active.closest('[data-player-controls]') && dir === 'ArrowDown') {
     const sourceControl = modal.querySelector(
-      'button[aria-label="Show streams and sources"], button[data-active-source="true"], button[data-player-source="true"], button[aria-label="Hide streams"]'
+      'button[data-player-source-toggle="true"]'
     );
     if (sourceControl && isVisible(sourceControl)) {
       applyFocus(sourceControl, false);
-      return true;
-    }
-  }
-
-  if (modal?.matches('[data-player-modal]') && active.tagName === 'IFRAME' && dir === 'ArrowUp') {
-    const preferred = getPreferredModalFocus(modal);
-    if (preferred) {
-      applyFocus(preferred);
       return true;
     }
   }
