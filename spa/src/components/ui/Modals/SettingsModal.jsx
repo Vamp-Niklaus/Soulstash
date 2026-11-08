@@ -399,7 +399,7 @@ export function SettingsModal({
             {/* Visit Website Link parallel to App info */}
             <div className="flex items-center justify-between pt-1 text-xs">
               <span className="text-[11px] text-white/50">Online web streaming:</span>
-              <button type="button" onClick={openExternalWebsite} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-1.5 text-xs font-semibold text-amber-400 transition-colors">
+              <button type="button" data-tv-allow-popup onClick={openExternalWebsite} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-1.5 text-xs font-semibold text-amber-400 transition-colors">
                 <i className="fas fa-globe text-xs"></i>
                 <span>Visit Website</span>
               </button>

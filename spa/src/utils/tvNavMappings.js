@@ -37,7 +37,14 @@ export function getPlayerModal() {
 }
 
 export function focusFirstPlayerControl(playerModal, showRingFn) {
-  return restorePlayerStreamFocus(playerModal, showRingFn);
+  const modal = playerModal || getPlayerModal();
+  const fullscreen = modal?.querySelector('button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]');
+  if (fullscreen && isVisible(fullscreen)) {
+    if (showRingFn) showRingFn();
+    applyFocus(fullscreen, false);
+    return true;
+  }
+  return restorePlayerStreamFocus(modal, showRingFn);
 }
 
 export function restorePlayerStreamFocus(playerModal, showRingFn) {
@@ -159,9 +166,11 @@ export function moveFocus(dir) {
   }
 
   if (modal?.matches('[data-player-modal]') && active.closest('[data-player-controls]') && dir === 'ArrowDown') {
-    const frame = modal.querySelector('iframe[tabindex="0"]');
-    if (frame && isVisible(frame)) {
-      applyFocus(frame, false);
+    const sourceControl = modal.querySelector(
+      'button[aria-label="Show streams and sources"], button[data-active-source="true"], button[data-player-source="true"], button[aria-label="Hide streams"]'
+    );
+    if (sourceControl && isVisible(sourceControl)) {
+      applyFocus(sourceControl, false);
       return true;
     }
   }
@@ -256,11 +265,13 @@ export function moveFocus(dir) {
   }
 
   if (fromZ === 'content' && dir === 'ArrowLeft') {
+    const fromCenterX = fromR.left + fromR.width / 2;
+    const rowTolerance = Math.max(12, fromR.height * 0.08);
     const leftInRow = cands.filter(el => {
       if (getZone(el) !== 'content') return false;
       const rect = el.getBoundingClientRect();
-      const verticalOverlap = Math.min(fromR.bottom, rect.bottom) - Math.max(fromR.top, rect.top);
-      return rect.right <= fromR.left + 2 && verticalOverlap > 0;
+      const candidateCenterX = rect.left + rect.width / 2;
+      return candidateCenterX < fromCenterX - 2 && Math.abs(rect.top - fromR.top) <= rowTolerance;
     });
     if (leftInRow.length) {
       cands = leftInRow;

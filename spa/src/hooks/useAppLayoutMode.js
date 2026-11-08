@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 
 /**
  * useAppLayoutMode
@@ -106,15 +106,13 @@ export function useAppLayoutMode() {
   const isMobileLayout = activeMode === 'mobile';
   const isDesktopLayout = activeMode === 'desktop';
 
-  // Apply layout class to document.documentElement for global styling
-  useEffect(() => {
+  // Keep the shared document layout in sync before paint. Multiple pages use
+  // this hook; one page unmounting must not clear classes owned by the app shell.
+  useLayoutEffect(() => {
     const doc = document.documentElement;
     doc.classList.toggle('layout-tv-mode', isTvLayout);
     doc.classList.toggle('layout-mobile-mode', isMobileLayout);
     doc.classList.toggle('layout-desktop-mode', isDesktopLayout);
-    return () => {
-      doc.classList.remove('layout-tv-mode', 'layout-mobile-mode', 'layout-desktop-mode');
-    };
   }, [isTvLayout, isMobileLayout, isDesktopLayout]);
 
   const updateVerticalPreference = (pref) => {

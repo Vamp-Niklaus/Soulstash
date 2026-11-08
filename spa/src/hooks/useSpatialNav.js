@@ -4,7 +4,7 @@ import { getFocusableIn, isVisible, applyFocus, FOCUSED, FOCUSABLE_SEL, getFocus
 
 const ACTIVATE  = new Set(['Enter', ' ']);
 const NAV       = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
-const BACK      = new Set(['Escape','Backspace']);
+const BACK      = new Set(['Escape','Backspace','BrowserBack','GoBack','Back']);
 const CONTROL   = new Set(['Tab']);
 const ALL_KEYS  = new Set([...ACTIVATE, ...NAV, ...BACK, ...CONTROL]);
 const DIM_MS    = 3000;
@@ -14,6 +14,23 @@ let _navActive   = false;
 let _dimTimer    = null;
 let _hideTimer   = null;
 let _installed   = false;
+
+function handleTvLinkClick(event) {
+  if (!document.documentElement.classList.contains('layout-tv-mode')) return;
+  const target = event.target instanceof Element ? event.target.closest('a[href]') : null;
+  if (!target || target.hasAttribute('data-tv-allow-link') || target.closest('[data-tv-allow-link]')) return;
+
+  let destination;
+  try { destination = new URL(target.href, window.location.href); }
+  catch { destination = null; }
+  const opensNewContext = Boolean(target.getAttribute('target') && target.getAttribute('target').toLowerCase() !== '_self');
+  const leavesApp = !destination || !['http:', 'https:'].includes(destination.protocol) || destination.origin !== window.location.origin;
+  if (!leavesApp && !opensNewContext) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+}
 
 function showRing() {
   if (!_navActive) {
@@ -66,17 +83,73 @@ function handleKeyDown(e) {
   if (playerModal) {
     const playerFocusables = getFocusableIn(playerModal);
 
-    if (active && active.tagName === 'IFRAME') {
+    if (BACK.has(key)) {
       e.preventDefault();
       e.stopPropagation();
       showRing();
-      if (BACK.has(key) || key === 'Escape') {
-        const closeBtn = playerModal.querySelector('button[aria-label="Close player"]');
-        closeBtn?.click();
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fullscreenElement) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) Promise.resolve(exit.call(document)).catch(() => {});
+        const fullscreenButton = playerModal.querySelector('button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]');
+        window.requestAnimationFrame(() => fullscreenButton?.focus());
+      } else if (active?.tagName === 'IFRAME' || active?.tagName === 'VIDEO') {
+        const fullscreenButton = playerModal.querySelector('button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]');
+        applyFocus(fullscreenButton || getPreferredModalFocus(playerModal));
       } else {
-        focusFirstPlayerControl(playerModal, showRing);
+        playerModal.querySelector('button[aria-label="Close player"]')?.click();
       }
       return;
+    }
+
+    if (active && active.tagName === 'IFRAME') {
+      if (key === 'ArrowUp' || key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        showRing();
+        if (key === 'ArrowUp') {
+          focusFirstPlayerControl(playerModal, showRing);
+        } else {
+          const source = playerModal.querySelector(
+            'button[data-active-source="true"], button[data-player-source="true"], button[aria-label="Hide streams"]'
+          );
+          if (source && isVisible(source)) applyFocus(source);
+        }
+      }
+      return;
+    }
+
+    if (active?.tagName === 'VIDEO' && document.documentElement.classList.contains('layout-tv-mode')) {
+      if (key === 'ArrowLeft' || key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        const step = key === 'ArrowRight' ? 10 : -10;
+        const duration = Number.isFinite(active.duration) ? active.duration : Infinity;
+        active.currentTime = Math.max(0, Math.min(duration, active.currentTime + step));
+        showRing();
+        return;
+      }
+      if (key === 'ArrowUp' || key === 'ArrowDown') {
+        e.preventDefault();
+        e.stopPropagation();
+        showRing();
+        if (key === 'ArrowUp') {
+          focusFirstPlayerControl(playerModal, showRing);
+        } else {
+          const source = playerModal.querySelector(
+            'button[data-active-source="true"], button[data-player-source="true"], button[aria-label="Hide streams"]'
+          );
+          if (source && isVisible(source)) applyFocus(source);
+        }
+        return;
+      }
+      if (ACTIVATE.has(key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (active.paused) active.play().catch(() => {});
+        else active.pause();
+        return;
+      }
     }
 
     if (NAV.has(key) || key === 'Tab' || ACTIVATE.has(key) || BACK.has(key)) {
@@ -87,12 +160,6 @@ function handleKeyDown(e) {
     if (!active || active === document.body || !playerModal.contains(active)) {
       showRing();
       focusFirstPlayerControl(playerModal, showRing);
-      return;
-    }
-
-    if (BACK.has(key)) {
-      const closeBtn = playerModal.querySelector('button[aria-label="Close player"]');
-      closeBtn?.click();
       return;
     }
 
@@ -272,12 +339,25 @@ export function useSpatialNav(location) {
     if (_installed) return;
     injectTvNavCss();
     document.addEventListener('keydown', handleKeyDown, { capture: true });
+    document.addEventListener('click', handleTvLinkClick, { capture: true });
     document.addEventListener('focusin', handleFocusIn, { capture: true });
     document.addEventListener('focusout', ev => ev.target?.classList?.remove(FOCUSED));
+
+    const nativeWindowOpen = window.open;
+    const guardedWindowOpen = function (...args) {
+      if (document.documentElement.classList.contains('layout-tv-mode')) {
+        const active = document.activeElement;
+        if (!active?.closest?.('[data-tv-allow-popup]')) return null;
+      }
+      return nativeWindowOpen.apply(window, args);
+    };
+    window.open = guardedWindowOpen;
     _installed = true;
     return () => {
       document.removeEventListener('keydown', handleKeyDown, { capture: true });
+      document.removeEventListener('click', handleTvLinkClick, { capture: true });
       document.removeEventListener('focusin', handleFocusIn, { capture: true });
+      if (window.open === guardedWindowOpen) window.open = nativeWindowOpen;
       _installed = false;
     };
   }, []);

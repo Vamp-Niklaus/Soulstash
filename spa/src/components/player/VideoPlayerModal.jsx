@@ -66,11 +66,17 @@ export function VideoPlayerModal({ request, onClose }) {
   const [draggingPlayer, setDraggingPlayer] = useState(false);
   const [iframeReloadKey, setIframeReloadKey] = useState(0);
   const [scale, setScale] = useState(1.0);
-  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [sourcesExpanded, setSourcesExpanded] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('layout-tv-mode')
+  );
   const [isStreamLoading, setIsStreamLoading] = useState(true);
   const [isDirectVideoPlaying, setIsDirectVideoPlaying] = useState(false);
   const iframeRef = useRef(null);
   const directVideoRef = useRef(null);
+  const mediaAreaRef = useRef(null);
+  const fullscreenButtonRef = useRef(null);
+  const fullscreenStateRef = useRef(false);
+  const openerRef = useRef(typeof document !== 'undefined' ? document.activeElement : null);
   const hlsInstanceRef = useRef(null);
   const hlsErrorHandlerRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -91,6 +97,10 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const { isTvLayout } = useAppLayoutMode();
   const isTv = isTvLayout || (typeof document !== 'undefined' && document.documentElement.classList.contains('layout-tv-mode'));
+
+  useEffect(() => {
+    if (isTv) setSourcesExpanded(true);
+  }, [isTv]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [tvControlsVisible, setTvControlsVisible] = useState(true);
@@ -128,7 +138,7 @@ export function VideoPlayerModal({ request, onClose }) {
         if (document.exitFullscreen) await document.exitFullscreen().catch(() => {});
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
       } else {
-        const target = playerBoxRef.current || document.documentElement;
+        const target = directVideoRef.current || iframeRef.current || mediaAreaRef.current || document.documentElement;
         if (target.requestFullscreen) await target.requestFullscreen().catch(() => {});
         else if (target.webkitRequestFullscreen) target.webkitRequestFullscreen();
       }
@@ -146,7 +156,13 @@ export function VideoPlayerModal({ request, onClose }) {
 
   useEffect(() => {
     const handleFs = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+      const next = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+      const wasFullscreen = fullscreenStateRef.current;
+      fullscreenStateRef.current = next;
+      setIsFullscreen(next);
+      if (wasFullscreen && !next && isTv) {
+        window.requestAnimationFrame(() => fullscreenButtonRef.current?.focus());
+      }
     };
     document.addEventListener('fullscreenchange', handleFs);
     document.addEventListener('webkitfullscreenchange', handleFs);
@@ -155,7 +171,7 @@ export function VideoPlayerModal({ request, onClose }) {
       document.removeEventListener('fullscreenchange', handleFs);
       document.removeEventListener('webkitfullscreenchange', handleFs);
     };
-  }, []);
+  }, [isTv]);
 
   useEffect(() => {
     if (isTv && playerBoxRef.current) {
@@ -636,6 +652,9 @@ export function VideoPlayerModal({ request, onClose }) {
     if (onCloseRef.current) {
       onCloseRef.current();
     }
+    window.requestAnimationFrame(() => {
+      if (openerRef.current?.isConnected) openerRef.current.focus({ preventScroll: true });
+    });
   }, []);
 
   useEffect(() => {
@@ -1089,10 +1108,10 @@ export function VideoPlayerModal({ request, onClose }) {
   const mediaMaxH = isDesktopViewport ? desktopMediaMaxH : mobileMediaMaxH;
 
   const videoBoxStyle = isTv ? {
-    width: '100vw',
-    maxWidth: '100vw',
-    height: '100dvh',
-    maxHeight: '100dvh',
+    width: 'min(94vw, 1760px)',
+    maxWidth: '94vw',
+    height: '80dvh',
+    maxHeight: '80dvh',
     margin: '0',
     borderRadius: '0',
     border: 'none',
@@ -1280,6 +1299,7 @@ export function VideoPlayerModal({ request, onClose }) {
       if (!isKeyboardNav) return;
       if (modal.contains(document.activeElement)) return;
       const sourceButton =
+        playerBoxRef.current?.querySelector('button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]') ||
         playerBoxRef.current?.querySelector('button[data-active-source="true"]:not(:disabled)') ||
         playerBoxRef.current?.querySelector('button[data-player-source="true"]:not(:disabled)') ||
         playerBoxRef.current?.querySelector('button[data-player-action="true"]:not(:disabled), a[data-player-action="true"]');
@@ -1310,10 +1330,10 @@ export function VideoPlayerModal({ request, onClose }) {
           } bg-black shadow-2xl flex flex-col`}
           style={{
             ...videoBoxStyle,
-            left: isTv ? '0' : '50%',
-            top: isTv ? '0' : '50%',
+            left: '50%',
+            top: isTv ? '10dvh' : '50%',
             transform: isTv
-              ? 'none'
+              ? 'translateX(-50%)'
               : `translate(calc(-50% + ${dragOffset.x}px), calc(-50% + ${baseVerticalShift + dragOffset.y}px))`,
             transition: draggingPlayer ? 'none' : 'transform 220ms ease'
           }}
@@ -1346,6 +1366,7 @@ export function VideoPlayerModal({ request, onClose }) {
               <button
                 type="button"
                 data-player-action="true"
+                ref={fullscreenButtonRef}
                 onClick={handleToggleFullscreen}
                 className={iconButtonClass}
                 aria-label={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
@@ -1363,6 +1384,18 @@ export function VideoPlayerModal({ request, onClose }) {
                   title={isDirectVideoPlaying ? 'Pause playback' : 'Play playback'}
                 >
                   <i className={`fas ${isDirectVideoPlaying ? 'fa-pause' : 'fa-play'} text-xs`} />
+                </button>
+              )}
+              {isTv && activeUrl && (
+                <button
+                  type="button"
+                  data-player-action="true"
+                  onClick={() => (canUseVideoJs ? directVideoRef.current : iframeRef.current)?.focus()}
+                  className={iconButtonClass}
+                  aria-label="Focus playback"
+                  title="Focus playback"
+                >
+                  <i className="fas fa-film text-xs" />
                 </button>
               )}
               <button
@@ -1390,6 +1423,7 @@ export function VideoPlayerModal({ request, onClose }) {
               )}
               <a
                 data-player-action="true"
+                data-tv-allow-link
                 className={iconButtonClass}
                 href={activeUrl || '#'}
                 target="_blank"
@@ -1419,6 +1453,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
           {/* Middle: Video / Stream iframe Area */}
           <div
+            ref={mediaAreaRef}
             className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden bg-black"
             style={mediaAreaStyle}
           >
@@ -1440,7 +1475,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 <video
                   ref={directVideoRef}
                   controls={!isTv}
-                  tabIndex={-1}
+                  tabIndex={isTv ? 0 : -1}
                   autoPlay
                   playsInline
                   onWaiting={() => {
@@ -1467,30 +1502,28 @@ export function VideoPlayerModal({ request, onClose }) {
                 <p className="max-w-lg text-sm leading-6 text-white/70 sm:text-base">
                   This source opens best in a new tab.
                 </p>
-                <a
-                  className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-[#e8e8e8]"
-                  href={activeUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open Provider
-                </a>
+                {isTv ? (
+                  <p className="text-xs text-white/60">Use Open Provider in the top bar to open this stream.</p>
+                ) : (
+                  <a
+                    className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-black transition-colors hover:bg-[#e8e8e8]"
+                    href={activeUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open Provider
+                  </a>
+                )}
               </div>
             ) : (
               <div className={`relative h-full w-full ${activeSource?.id?.includes('cinesu') ? 'cine-crop-wrapper' : ''}`}>
                 <iframe
                   ref={iframeRef}
                   key={`${activeUrl}:${iframeReloadKey}`}
+                  tabIndex={0}
+                  credentialless={isTv ? '' : undefined}
+                  sandbox={isTv ? 'allow-scripts allow-same-origin allow-forms allow-presentation' : undefined}
                   src={activeUrl}
-                  tabIndex={-1}
-                  onFocus={() => {
-                    if (!isTv) return;
-                    iframeRef.current?.blur();
-                    const returnFocus = playerBoxRef.current?.querySelector(
-                      'button[data-active-source="true"], button[aria-label="Fullscreen"], button[aria-label="Exit Fullscreen"]'
-                    );
-                    returnFocus?.focus();
-                  }}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onLoad={() => {
                     console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
@@ -1567,12 +1600,7 @@ export function VideoPlayerModal({ request, onClose }) {
               </button>
             </div>
           ) : (
-            <div
-              aria-hidden={isTv && !tvControlsVisible}
-              className={`shrink-0 flex flex-col min-h-0 max-h-[38vh] overflow-hidden border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none transition-opacity duration-300 ${
-                isTv && !tvControlsVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
-              }`}
-            >
+            <div className="shrink-0 flex flex-col min-h-0 max-h-[38vh] overflow-hidden border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none">
               {/* Header row: sources label + hide button */}
               <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
                 <div className="flex items-center gap-2">
@@ -1585,17 +1613,19 @@ export function VideoPlayerModal({ request, onClose }) {
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  data-player-action="true"
-                  onClick={() => setSourcesExpanded(false)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1 text-[11px] font-semibold text-white/80 hover:text-white transition-all"
-                  aria-label="Hide streams"
-                  title="Hide Streams"
-                >
-                  <span>Hide</span>
-                  <i className="fas fa-chevron-up text-[10px]" />
-                </button>
+                {!isTv && (
+                  <button
+                    type="button"
+                    data-player-action="true"
+                    onClick={() => setSourcesExpanded(false)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1 text-[11px] font-semibold text-white/80 hover:text-white transition-all"
+                    aria-label="Hide streams"
+                    title="Hide Streams"
+                  >
+                    <span>Hide</span>
+                    <i className="fas fa-chevron-up text-[10px]" />
+                  </button>
+                )}
               </div>
 
               {/* Grouped sources list: vertical stacked groups */}
