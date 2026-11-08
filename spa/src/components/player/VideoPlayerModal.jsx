@@ -1386,18 +1386,6 @@ export function VideoPlayerModal({ request, onClose }) {
                   <i className={`fas ${isDirectVideoPlaying ? 'fa-pause' : 'fa-play'} text-xs`} />
                 </button>
               )}
-              {isTv && activeUrl && (
-                <button
-                  type="button"
-                  data-player-action="true"
-                  onClick={() => (canUseVideoJs ? directVideoRef.current : iframeRef.current)?.focus()}
-                  className={iconButtonClass}
-                  aria-label="Focus playback"
-                  title="Focus playback"
-                >
-                  <i className="fas fa-film text-xs" />
-                </button>
-              )}
               <button
                 type="button"
                 data-player-action="true"

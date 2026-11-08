@@ -62,10 +62,17 @@ if (typeof window !== 'undefined') {
 }
 
 export function focusNavbar() {
-  const el = document.querySelector(
-    'header button:not([disabled]), header a[href], .modern-navbar-react button:not([disabled])'
+  const tvMode = document.documentElement.classList.contains('layout-tv-mode');
+  const activeSidebarItem = tvMode
+    ? document.querySelector('aside[aria-label="TV Sidebar Navigation"] [aria-current="page"]')
+    : null;
+  const navbarItems = document.querySelectorAll(
+    'header button:not([disabled]), header a[href], .modern-navbar-react button:not([disabled]), aside[aria-label="TV Sidebar Navigation"] button:not([disabled])'
   );
-  if (el && isVisible(el)) applyFocus(el, false);
+  const el = (activeSidebarItem && isVisible(activeSidebarItem))
+    ? activeSidebarItem
+    : Array.from(navbarItems).find(isVisible);
+  if (el) applyFocus(el, false);
   else { const f = getFocusable()[0]; if (f) applyFocus(f, false); }
 }
 
@@ -363,7 +370,7 @@ export function useSpatialNav(location) {
   }, []);
 
   useEffect(() => {
-    if (!_navActive) return;
+    if (!_navActive && !document.documentElement.classList.contains('layout-tv-mode')) return;
     const t = setTimeout(focusNavbar, 120);
     return () => clearTimeout(t);
   }, [location?.pathname]);

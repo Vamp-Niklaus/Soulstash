@@ -303,6 +303,7 @@ export function ReactNavbar() {
               }`}
               title="Home"
               aria-label="Home"
+              aria-current={currentPath === '/' ? 'page' : undefined}
             >
               <HomeIcon />
             </button>
@@ -317,6 +318,7 @@ export function ReactNavbar() {
                 }`}
                 title={item.label}
                 aria-label={item.label}
+                aria-current={item.active ? 'page' : undefined}
               >
                 {item.icon}
               </button>
