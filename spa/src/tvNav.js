@@ -258,6 +258,10 @@ function getOpenModal() {
   const playerModal = document.querySelector('[data-player-modal]');
   if (playerModal && playerModal.querySelector(FOCUSABLE_SEL)) return playerModal;
 
+  // Search overlay next (higher than other drawers/dialogs)
+  const searchOverlay = document.querySelector('[data-search-overlay]');
+  if (searchOverlay && searchOverlay.querySelector(FOCUSABLE_SEL)) return searchOverlay;
+
   // drawers / dialogs
   const candidates = document.querySelectorAll(
     '[role="dialog"], [data-modal], .fixed.inset-0'

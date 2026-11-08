@@ -64,6 +64,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const [iframeReloadKey, setIframeReloadKey] = useState(0);
   const [scale, setScale] = useState(1.0);
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [isStreamLoading, setIsStreamLoading] = useState(true);
   const iframeRef = useRef(null);
   const directVideoRef = useRef(null);
   const hlsInstanceRef = useRef(null);
@@ -887,6 +888,12 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
 
+  useEffect(() => {
+    if (activeUrl) {
+      setIsStreamLoading(true);
+    }
+  }, [activeUrl, iframeReloadKey]);
+
   // HLS stream playback handler for .m3u8 direct streams
   useEffect(() => {
     if (!canUseVideoJs || !activeUrl) return;
@@ -895,6 +902,8 @@ export function VideoPlayerModal({ request, onClose }) {
     const isHls = /\.m3u8(\?|$)/i.test(activeUrl);
     const video = directVideoRef.current;
     if (!video) return;
+
+    setIsStreamLoading(true);
 
     if (hlsInstanceRef.current) {
       try { hlsInstanceRef.current.destroy(); } catch {}
@@ -915,9 +924,10 @@ export function VideoPlayerModal({ request, onClose }) {
           enableWorker: true,
           startFragPrefetch: true,
           lowLatencyMode: false,
+          startLevel: -1,
           backBufferLength: 30,
-          maxBufferLength: 60,
-          maxMaxBufferLength: 120,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
           manifestLoadingTimeOut: 15000,
           levelLoadingTimeOut: 15000,
           fragLoadingTimeOut: 30000,
@@ -936,6 +946,9 @@ export function VideoPlayerModal({ request, onClose }) {
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setVerifiedUrls((prev) => prev.has(activeUrl) ? prev : new Set(prev).add(activeUrl));
           video.play().catch(() => {});
+        });
+        hls.on(Hls.Events.FRAG_BUFFERED, () => {
+          setIsStreamLoading(false);
         });
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (!data?.fatal) return;
@@ -1157,7 +1170,7 @@ export function VideoPlayerModal({ request, onClose }) {
     : '';
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[9999] bg-transparent" data-player-modal="true">
+    <div className="pointer-events-none fixed inset-0 z-[1000000] bg-transparent" data-player-modal="true">
       <div
         className="relative h-full w-full"
         style={{
@@ -1269,12 +1282,16 @@ export function VideoPlayerModal({ request, onClose }) {
                 {errorDisplay || `No playable source is available in the ${selectedGroup === 'hindi' ? 'Hindi' : selectedGroup === 'dubbed' ? 'Dubbed' : 'Subbed / Original'} group.`}
               </div>
             ) : canUseVideoJs ? (
-              <div className="flex h-full w-full items-center justify-center bg-black">
+              <div className="relative flex h-full w-full items-center justify-center bg-black">
                 <video
                   ref={directVideoRef}
                   controls
                   autoPlay
                   playsInline
+                  onWaiting={() => setIsStreamLoading(true)}
+                  onPlaying={() => setIsStreamLoading(false)}
+                  onLoadedData={() => setIsStreamLoading(false)}
+                  onCanPlay={() => setIsStreamLoading(false)}
                   className="w-full h-full bg-black object-contain"
                 />
               </div>
@@ -1302,10 +1319,12 @@ export function VideoPlayerModal({ request, onClose }) {
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onLoad={() => {
                     console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
+                    setIsStreamLoading(false);
                     setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
                   }}
                   onError={(e) => {
                     console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e);
+                    setIsStreamLoading(false);
                     handleIframeError(activeUrl);
                   }}
                   className={`h-full w-full border-0 bg-black ${activeSource?.id?.includes('cinesu') ? 'cine-crop-iframe' : ''}`}
@@ -1323,7 +1342,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   title="Soulstash Player"
                 />
                 {Capacitor.isNativePlatform() && (activeUrl.includes('youtube.com') || activeUrl.includes('youtu.be') || activeUrl.includes('youtube-nocookie.com')) && (
-                  <div className="absolute top-4 right-4 z-[9999]">
+                  <div className="absolute top-4 right-4 z-[1000001]">
                     <a
                       href={activeUrl.replace('youtube-nocookie.com/embed/', 'youtube.com/watch?v=').replace('youtube.com/embed/', 'youtube.com/watch?v=').split('&')[0]}
                       target="_blank"
@@ -1335,6 +1354,18 @@ export function VideoPlayerModal({ request, onClose }) {
                     </a>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Batman loader overlay while stream/video is buffering or loading */}
+            {activeUrl && isStreamLoading && (
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-[2px] transition-opacity duration-300 pointer-events-none">
+                <div className="batman-loader-wrapper">
+                  <div className="batman-loader" />
+                </div>
+                <div className="mt-4 animate-pulse text-xs font-semibold tracking-widest uppercase text-neutral-300">
+                  Loading stream...
+                </div>
               </div>
             )}
           </div>

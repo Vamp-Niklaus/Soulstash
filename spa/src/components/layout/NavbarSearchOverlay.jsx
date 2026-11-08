@@ -98,6 +98,9 @@ export function NavbarSearchOverlay({
       <div className="fixed inset-0 z-[100001] bg-black/85 backdrop-blur-md" onClick={onClose}></div>
       <div
         data-search-overlay="true"
+        data-modal="true"
+        role="dialog"
+        aria-modal="true"
         className={`fixed z-[100002] overflow-hidden border border-[#252833] bg-[#0F0F0F] shadow-[0_24px_60px_rgba(0,0,0,0.85)] ${
           isTvLayout
             ? 'left-[76px] sm:left-[96px] right-3 sm:right-6 top-3 sm:top-4 bottom-3 sm:bottom-4 h-auto max-h-[calc(100dvh-24px)] rounded-2xl'

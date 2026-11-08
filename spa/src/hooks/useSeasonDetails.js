@@ -17,12 +17,21 @@ export function useSeasonDetails(id, type, content) {
     }
   }, [type, content]);
 
+  const seriesTitle = content?.name || content?.title || content?.original_name || '';
+  const seriesYear = content?.first_air_date ? String(content.first_air_date).slice(0, 4) : '';
+
   const {
     data: seasonDetailsData,
     isLoading: seasonLoading
   } = useQuery({
-    queryKey: ['season', type, id, selectedSeason],
-    queryFn: () => apiFetch(`/api/series/${id}/season/${selectedSeason}`),
+    queryKey: ['season', type, id, selectedSeason, seriesTitle],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (seriesTitle) params.set('title', seriesTitle);
+      if (seriesYear) params.set('year', seriesYear);
+      const q = params.toString();
+      return apiFetch(`/api/series/${id}/season/${selectedSeason}${q ? `?${q}` : ''}`);
+    },
     enabled: type === 'series' && selectedSeason !== null,
     retry: 3,
     retryDelay: 2500,

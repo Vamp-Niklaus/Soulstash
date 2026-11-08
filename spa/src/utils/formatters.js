@@ -11,7 +11,13 @@ import { Capacitor } from '@capacitor/core';
  * Useful for normalizing IDs coming from different APIs (TMDB vs MongoDB).
  */
 export function contentIdFromItem(item) {
-  return Number(item?.contentId || item?.movieId || item?.seriesId || item?.tmdbId || item?.id || item?._id || 0);
+  const raw = item?.contentId || item?.movieId || item?.seriesId || item?.tmdbId || item?.id || item?._id;
+  if (!raw) return 0;
+  if (typeof raw === 'string' && (raw.startsWith('kartoons-') || raw.startsWith('kartoons:'))) {
+    return raw;
+  }
+  const num = Number(raw);
+  return isNaN(num) ? raw : num;
 }
 
 /**
@@ -319,14 +325,18 @@ export function createEmptyCollectionDraft() {
  * Returns booleans indicating which default collections a piece of content is currently in.
  */
 export function getCollectionStatus(collections, contentId) {
-  const numericId = Number(contentId);
-  const watchedCollection = collections.find((c) => c.name === 'Watched');
-  const watchlistCollection = collections.find((c) => c.name === 'Watchlist');
-  const customCollections = collections.filter((c) => !['Watched', 'Watchlist'].includes(c.name));
+  const isKartoon = typeof contentId === 'string' && (contentId.startsWith('kartoons-') || contentId.startsWith('kartoons:'));
+  const targetId = isKartoon ? contentId : Number(contentId);
+  const watchedCollection = (collections || []).find((c) => c.name === 'Watched');
+  const watchlistCollection = (collections || []).find((c) => c.name === 'Watchlist');
+  const customCollections = (collections || []).filter((c) => !['Watched', 'Watchlist'].includes(c.name));
 
   const hasContent = (collection) =>
     Array.isArray(collection?.movies) &&
-    collection.movies.some((item) => item.movieId === numericId || item.seriesId === numericId);
+    collection.movies.some((item) => {
+      const itemId = item.movieId || item.seriesId || item.id;
+      return String(itemId) === String(targetId) || (!isKartoon && Number(itemId) === targetId);
+    });
 
   return {
     watched: hasContent(watchedCollection),
@@ -336,12 +346,13 @@ export function getCollectionStatus(collections, contentId) {
 }
 
 export function isContentInCollection(collections, collectionName, contentId, mediaType = '') {
-  const collection = collections.find((item) => item.name === collectionName || item._id === collectionName);
+  const collection = (collections || []).find((item) => item.name === collectionName || item._id === collectionName);
   if (!collection || !Array.isArray(collection.movies)) return false;
   const normalizedMediaType = normalizeMediaType(mediaType);
+  const targetStr = String(contentId || '');
   return collection.movies.some((movie) => {
-    const sameId = contentIdFromItem(movie) === Number(contentId);
-    if (!sameId) return false;
+    const mId = String(contentIdFromItem(movie) || movie?.movieId || movie?.seriesId || movie?.id || '');
+    if (mId !== targetStr && Number(mId) !== Number(contentId)) return false;
     if (!normalizedMediaType) return true;
     return normalizeMediaType(movie?.media_type || (movie?.seriesId ? 'Series' : 'Movie')) === normalizedMediaType;
   });
@@ -718,17 +729,37 @@ export function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber 
 /**
  * Structures the complete payload required by the player components to begin streaming.
  */
-export function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title, originalTitle, originalName, seriesTitle, year, youtubeTrailerKey }) {
+export function createPlayerRequest({
+  mediaType,
+  tmdbId,
+  seasonNumber,
+  episodeNumber,
+  episodeTitle,
+  kartoonsSlug,
+  kartoonsEpisodeId,
+  isKartoons,
+  imdbId,
+  title,
+  originalTitle,
+  originalName,
+  seriesTitle,
+  year,
+  youtubeTrailerKey
+}) {
   const normalizedType = String(mediaType || '').toLowerCase() === 'movie' ? 'movie' : 'series';
-  const resolvedTmdbId = Number(tmdbId);
+  const resolvedTmdbId = String(tmdbId || '').startsWith('kartoons-') ? tmdbId : (Number(tmdbId) || tmdbId);
   const resolvedSeasonNumber = normalizedType === 'series' ? Number(seasonNumber || 1) : null;
-  const resolvedEpisodeNumber = normalizedType === 'series' ? Number(episodeNumber || 1) : null;
+  const resolvedEpisodeNumber = normalizedType === 'series' ? (typeof episodeNumber === 'string' && episodeNumber.includes('.') ? episodeNumber : Number(episodeNumber || 1)) : null;
 
   return {
     mediaType: normalizedType,
     tmdbId: resolvedTmdbId,
     seasonNumber: resolvedSeasonNumber,
     episodeNumber: resolvedEpisodeNumber,
+    episodeTitle: episodeTitle || '',
+    kartoonsSlug: kartoonsSlug || '',
+    kartoonsEpisodeId: kartoonsEpisodeId || '',
+    isKartoons: Boolean(isKartoons || String(tmdbId || '').startsWith('kartoons-')),
     imdbId: imdbId || '',
     title: title || '',
     originalTitle: originalTitle || originalName || '',
@@ -736,14 +767,14 @@ export function createPlayerRequest({ mediaType, tmdbId, seasonNumber, episodeNu
     seriesTitle: seriesTitle || '',
     year: Number(year) || null,
     youtubeTrailerKey: youtubeTrailerKey || '',
-    fallbackSources: buildLegacyPlayerSources({
+    fallbackSources: typeof resolvedTmdbId === 'number' && !isNaN(resolvedTmdbId) ? buildLegacyPlayerSources({
       mediaType: normalizedType,
       tmdbId: resolvedTmdbId,
       seasonNumber: resolvedSeasonNumber,
-      episodeNumber: resolvedEpisodeNumber,
+      episodeNumber: typeof resolvedEpisodeNumber === 'number' ? resolvedEpisodeNumber : parseInt(resolvedEpisodeNumber) || 1,
       title: title || seriesTitle || originalTitle || '',
       youtubeTrailerKey
-    })
+    }) : []
   };
 }
 

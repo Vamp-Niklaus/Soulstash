@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchKartoonsEpisodes, fetchKartoonsShowDetail } from '../../api/kartoons.js';
+import { apiFetch } from '../../api/client.js';
+import { useMediaAction } from '../../hooks/useMediaAction.js';
 import { DetailHero } from './DetailHero.jsx';
 import { SeasonEpisodeSection } from './SeasonEpisodeSection.jsx';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
@@ -8,6 +10,8 @@ import { DetailStat } from '../../components/ui/Cards/DetailStat.jsx';
 import { DetailPageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { VideoPlayerModal } from '../../components/player/VideoPlayerModal.jsx';
 import { PlayerErrorBoundary } from '../../components/player/PlayerErrorBoundary.jsx';
+import { SaveToCollectionModal } from '../../components/ui/Modals/SaveToCollectionModal.jsx';
+import { CollectionFormModal } from '../../components/ui/Modals/CollectionFormModal.jsx';
 import { toast } from '../../utils/toast.js';
 
 export function KartoonDetailPage() {
@@ -19,6 +23,7 @@ export function KartoonDetailPage() {
   const [episodesLoading, setEpisodesLoading] = useState(false);
   const [error, setError] = useState('');
   const [playerRequest, setPlayerRequest] = useState(null);
+  const [tmdbMatch, setTmdbMatch] = useState(null);
 
   const seasonScrollerRef = useRef(null);
   const episodeScrollerRef = useRef(null);
@@ -43,6 +48,38 @@ export function KartoonDetailPage() {
       });
     return () => controller.abort();
   }, [slug]);
+
+  // Background TMDB pairing match
+  useEffect(() => {
+    if (!show?.title) return undefined;
+    const cleanTitle = String(show.title)
+      .replace(/\s*S\d+E\d+.*$/i, '')
+      .replace(/\s*Season\s*\d+.*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleanTitle) return undefined;
+
+    const controller = new AbortController();
+    const q = encodeURIComponent(cleanTitle);
+    apiFetch(`/api/search?q=${q}&type=content&limit=6`, { signal: controller.signal })
+      .then((res) => {
+        const results = Array.isArray(res?.results) ? res.results : [];
+        const match = results.find((r) => {
+          const t1 = String(r.title || r.name || '').toLowerCase();
+          const t2 = cleanTitle.toLowerCase();
+          if (t1 === t2) return true;
+          const kYear = Number(show.startYear || show.releaseYear || 0);
+          const rYear = Number(String(r.release_date || r.first_air_date || '').slice(0, 4) || 0);
+          return (t1.includes(t2) || t2.includes(t1)) && (!kYear || !rYear || Math.abs(kYear - rYear) <= 1);
+        });
+        if (match) {
+          setTmdbMatch(match);
+        }
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, [show?.title, show?.startYear]);
 
   useEffect(() => {
     if (!show || !seasonNumber) return undefined;
@@ -96,6 +133,36 @@ export function KartoonDetailPage() {
     };
   }, [show, slug, seasonsList, episodes.length]);
 
+  const effectiveId = tmdbMatch?.id ? tmdbMatch.id : `kartoons-${slug}`;
+  const effectiveContent = useMemo(() => {
+    if (!content) return null;
+    if (tmdbMatch?.id) {
+      return {
+        ...content,
+        id: tmdbMatch.id,
+        tmdbId: tmdbMatch.id,
+        media_type: tmdbMatch.media_type || 'Series'
+      };
+    }
+    return content;
+  }, [content, tmdbMatch]);
+
+  const {
+    status,
+    saveModalOpen,
+    setSaveModalOpen,
+    createModalOpen,
+    setCreateModalOpen,
+    createDraft,
+    setCreateDraft,
+    pendingAction,
+    collections,
+    toggleWatched,
+    toggleWatchlist,
+    handleToggleCustomCollection,
+    handleCreateCollection
+  } = useMediaAction(effectiveId, 'series', effectiveContent);
+
   const meta = useMemo(() => {
     if (!show) return [];
     return [
@@ -128,7 +195,7 @@ export function KartoonDetailPage() {
     const sNum = Number(ep?.season_number || seasonNumber || 1);
     setPlayerRequest({
       mediaType: 'series',
-      tmdbId: `kartoons-${slug}`,
+      tmdbId: tmdbMatch?.id ? tmdbMatch.id : `kartoons-${slug}`,
       seasonNumber: sNum,
       episodeNumber: epNum,
       title: `${show.title} S${sNum}E${epNum}`,
@@ -138,7 +205,7 @@ export function KartoonDetailPage() {
       kartoonsEpisodeId: ep?.id || ep?._id,
       isKartoons: true
     });
-  }, [show, slug, seasonNumber]);
+  }, [show, slug, seasonNumber, tmdbMatch]);
 
   const handlePlayClick = useCallback(() => {
     if (!show) return;
@@ -147,7 +214,7 @@ export function KartoonDetailPage() {
     const sNum = Number(seasonNumber || 1);
     setPlayerRequest({
       mediaType: 'series',
-      tmdbId: `kartoons-${slug}`,
+      tmdbId: tmdbMatch?.id ? tmdbMatch.id : `kartoons-${slug}`,
       seasonNumber: sNum,
       episodeNumber: epNum,
       title: `${show.title} S${sNum}E${epNum}`,
@@ -157,7 +224,7 @@ export function KartoonDetailPage() {
       kartoonsEpisodeId: firstEp?.id || firstEp?._id,
       isKartoons: true
     });
-  }, [show, slug, seasonNumber, seasonDetails]);
+  }, [show, slug, seasonNumber, seasonDetails, tmdbMatch]);
 
   if (loading) {
     return <DetailPageSkeleton type="series" />;
@@ -182,19 +249,19 @@ export function KartoonDetailPage() {
     <div className="space-y-10">
       {/* 1. Hero — backdrop, poster, metadata, action buttons, play button */}
       <DetailHero
-        content={content}
+        content={effectiveContent}
         type="series"
         title={show.title}
         meta={meta}
-        status={{ watched: false, watchlist: false }}
-        pendingAction={null}
+        status={status}
+        pendingAction={pendingAction}
         directorStat={<DetailStat label="Category" value={show.category || 'Animation'} />}
         countryLabel="India"
         languageName="Hindi"
         ageRatingLabel="U"
-        onToggleWatched={() => toast('Marked as watched', 'success')}
-        onToggleWatchlist={() => toast('Added to watchlist', 'success')}
-        onOpenSaveModal={() => toast('Please sign in to save to collection', 'info')}
+        onToggleWatched={toggleWatched}
+        onToggleWatchlist={toggleWatchlist}
+        onOpenSaveModal={() => setSaveModalOpen(true)}
         onPlay={handlePlayClick}
         isPlayerOpen={!!playerRequest}
       />
@@ -242,6 +309,27 @@ export function KartoonDetailPage() {
           />
         </PlayerErrorBoundary>
       )}
+
+      {/* 5. Modals for Collection Saving */}
+      <SaveToCollectionModal
+        open={saveModalOpen}
+        onClose={() => setSaveModalOpen(false)}
+        collections={collections}
+        contentId={effectiveId}
+        onToggleCollection={handleToggleCustomCollection}
+        onCreateNew={() => {
+          setSaveModalOpen(false);
+          setCreateModalOpen(true);
+        }}
+      />
+
+      <CollectionFormModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        draft={createDraft}
+        setDraft={setCreateDraft}
+        onSubmit={handleCreateCollection}
+      />
     </div>
   );
 }

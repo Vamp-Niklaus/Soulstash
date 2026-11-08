@@ -149,9 +149,24 @@ export function DetailPage({ type }) {
       );
     } else {
       const season = page.selectedSeason || 1;
-      const ep = page.seasonDetails?.episodes?.[0]?.episode_number || 1;
+      const firstEp = page.seasonDetails?.episodes?.[0];
+      const ep = firstEp?.episode_number || 1;
       page.setPlayerRequest(
-        createPlayerRequest({ mediaType: 'series', tmdbId, seasonNumber: season, episodeNumber: ep, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal })
+        createPlayerRequest({
+          mediaType: 'series',
+          tmdbId,
+          seasonNumber: season,
+          episodeNumber: ep,
+          episodeTitle: firstEp?.name || '',
+          kartoonsEpisodeId: firstEp?.kartoons_episode_id || firstEp?.kartoonsEpisodeId || '',
+          kartoonsSlug: firstEp?.kartoons_slug || firstEp?.kartoonsSlug || '',
+          imdbId: content?.imdb_id,
+          title: `${title} S${season}E${ep}`,
+          originalTitle,
+          originalName,
+          seriesTitle: title,
+          year: yearVal
+        })
       );
     }
   }
@@ -166,6 +181,9 @@ export function DetailPage({ type }) {
         tmdbId: content?.id || id,
         seasonNumber: episode.season_number,
         episodeNumber: episode.episode_number,
+        episodeTitle: episode.name || '',
+        kartoonsEpisodeId: episode.kartoons_episode_id || episode.kartoonsEpisodeId || '',
+        kartoonsSlug: episode.kartoons_slug || episode.kartoonsSlug || '',
         imdbId: content?.imdb_id,
         title: `${title} S${episode.season_number}E${episode.episode_number}`,
         originalTitle,

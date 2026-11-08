@@ -27,12 +27,14 @@ export function useMediaAction(id, type, content) {
   const [createDraft, setCreateDraft] = useState(createEmptyCollectionDraft());
   const [pendingAction, setPendingAction] = useState(null);
 
+  const resolvedId = typeof id === 'string' && (id.startsWith('kartoons-') || id.startsWith('kartoons:')) ? id : (Number(id) || id);
+
   const toggleCollectionMutation = useMutation({
     mutationFn: async ({ targetCollection, payload, opposite, oppositeActive }) => {
       if (oppositeActive) {
         await apiFetch(`/api/user/collections/${opposite}/remove`, {
           method: 'POST',
-          body: JSON.stringify({ id: Number(id) })
+          body: JSON.stringify({ id: resolvedId })
         });
       }
       return apiFetch(`/api/user/collections/${encodeURIComponent(targetCollection)}/add`, {
@@ -78,7 +80,8 @@ export function useMediaAction(id, type, content) {
       const alreadySaved = targetCollection === 'Watched' ? status.watched : status.watchlist;
 
       const payload = {
-        [idKey]: Number(id),
+        [idKey]: resolvedId,
+        id: resolvedId,
         title: content?.title || content?.name,
         poster_path: content?.poster_path || '',
         release_date: content?.release_date || content?.first_air_date || '',
@@ -156,21 +159,22 @@ export function useMediaAction(id, type, content) {
         Array.isArray(collections) &&
         collections.some((c) => {
           if (c.name !== targetCollection.name) return false;
-          const numId = Number(id);
           return Array.isArray(c.movies) &&
-            c.movies.some((m) => m.movieId === numId || m.seriesId === numId);
+            c.movies.some((m) => String(m.movieId || m.seriesId || m.id || '') === String(resolvedId));
         });
 
       const payload = type === 'series'
         ? {
-            seriesId: Number(id),
+            seriesId: resolvedId,
+            id: resolvedId,
             title,
             poster_path: content.poster_path || '',
             release_date: content.first_air_date || '',
             media_type: 'Series'
           }
         : {
-            movieId: Number(id),
+            movieId: resolvedId,
+            id: resolvedId,
             title,
             poster_path: content.poster_path || '',
             release_date: content.release_date || '',

@@ -66,9 +66,19 @@ export function HomePage() {
         };
       });
 
-      const rawGenres = Array.isArray(genresData?.genres) && genresData.genres.length
+      const baseGenres = Array.isArray(genresData?.genres) && genresData.genres.length
         ? genresData.genres
         : (Array.isArray(homeData?.genres) ? homeData.genres : []);
+
+      const kartoonGenres = [
+        { id: 'kartoons-anime', name: 'Anime' },
+        { id: 'kartoons-cartoon', name: 'Cartoon' }
+      ];
+
+      const rawGenres = [
+        ...kartoonGenres,
+        ...baseGenres.filter(g => !['kartoons-anime', 'kartoons-cartoon'].includes(String(g?.id || g)))
+      ];
 
       return {
         trending,

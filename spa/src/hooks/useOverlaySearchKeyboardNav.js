@@ -68,7 +68,6 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
         
         if (closeBtn) {
           closeBtn.focus();
-          // Reset focusedIndex so cross2 doesn't stay lit up simultaneously
           setFocusedIndex(-6);
         }
       }
@@ -84,7 +83,11 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
             event.preventDefault();
             event.stopPropagation();
             clearBtnRef?.current?.focus();
+          } else {
+            event.stopPropagation();
           }
+        } else if (event.key === 'ArrowLeft') {
+          event.stopPropagation();
         } else if (event.key === 'ArrowUp') {
           event.preventDefault();
           event.stopPropagation();
@@ -93,42 +96,36 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
       }
 
       function handleFromClearButton(event) {
-        if (event.key === 'ArrowLeft') {
+        if (event.key.startsWith('Arrow')) {
           event.preventDefault();
           event.stopPropagation();
+        }
+        if (event.key === 'ArrowLeft') {
           overlayInputRef?.current?.focus();
         } else if (event.key === 'ArrowDown') {
-          event.preventDefault();
-          event.stopPropagation();
           tabButtonsRef.current[activeTabIdx]?.focus();
         } else if (event.key === 'ArrowUp') {
-          event.preventDefault();
-          event.stopPropagation();
           focusCloseButton();
         }
       }
 
       function handleFromTabs(event, index) {
-        const currentTabIdx = -index - 2;
-        if (event.key === 'ArrowRight') {
+        if (event.key.startsWith('Arrow')) {
           event.preventDefault();
           event.stopPropagation();
+        }
+        const currentTabIdx = -index - 2;
+        if (event.key === 'ArrowRight') {
           if (currentTabIdx < 2) {
             tabButtonsRef.current[currentTabIdx + 1]?.focus();
           }
         } else if (event.key === 'ArrowLeft') {
-          event.preventDefault();
-          event.stopPropagation();
           if (currentTabIdx > 0) {
             tabButtonsRef.current[currentTabIdx - 1]?.focus();
           }
         } else if (event.key === 'ArrowUp') {
-          event.preventDefault();
-          event.stopPropagation();
           overlayInputRef?.current?.focus();
         } else if (event.key === 'ArrowDown') {
-          event.preventDefault();
-          event.stopPropagation();
           if (resultsList.length > 0) {
             resultButtonsRef.current[0]?.focus();
             resultButtonsRef.current[0]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -137,9 +134,12 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
       }
 
       function handleFromResultsGrid(event, index) {
-        if (event.key === 'ArrowDown') {
+        if (event.key.startsWith('Arrow') || event.key === 'Enter') {
           event.preventDefault();
           event.stopPropagation();
+        }
+
+        if (event.key === 'ArrowDown') {
           const nextIndex = index + cols;
           if (nextIndex < resultsList.length) {
             resultButtonsRef.current[nextIndex]?.focus();
@@ -149,8 +149,6 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
             resultButtonsRef.current[lastIdx]?.focus();
           }
         } else if (event.key === 'ArrowUp') {
-          event.preventDefault();
-          event.stopPropagation();
           const prevIndex = index - cols;
           if (prevIndex < 0) {
             tabButtonsRef.current[activeTabIdx]?.focus();
@@ -158,17 +156,15 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
             resultButtonsRef.current[prevIndex]?.focus();
             resultButtonsRef.current[prevIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
           }
-        } else if (event.key === 'ArrowRight' && index < resultsList.length - 1) {
-          event.preventDefault();
-          event.stopPropagation();
-          resultButtonsRef.current[index + 1]?.focus();
-        } else if (event.key === 'ArrowLeft' && index > 0) {
-          event.preventDefault();
-          event.stopPropagation();
-          resultButtonsRef.current[index - 1]?.focus();
+        } else if (event.key === 'ArrowRight') {
+          if (index < resultsList.length - 1) {
+            resultButtonsRef.current[index + 1]?.focus();
+          }
+        } else if (event.key === 'ArrowLeft') {
+          if (index > 0) {
+            resultButtonsRef.current[index - 1]?.focus();
+          }
         } else if (event.key === 'Enter') {
-          event.preventDefault();
-          event.stopPropagation();
           openItemRef.current(resultsList[index]);
         }
       }

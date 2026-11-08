@@ -1734,6 +1734,120 @@ function mergeKartoonsIntoItems(existingItems, kartoonList) {
   return interleaved;
 }
 
+function mergeSeasonEpisodesWithKartoons(tmdbEpisodes, kartoonEpisodes, kartoonSlug, seasonNumber) {
+  if (!Array.isArray(kartoonEpisodes) || !kartoonEpisodes.length) {
+    return tmdbEpisodes;
+  }
+
+  const matchedKartoonIds = new Set();
+  const mergedEpisodes = [];
+
+  const normTitle = (s = '') =>
+    String(s || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\b(the|a|an)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  // Step 1: For each TMDB episode, find matching Kartoons episode by Title or Episode Number
+  for (let i = 0; i < tmdbEpisodes.length; i++) {
+    const tmdbEp = { ...tmdbEpisodes[i] };
+    const tmdbNorm = normTitle(tmdbEp.name);
+    const tmdbNum = Number(tmdbEp.episode_number);
+
+    let kMatch = null;
+
+    // A. Priority 1: Match by Episode Title
+    if (tmdbNorm.length >= 3 && !/^episode\s*\d+$/i.test(tmdbNorm)) {
+      kMatch = kartoonEpisodes.find((k) => {
+        if (matchedKartoonIds.has(k._id)) return false;
+        const kNorm = normTitle(k.title);
+        if (!kNorm) return false;
+        return kNorm === tmdbNorm || kNorm.includes(tmdbNorm) || tmdbNorm.includes(kNorm);
+      });
+    }
+
+    // B. Priority 2: Match by Episode Number
+    if (!kMatch) {
+      kMatch = kartoonEpisodes.find((k) => {
+        if (matchedKartoonIds.has(k._id)) return false;
+        return Number(k.episodeNumber) === tmdbNum;
+      });
+    }
+
+    if (kMatch) {
+      matchedKartoonIds.add(kMatch._id);
+      tmdbEp.kartoons_episode_id = kMatch._id;
+      tmdbEp.kartoons_slug = kartoonSlug;
+      tmdbEp.has_kartoons = true;
+      tmdbEp.kartoons_title = kMatch.title;
+      if (!tmdbEp.still_path && (kMatch.thumbnail || kMatch.image)) {
+        tmdbEp.still_path = kMatch.thumbnail || kMatch.image;
+      }
+    }
+
+    mergedEpisodes.push(tmdbEp);
+  }
+
+  // Step 2: Handle any extra Kartoons episodes that were not matched (insert as .1, .2, etc.)
+  const unmatchedKartoonEps = kartoonEpisodes.filter((k) => !matchedKartoonIds.has(k._id));
+
+  for (const kEp of unmatchedKartoonEps) {
+    const kNum = Number(kEp.episodeNumber) || 1;
+    let insertAfterIdx = -1;
+    let baseEpNum = 1;
+
+    for (let j = 0; j < mergedEpisodes.length; j++) {
+      const epNum = parseFloat(mergedEpisodes[j].episode_number) || 0;
+      if (epNum <= kNum) {
+        insertAfterIdx = j;
+        baseEpNum = Math.floor(epNum);
+      } else {
+        break;
+      }
+    }
+
+    if (insertAfterIdx === -1) {
+      insertAfterIdx = 0;
+      baseEpNum = 0;
+    }
+
+    let extraCount = 1;
+    for (let j = 0; j < mergedEpisodes.length; j++) {
+      const epStr = String(mergedEpisodes[j].episode_number || '');
+      if (epStr.startsWith(`${baseEpNum}.`)) {
+        extraCount++;
+      }
+    }
+
+    const decimalNumber = `${baseEpNum}.${extraCount}`;
+
+    const extraItem = {
+      id: `kartoons-${kEp._id}`,
+      episode_number: decimalNumber,
+      display_episode_number: decimalNumber,
+      season_number: seasonNumber,
+      name: kEp.title || `Episode ${decimalNumber}`,
+      overview: kEp.description || '',
+      still_path: kEp.thumbnail || kEp.image || '',
+      air_date: kEp.airDate || '',
+      runtime: null,
+      vote_average: Number(kEp.rating) || 0,
+      kartoons_episode_id: kEp._id,
+      kartoons_slug: kartoonSlug,
+      has_kartoons: true,
+      is_kartoons_extra: true
+    };
+
+    mergedEpisodes.splice(insertAfterIdx + 1, 0, extraItem);
+  }
+
+  return mergedEpisodes;
+}
+
 async function refreshCategoryCache(genre, year, page, limit, adminMode) {
   try {
     const opts = { method: 'GET', headers: tmdbHeaders() };
@@ -2156,25 +2270,66 @@ router.get('/movies', async (req, res) => {
     }
 
     if (search) {
+      const yearMatch = String(search).match(/\b(19\d{2}|20\d{2})\b/);
+      const year_query = yearMatch ? yearMatch[1] : null;
+      const altered_query = year_query ? String(search).replace(year_query, '').replace(/\s+/g, ' ').trim() : '';
+      const hasYear = Boolean(year_query && altered_query.length >= 2);
+
       const adultFilter = adminMode !== 0 ? '&include_adult=true' : '&include_adult=false';
       const movieUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(search)}${adultFilter}&language=en-US&page=${page}`;
       const tvUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(search)}${adultFilter}&language=en-US&page=${page}`;
-      
-      const [movieResp, tvResp] = await Promise.all([
+
+      const requests = [
         tmdbFetch(movieUrl, opts, `Search Movie "${search}"`).catch(() => null),
         tmdbFetch(tvUrl, opts, `Search TV "${search}"`).catch(() => null)
-      ]);
-      
-      if (!movieResp?.ok && !tvResp?.ok) return res.status(500).json({ error: 'Failed to search' });
-      
+      ];
+
+      // Dual approach: also search split title + year
+      if (hasYear && page === 1) {
+        const splitMovieUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(altered_query)}&primary_release_year=${year_query}${adultFilter}&language=en-US&page=1`;
+        const splitTvUrl = `https://api.themoviedb.org/3/search/tv?query=${encodeURIComponent(altered_query)}&first_air_date_year=${year_query}${adultFilter}&language=en-US&page=1`;
+        requests.push(
+          tmdbFetch(splitMovieUrl, opts, `Search Movie "${altered_query}" (${year_query})`).catch(() => null),
+          tmdbFetch(splitTvUrl, opts, `Search TV "${altered_query}" (${year_query})`).catch(() => null)
+        );
+      }
+
+      const responses = await Promise.all(requests);
+      const movieResp = responses[0];
+      const tvResp = responses[1];
+      const splitMovieResp = responses[2] || null;
+      const splitTvResp = responses[3] || null;
+
+      if (!movieResp?.ok && !tvResp?.ok && !splitMovieResp?.ok && !splitTvResp?.ok) {
+        return res.status(500).json({ error: 'Failed to search' });
+      }
+
       const movieData = movieResp?.ok ? await movieResp.json() : null;
       const tvData = tvResp?.ok ? await tvResp.json() : null;
-      
-      let movies = movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [];
-      let tvShows = tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : [];
-      
-      const all = [...movies, ...tvShows].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-      finalItems = await attachCachedRatings(finalItems);
+      const splitMovieData = splitMovieResp?.ok ? await splitMovieResp.json() : null;
+      const splitTvData = splitTvResp?.ok ? await splitTvResp.json() : null;
+
+      const rawMovies = [
+        ...(movieData?.results ? movieData.results.map(i => ({ ...i, media_type: 'Movie' })) : []),
+        ...(splitMovieData?.results ? splitMovieData.results.map(i => ({ ...i, media_type: 'Movie' })) : [])
+      ];
+      const rawTv = [
+        ...(tvData?.results ? tvData.results.map(i => ({ ...i, media_type: 'Series' })) : []),
+        ...(splitTvData?.results ? splitTvData.results.map(i => ({ ...i, media_type: 'Series' })) : [])
+      ];
+
+      const seen = new Set();
+      const deduped = [];
+      for (const item of [...rawMovies, ...rawTv]) {
+        const key = `${item.media_type || 'Movie'}:${item.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(item);
+        }
+      }
+
+      const all = deduped.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+      let finalItems = await attachCachedRatings(all);
 
       const isKids = String(genre) === '10762' || String(genre).toLowerCase() === 'kids';
       const isAnimation = String(genre) === '16' || String(genre).toLowerCase() === 'animation';
@@ -2186,7 +2341,7 @@ router.get('/movies', async (req, res) => {
 
       const totalResults = (movieData?.total_results || 0) + (tvData?.total_results || 0);
       const totalPages = Math.max(movieData?.total_pages || 1, tvData?.total_pages || 1);
-      
+
       return res.json({ movies: finalItems, pagination: { page, limit, total: totalResults, pages: totalPages } });
     }
 
@@ -2675,6 +2830,98 @@ router.get('/series/:id/season/:seasonNumber', async (req, res) => {
     }
 
     const season = await resp.json();
+    let episodes = Array.isArray(season.episodes)
+      ? season.episodes.map((episode) => ({
+          id: episode.id,
+          episode_number: episode.episode_number,
+          season_number: episode.season_number,
+          name: episode.name,
+          overview: episode.overview || '',
+          still_path: episode.still_path,
+          air_date: episode.air_date,
+          runtime: episode.runtime || null,
+          vote_average: episode.vote_average || 0
+        }))
+      : [];
+
+    // Check if series title was provided in query or fetch TV info to lookup Kartoons match
+    let seriesTitle = String(req.query.title || '').trim();
+    let seriesYear = Number(req.query.year) || null;
+
+    if (!seriesTitle) {
+      try {
+        const tvResp = await tmdbFetch(
+          `https://api.themoviedb.org/3/tv/${id}?language=en-US`,
+          { method: 'GET', headers: tmdbHeaders() },
+          `TV Series ${id} Quick Info`
+        ).catch(() => null);
+        if (tvResp?.ok) {
+          const tvData = await tvResp.json().catch(() => null);
+          seriesTitle = tvData?.name || tvData?.title || tvData?.original_name || '';
+          seriesYear = tvData?.first_air_date ? Number(tvData.first_air_date.slice(0, 4)) : null;
+        }
+      } catch (err) {}
+    }
+
+    if (seriesTitle) {
+      try {
+        const cleanTitle = seriesTitle
+          .replace(/\s*S\d+E\d+.*$/i, '')
+          .replace(/\s*Season\s*\d+.*$/i, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        const searchRes = await fetch(`https://api.kartoons.me/api/shows?search=${encodeURIComponent(cleanTitle)}`, {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(5000)
+        }).catch(() => null);
+
+        if (searchRes?.ok) {
+          const searchJson = await searchRes.json().catch(() => null);
+          const candidates = Array.isArray(searchJson) ? searchJson : (searchJson?.data || []);
+          const match = candidates.find((c) => areTitlesPairable(cleanTitle, c.title, seriesYear, c.startYear || c.releaseYear));
+
+          if (match?.slug) {
+            let kEpRes = await fetch(`https://api.kartoons.me/api/shows/${encodeURIComponent(match.slug)}/season/season-${seasonNumber}/all-episodes`, {
+              headers: { Accept: 'application/json' },
+              signal: AbortSignal.timeout(6000)
+            }).catch(() => null);
+
+            let kEpData = kEpRes?.ok ? await kEpRes.json().catch(() => null) : null;
+            let rawEps = Array.isArray(kEpData) ? kEpData : (kEpData?.data || kEpData?.episodes || []);
+
+            if (!rawEps.length) {
+              const showDetailRes = await fetch(`https://api.kartoons.me/api/shows/${encodeURIComponent(match.slug)}`, {
+                headers: { Accept: 'application/json' },
+                signal: AbortSignal.timeout(5000)
+              }).catch(() => null);
+              if (showDetailRes?.ok) {
+                const sDetail = await showDetailRes.json().catch(() => null);
+                const sData = sDetail?.data || sDetail;
+                const seasons = Array.isArray(sData?.seasons) ? sData.seasons : [];
+                const targetS = seasons.find((s) => Number(s.seasonNumber) === seasonNumber) || seasons.find((s) => Number(s.episodeCount || 0) > 0);
+                if (targetS) {
+                  const sNum = Number(targetS.seasonNumber) || 1;
+                  kEpRes = await fetch(`https://api.kartoons.me/api/shows/${encodeURIComponent(match.slug)}/season/season-${sNum}/all-episodes`, {
+                    headers: { Accept: 'application/json' },
+                    signal: AbortSignal.timeout(6000)
+                  }).catch(() => null);
+                  kEpData = kEpRes?.ok ? await kEpRes.json().catch(() => null) : null;
+                  rawEps = Array.isArray(kEpData) ? kEpData : (kEpData?.data || kEpData?.episodes || []);
+                }
+              }
+            }
+
+            if (rawEps.length > 0) {
+              episodes = mergeSeasonEpisodesWithKartoons(episodes, rawEps, match.slug, seasonNumber);
+            }
+          }
+        }
+      } catch (kErr) {
+        console.warn(`[API] Kartoons season merge failed for series ${id}:`, kErr.message);
+      }
+    }
+
     res.json({
       id: season.id,
       season_number: season.season_number,
@@ -2682,19 +2929,7 @@ router.get('/series/:id/season/:seasonNumber', async (req, res) => {
       overview: season.overview || '',
       poster_path: season.poster_path,
       air_date: season.air_date,
-      episodes: Array.isArray(season.episodes)
-        ? season.episodes.map((episode) => ({
-            id: episode.id,
-            episode_number: episode.episode_number,
-            season_number: episode.season_number,
-            name: episode.name,
-            overview: episode.overview || '',
-            still_path: episode.still_path,
-            air_date: episode.air_date,
-            runtime: episode.runtime || null,
-            vote_average: episode.vote_average || 0
-          }))
-        : []
+      episodes
     });
   } catch (err) {
     console.error('Error fetching series season:', err);
@@ -4173,7 +4408,8 @@ router.get('/search', async (req, res) => {
       const fetchPage = async (tmdbType, query, page, year = null, batchNum = 1) => {
         if (clientClosed) return;
         const shouldIncludeAdult = tmdbType === 'person' ? true : (adminMode !== 0);
-        const url = `https://api.themoviedb.org/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${shouldIncludeAdult ? 'true' : 'false'}&language=en-US&page=${page}${year ? `&year=${year}` : ''}`;
+        const yearParam = year ? (tmdbType === 'tv' ? `&first_air_date_year=${year}` : `&primary_release_year=${year}`) : '';
+        const url = `https://api.themoviedb.org/3/search/${tmdbType}?query=${encodeURIComponent(query)}&include_adult=${shouldIncludeAdult ? 'true' : 'false'}&language=en-US&page=${page}${yearParam}`;
         try {
           const response = await tmdbFetch(url, { headers }, `TMDB stream ${tmdbType} "${query}" p${page}`);
           const data = response.ok ? await response.json() : { results: [] };
@@ -4240,7 +4476,8 @@ router.get('/search', async (req, res) => {
     const queuePages = (type, query, startPage, endPage, year = null) => {
       for (let page = startPage; page <= endPage; page++) {
         const shouldIncludeAdult = type === 'person' ? true : (adminMode !== 0);
-        const url = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(query)}&include_adult=${shouldIncludeAdult ? 'true' : 'false'}&language=en-US&page=${page}${year ? `&year=${year}` : ''}`;
+        const yearParam = year ? (type === 'tv' ? `&first_air_date_year=${year}` : `&primary_release_year=${year}`) : '';
+        const url = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(query)}&include_adult=${shouldIncludeAdult ? 'true' : 'false'}&language=en-US&page=${page}${yearParam}`;
         promises.push(
           tmdbFetch(url, { headers }, `TMDB ${type} "${query}" p${page}`)
             .then(r => r.ok ? r.json() : { results: [] })

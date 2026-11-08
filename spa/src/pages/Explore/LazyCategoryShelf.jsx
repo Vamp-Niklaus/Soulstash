@@ -14,7 +14,71 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
 
   const { data: fetchedMovies, isLoading } = useQuery({
     queryKey: ['moviesByGenre', genreId],
-    queryFn: () => apiFetch(`/api/movies?genre=${genreId}&limit=20`),
+    queryFn: async () => {
+      const gLower = String(genreId).toLowerCase();
+      if (gLower === 'anime' || gLower === 'kartoons-anime') {
+        const res = await fetch(`https://api.kartoons.me/api/shows?page=1&category=Anime`);
+        const json = await res.json().catch(() => ({}));
+        const raw = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
+        return raw.map((item) => ({
+          id: `kartoons-${item.slug}`,
+          title: item.title,
+          name: item.title,
+          poster_path: item.image || item.coverImage || '',
+          backdrop_path: item.coverImage || item.image || '',
+          media_type: 'Series',
+          release_date: item.startYear ? `${item.startYear}-01-01` : '',
+          first_air_date: item.startYear ? `${item.startYear}-01-01` : '',
+          vote_average: Number(item.rating) || 0,
+          source: 'kartoons',
+          is_kartoons: true,
+          kartoons_slug: item.slug
+        }));
+      }
+      if (gLower === 'cartoon' || gLower === 'kartoons-cartoon') {
+        const [showsRes, moviesRes] = await Promise.all([
+          fetch(`https://api.kartoons.me/api/shows?page=1&category=Cartoon`).catch(() => null),
+          fetch(`https://api.kartoons.me/api/movies?page=1&category=Cartoon`).catch(() => null)
+        ]);
+        const sJson = showsRes?.ok ? await showsRes.json().catch(() => ({})) : {};
+        const mJson = moviesRes?.ok ? await moviesRes.json().catch(() => ({})) : {};
+        const sRaw = Array.isArray(sJson?.data) ? sJson.data : (Array.isArray(sJson) ? sJson : []);
+        const mRaw = Array.isArray(mJson?.data) ? mJson.data : (Array.isArray(mJson) ? mJson : []);
+
+        const mappedShows = sRaw.map((item) => ({
+          id: `kartoons-${item.slug}`,
+          title: item.title,
+          name: item.title,
+          poster_path: item.image || item.coverImage || '',
+          backdrop_path: item.coverImage || item.image || '',
+          media_type: 'Series',
+          release_date: item.startYear ? `${item.startYear}-01-01` : '',
+          first_air_date: item.startYear ? `${item.startYear}-01-01` : '',
+          vote_average: Number(item.rating) || 0,
+          source: 'kartoons',
+          is_kartoons: true,
+          kartoons_slug: item.slug
+        }));
+
+        const mappedMovies = mRaw.map((item) => ({
+          id: `kartoons-${item.slug}`,
+          title: item.title,
+          name: item.title,
+          poster_path: item.image || item.coverImage || '',
+          backdrop_path: item.coverImage || item.image || '',
+          media_type: 'Movie',
+          release_date: item.releaseYear ? `${item.releaseYear}-01-01` : '',
+          first_air_date: '',
+          vote_average: Number(item.rating) || 0,
+          source: 'kartoons',
+          is_kartoons: true,
+          kartoons_slug: item.slug
+        }));
+
+        return [...mappedShows, ...mappedMovies];
+      }
+      return apiFetch(`/api/movies?genre=${genreId}&limit=20`);
+    },
     enabled: !preloadedMovies || preloadedMovies.length === 0,
     staleTime: 1000 * 60 * 30, // 30 minutes
   });
