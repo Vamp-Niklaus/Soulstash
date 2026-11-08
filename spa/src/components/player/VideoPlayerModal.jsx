@@ -67,6 +67,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const iframeRef = useRef(null);
   const directVideoRef = useRef(null);
   const hlsInstanceRef = useRef(null);
+  const hlsErrorHandlerRef = useRef(null);
   const scrollContainerRef = useRef(null);
   
   const playerBoxRef = useRef(null);
@@ -792,6 +793,10 @@ export function VideoPlayerModal({ request, onClose }) {
     }
   }, [displayedSources, failedUrls]);
 
+  useEffect(() => {
+    hlsErrorHandlerRef.current = handleIframeError;
+  }, [handleIframeError]);
+
   const isKartoonSource = (s) => {
     if (!s) return false;
     const lowerKey = String(s.key || s.id || '').toLowerCase();
@@ -885,6 +890,8 @@ export function VideoPlayerModal({ request, onClose }) {
   // HLS stream playback handler for .m3u8 direct streams
   useEffect(() => {
     if (!canUseVideoJs || !activeUrl) return;
+    let disposed = false;
+    let localHls = null;
     const isHls = /\.m3u8(\?|$)/i.test(activeUrl);
     const video = directVideoRef.current;
     if (!video) return;
@@ -897,6 +904,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
     if (isHls) {
       ensureHlsJs().then((Hls) => {
+        if (disposed || directVideoRef.current !== video) return;
         if (!Hls || !Hls.isSupported()) {
           video.src = activeUrl;
           video.load();
@@ -921,18 +929,19 @@ export function VideoPlayerModal({ request, onClose }) {
           maxBufferHole: 0.5,
           nudgeOffset: 0.2
         });
+        localHls = hls;
         hlsInstanceRef.current = hls;
         hls.loadSource(activeUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
+          setVerifiedUrls((prev) => prev.has(activeUrl) ? prev : new Set(prev).add(activeUrl));
           video.play().catch(() => {});
         });
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (!data?.fatal) return;
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); return; }
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch {} return; }
-          handleIframeError(activeUrl);
+          hlsErrorHandlerRef.current?.(activeUrl);
         });
       });
     } else {
@@ -942,12 +951,13 @@ export function VideoPlayerModal({ request, onClose }) {
     }
 
     return () => {
-      if (hlsInstanceRef.current) {
-        try { hlsInstanceRef.current.destroy(); } catch {}
-        hlsInstanceRef.current = null;
+      disposed = true;
+      if (localHls) {
+        try { localHls.destroy(); } catch {}
+        if (hlsInstanceRef.current === localHls) hlsInstanceRef.current = null;
       }
     };
-  }, [activeUrl, canUseVideoJs, handleIframeError]);
+  }, [activeUrl, canUseVideoJs]);
 
   useEffect(() => {
     return () => {
