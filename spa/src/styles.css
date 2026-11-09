@@ -969,6 +969,12 @@ button:focus-visible .search-hover-marquee.is-overflowing .search-hover-marquee_
   }
 }
 
+iframe[data-player-frame]:focus,
+iframe[data-player-frame]:focus-visible {
+  outline: 3px solid #fff !important;
+  outline-offset: -3px !important;
+}
+
 
 body {
     transition: background 0.3s ease-in-out;

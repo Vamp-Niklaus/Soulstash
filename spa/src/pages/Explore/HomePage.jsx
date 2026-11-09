@@ -144,7 +144,7 @@ export function HomePage() {
         {!loading && !error ? (
           <div className={HOME_GRID_CLASS}>
             {trending.slice(0, homeShelfLimit).map((item, index) => (
-              <ContentCard key={item.id} item={item} ref={index === 0 ? firstCardRef : null} data-card />
+              <ContentCard key={`trending-${item.id}-${index}`} item={item} ref={index === 0 ? firstCardRef : null} data-card />
             ))}
           </div>
         ) : null}
@@ -154,8 +154,8 @@ export function HomePage() {
         <section className="content-section">
           <HomeShelfHeader title="Popular" onViewAll={() => navigate('/popular')} />
           <div className={HOME_GRID_CLASS}>
-            {popular.slice(0, homeShelfLimit).map((item) => (
-              <ContentCard key={`pop-${item.media_type || 'Movie'}-${item.id}`} item={item} data-card />
+            {popular.slice(0, homeShelfLimit).map((item, index) => (
+              <ContentCard key={`pop-${item.media_type || 'Movie'}-${item.id}-${index}`} item={item} data-card />
             ))}
           </div>
         </section>

@@ -106,8 +106,8 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
         onViewAll={() => navigate(`/genre/${genreId}/${encodeURIComponent(String(title))}`)}
       />
       <div className={HOME_GRID_CLASS}>
-        {movies.slice(0, displayLimit).map((item) => (
-          <ContentCard key={item.id} item={item} data-card />
+        {movies.slice(0, displayLimit).map((item, index) => (
+          <ContentCard key={`genre-${genreId}-${item.id}-${index}`} item={item} data-card />
         ))}
       </div>
     </section>

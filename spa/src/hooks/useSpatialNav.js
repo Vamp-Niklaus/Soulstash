@@ -92,6 +92,13 @@ function focusSourceInDirection(playerModal, activeSource, direction) {
     applyFocus(sources[0].button);
     return true;
   }
+  if (direction === 'down') {
+    const hide = playerModal.querySelector('[data-player-hide-sources="true"], button[aria-label="Hide sources"]');
+    if (hide && isVisible(hide)) {
+      applyFocus(hide);
+      return true;
+    }
+  }
   return focusPlaybackSurface(playerModal, `source-${direction}-edge`);
 }
 
@@ -122,6 +129,12 @@ if (typeof window !== 'undefined') {
   ['mousedown', 'touchstart', 'pointermove'].forEach(ev =>
     window.addEventListener(ev, hideRingImmediately, { passive: true, capture: true })
   );
+  document.addEventListener('focusin', e => console.info('[focusin]', e.target.tagName, e.target.getAttribute?.('aria-label') || e.target.className || ''), true);
+  window.addEventListener('blur', () => console.info('[window blur] activeElement =', document.activeElement?.tagName));
+  document.addEventListener('fullscreenchange', () =>
+    console.info('[fs]', performance.now() | 0, document.fullscreenElement?.tagName || 'exited'));
+  document.addEventListener('keydown', e =>
+    console.info('[key]', performance.now() | 0, e.key), true);
 }
 
 export function focusNavbar() {
@@ -160,8 +173,14 @@ function handleKeyDown(e) {
       const backEvent = new CustomEvent('soulstash:player-back', { cancelable: true });
       window.dispatchEvent(backEvent);
       if (!backEvent.defaultPrevented) {
-        if (active?.tagName === 'IFRAME' || active?.tagName === 'VIDEO') {
-          applyFocus(playerModal.querySelector('[data-player-size="true"]') || getPreferredModalFocus(playerModal));
+        const mode = playerModal.getAttribute('data-player-mode');
+        const sizeBtn = playerModal.querySelector('[data-player-size="true"]');
+        const isSize = active && (active === sizeBtn || active.hasAttribute('data-player-size'));
+
+        if (mode === '3') {
+          if (sizeBtn && isVisible(sizeBtn)) applyFocus(sizeBtn);
+        } else if (!isSize) {
+          if (sizeBtn && isVisible(sizeBtn)) applyFocus(sizeBtn);
         } else {
           playerModal.querySelector('button[aria-label="Close player"]')?.click();
         }
@@ -170,6 +189,9 @@ function handleKeyDown(e) {
     }
 
     if (active && active.tagName === 'IFRAME') {
+      if (ACTIVATE.has(key)) {
+        window.dispatchEvent(new CustomEvent('soulstash:player-iframe-activate', { detail: { target: active } }));
+      }
       // Let the provider's cross-origin player own its D-pad/keyboard input.
       return;
     }
@@ -252,22 +274,15 @@ function handleKeyDown(e) {
       return;
     }
 
+    // 5. Down from top controls bar
     if (key === 'ArrowDown' && active.closest('[data-player-controls]')) {
-      if (active.matches('[data-player-size="true"]')) {
-        const sourceToggle = playerModal.querySelector('[data-player-source-toggle="true"]');
-        if (sourceToggle && isVisible(sourceToggle)) {
-          showRing();
-          applyFocus(sourceToggle);
-        }
-      } else if (active.matches('[data-player-source-toggle="true"]') && active.getAttribute('aria-expanded') === 'true') {
-        const selected = playerModal.querySelector('button[data-active-source="true"]:not(:disabled)') ||
-          playerModal.querySelector('button[data-player-source="true"]:not(:disabled)');
-        if (selected && isVisible(selected)) {
-          showRing();
-          applyFocus(selected);
-        } else {
-          focusPlaybackSurface(playerModal, 'source-toggle-down-empty');
-        }
+      const panelOpen = playerModal.querySelector('[data-player-sources-panel]');
+      const firstSource = panelOpen &&
+        (playerModal.querySelector('button[data-active-source="true"]:not(:disabled)') ||
+         playerModal.querySelector('button[data-player-source="true"]:not(:disabled)'));
+      if (firstSource && isVisible(firstSource)) {
+        showRing();
+        applyFocus(firstSource);
       } else {
         focusPlaybackSurface(playerModal, 'toolbar-down');
       }
@@ -308,6 +323,16 @@ function handleKeyDown(e) {
       showRing();
       focusSourceInDirection(playerModal, active, 'up');
       return;
+    }
+
+    if (active.matches?.('[data-player-hide-sources="true"]') && key === 'ArrowUp') {
+      showRing();
+      const lastSource = playerModal.querySelector('button[data-active-source="true"]:not(:disabled)') ||
+        Array.from(playerModal.querySelectorAll('button[data-player-source="true"]:not(:disabled)')).pop();
+      if (lastSource && isVisible(lastSource)) {
+        applyFocus(lastSource);
+        return;
+      }
     }
 
     if (active.closest('[data-player-controls]') && key === 'ArrowUp') {

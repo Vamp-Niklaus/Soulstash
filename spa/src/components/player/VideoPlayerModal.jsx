@@ -2,7 +2,7 @@ import { setNativeScale } from '../../utils/formatters.js';
 import { useCallback, useMemo } from 'react';
 import { SESSION_SCRAPED } from '../../utils/constants.js';
 import { isDirectMediaUrl } from '../../utils/formatters.js';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -18,6 +18,27 @@ import {
 } from '../../api/kartoons.js';
 import { findKartoonsMatch } from '../../utils/kartoonsSearch.js';
 import { useAppLayoutMode } from '../../hooks/useAppLayoutMode.js';
+
+// Native tap plugin for Android TV cross-origin iframe focus
+const NativeTap = registerPlugin('NativeTap');
+
+async function nativeTapCenter(el) {
+  if (!Capacitor.isNativePlatform() || !el) return;
+  const r = el.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  try {
+    await NativeTap.tap({
+      x: (r.left + r.width / 2) * dpr,
+      y: (r.top + r.height / 2) * dpr,
+    });
+    console.info('[NativeTap] tapped center of iframe', {
+      x: (r.left + r.width / 2) * dpr,
+      y: (r.top + r.height / 2) * dpr,
+    });
+  } catch (err) {
+    console.warn('[NativeTap] tap failed', err);
+  }
+}
 
 // Assume PlayerErrorBoundary is imported
 import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
@@ -171,7 +192,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const focusSizeControl = useCallback(() => {
     window.requestAnimationFrame(() => {
-      const target = fullscreenButtonRef.current;
+      const target = fullscreenButtonRef.current || playerBoxRef.current?.querySelector('button[data-player-size="true"]');
       if (!target?.isConnected) {
         console.warn('[Soulstash Player Focus] size control unavailable');
         return;
@@ -183,44 +204,12 @@ export function VideoPlayerModal({ request, onClose }) {
     });
   }, []);
 
-  const returnToDefaultPlayerMode = useCallback(() => {
-    let exitPromise = null;
-    try {
-      const exit = document.exitFullscreen || document.webkitExitFullscreen;
-      if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
-        exitPromise = Promise.resolve(exit.call(document)).catch(() => {});
-      }
-    } catch (_) {}
-
-    setSourcesExpanded(false);
-    updatePlayerDisplayMode(1);
-    setTvControlsVisible(true);
-    if (tvHideTimerRef.current) clearTimeout(tvHideTimerRef.current);
-    if (isTv) {
-      tvHideTimerRef.current = setTimeout(() => setTvControlsVisible(false), 4000);
-    }
-    if (exitPromise) exitPromise.then(focusSizeControl);
-    window.setTimeout(focusSizeControl, 250);
-  }, [focusSizeControl, isTv, updatePlayerDisplayMode]);
-
-  const handlePlayerBackEvent = useCallback((event) => {
-    const playbackHasFocus = document.activeElement === iframeRef.current ||
-      document.activeElement === directVideoRef.current;
-    if (playerDisplayModeRef.current < 2 && !playbackHasFocus &&
-        !document.fullscreenElement && !document.webkitFullscreenElement) return;
-
-    event.preventDefault();
-    returnToDefaultPlayerMode();
-  }, [returnToDefaultPlayerMode]);
-
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
-    window.addEventListener('soulstash:player-back', handlePlayerBackEvent);
-    window.addEventListener('soulstash:native-back', handlePlayerBackEvent);
-    return () => {
-      window.removeEventListener('soulstash:player-back', handlePlayerBackEvent);
-      window.removeEventListener('soulstash:native-back', handlePlayerBackEvent);
-    };
-  }, [handlePlayerBackEvent]);
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  const isClosingRef = useRef(false);
 
   const wakeTvControls = useCallback(() => {
     setTvControlsVisible(true);
@@ -231,6 +220,129 @@ export function VideoPlayerModal({ request, onClose }) {
       }, 4000);
     }
   }, [isTv]);
+
+  const handleCloseClick = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      }
+    } catch (e) {}
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
+        if (rot === 'portrait') {
+          ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
+        } else if (rot === 'landscape') {
+          ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
+        }
+      } catch (e) {}
+    }
+
+    if (window.history.state?.playerOpen) {
+      try {
+        window.history.back();
+      } catch (e) {}
+    }
+    if (onCloseRef.current) {
+      onCloseRef.current();
+    }
+    window.requestAnimationFrame(() => {
+      if (openerRef.current?.isConnected) openerRef.current.focus({ preventScroll: true });
+    });
+  }, []);
+
+  const prevDisplayModeRef = useRef(playerDisplayMode);
+  useEffect(() => {
+    if ((playerDisplayMode === 1 || playerDisplayMode === 2) && prevDisplayModeRef.current === 3) {
+      console.info(`[Soulstash Player Focus] Entered mode ${playerDisplayMode} from mode 3, focusing Size control`);
+      focusSizeControl();
+    } else if (playerDisplayMode === 1 && prevDisplayModeRef.current > 1) {
+      console.info('[Soulstash Player Focus] Entered mode 1 from higher mode, focusing Size control');
+      focusSizeControl();
+    }
+    prevDisplayModeRef.current = playerDisplayMode;
+  }, [playerDisplayMode, focusSizeControl]);
+
+  useEffect(() => {
+    const handleIframeActivate = (e) => {
+      const frame = e.detail?.target || iframeRef.current;
+      if (frame && Capacitor.isNativePlatform()) {
+        console.info('[Soulstash Player] OK/Enter on iframe boundary -> calling nativeTapCenter');
+        nativeTapCenter(frame);
+      }
+    };
+    window.addEventListener('soulstash:player-iframe-activate', handleIframeActivate);
+    return () => window.removeEventListener('soulstash:player-iframe-activate', handleIframeActivate);
+  }, []);
+
+  const returnToDefaultPlayerMode = useCallback(() => {
+    try {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+        Promise.resolve(exit.call(document)).catch(() => {});
+      }
+    } catch (_) {}
+
+    setSourcesExpanded(false);
+    updatePlayerDisplayMode(1);
+    setTvControlsVisible(true);
+    if (tvHideTimerRef.current) clearTimeout(tvHideTimerRef.current);
+    if (isTv) {
+      tvHideTimerRef.current = setTimeout(() => setTvControlsVisible(false), 4000);
+    }
+  }, [isTv, updatePlayerDisplayMode]);
+
+  const handlePlayerBackEvent = useCallback((event) => {
+    event?.preventDefault?.();
+    const mode = playerDisplayModeRef.current;
+    const isSizeFocused = document.activeElement === fullscreenButtonRef.current ||
+      Boolean(document.activeElement?.hasAttribute?.('data-player-size'));
+
+    if (mode === 3) {
+      try {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+          Promise.resolve(exit.call(document)).catch(() => {});
+        }
+      } catch (_) {}
+
+      setSourcesExpanded(false);
+      updatePlayerDisplayMode(2);
+      setTvControlsVisible(true);
+      wakeTvControls();
+      console.info('[Soulstash Player Focus] Back in mode 3 -> switched to mode 2 and focusing Size');
+      focusSizeControl();
+      return;
+    }
+
+    // Mode 2 or Mode 1
+    if (!isSizeFocused) {
+      setSourcesExpanded(false);
+      setTvControlsVisible(true);
+      wakeTvControls();
+      console.info(`[Soulstash Player Focus] Back in mode ${mode} (focus was on ${document.activeElement?.tagName || 'none'}) -> focusing Size`);
+      focusSizeControl();
+      return;
+    }
+
+    // Mode 2 or Mode 1 and focus is ALREADY on Size button: close player
+    console.info(`[Soulstash Player Focus] Back on Size button in mode ${mode} -> closing player`);
+    handleCloseClick();
+  }, [focusSizeControl, handleCloseClick, updatePlayerDisplayMode, wakeTvControls]);
+
+  useEffect(() => {
+    window.addEventListener('soulstash:player-back', handlePlayerBackEvent);
+    window.addEventListener('soulstash:native-back', handlePlayerBackEvent);
+    return () => {
+      window.removeEventListener('soulstash:player-back', handlePlayerBackEvent);
+      window.removeEventListener('soulstash:native-back', handlePlayerBackEvent);
+    };
+  }, [handlePlayerBackEvent]);
 
   useEffect(() => {
     if (!isTv) return;
@@ -311,9 +423,9 @@ export function VideoPlayerModal({ request, onClose }) {
         updatePlayerDisplayMode(2);
       } else if (!fullscreenElement && playerDisplayModeRef.current === 3) {
         setSourcesExpanded(false);
-        updatePlayerDisplayMode(1);
-        console.info('[Soulstash Player Focus] fullscreen exited; returning to mode 1');
-        if (isTv) window.setTimeout(focusSizeControl, 40);
+        updatePlayerDisplayMode(2);
+        console.info('[Soulstash Player Focus] fullscreen exited; returning to mode 2 and focusing Size');
+        focusSizeControl();
       }
     };
     document.addEventListener('fullscreenchange', handleFs);
@@ -755,48 +867,6 @@ export function VideoPlayerModal({ request, onClose }) {
     };
   }, []);
 
-  const onCloseRef = useRef(onClose);
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  const isClosingRef = useRef(false);
-
-  const handleCloseClick = useCallback(() => {
-    if (isClosingRef.current) return;
-    isClosingRef.current = true;
-
-    try {
-      if (document.fullscreenElement || document.webkitFullscreenElement) {
-        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      }
-    } catch (e) {}
-
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
-        if (rot === 'portrait') {
-          ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
-        } else if (rot === 'landscape') {
-          ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
-        }
-      } catch (e) {}
-    }
-
-    if (window.history.state?.playerOpen) {
-      try {
-        window.history.back();
-      } catch (e) {}
-    }
-    if (onCloseRef.current) {
-      onCloseRef.current();
-    }
-    window.requestAnimationFrame(() => {
-      if (openerRef.current?.isConnected) openerRef.current.focus({ preventScroll: true });
-    });
-  }, []);
-
   useEffect(() => {
     if (!window.history.state || !window.history.state.playerOpen) {
       try {
@@ -806,27 +876,36 @@ export function VideoPlayerModal({ request, onClose }) {
 
     const handlePopState = () => {
       if (isClosingRef.current) return;
-      const playbackHasFocus = document.activeElement === iframeRef.current ||
-        document.activeElement === directVideoRef.current;
-      if (playerDisplayModeRef.current > 1 || playbackHasFocus || document.fullscreenElement || document.webkitFullscreenElement) {
-        returnToDefaultPlayerMode();
+      const mode = playerDisplayModeRef.current;
+      const isSizeFocused = document.activeElement === fullscreenButtonRef.current ||
+        Boolean(document.activeElement?.hasAttribute?.('data-player-size'));
+
+      if (mode === 3) {
+        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         try {
-          window.history.pushState({ playerOpen: true }, '');
-        } catch (e) {}
-      } else {
-        isClosingRef.current = true;
-        if (Capacitor.isNativePlatform()) {
-          try {
-            const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
-            if (rot === 'portrait') {
-              ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
-            } else if (rot === 'landscape') {
-              ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
-            }
-          } catch (e) {}
-        }
-        if (onCloseRef.current) onCloseRef.current();
+          const exit = document.exitFullscreen || document.webkitExitFullscreen;
+          if (exit && (document.fullscreenElement || document.webkitFullscreenElement)) {
+            Promise.resolve(exit.call(document)).catch(() => {});
+          }
+        } catch (_) {}
+        setSourcesExpanded(false);
+        updatePlayerDisplayMode(2);
+        setTvControlsVisible(true);
+        wakeTvControls();
+        focusSizeControl();
+        return;
       }
+
+      if (!isSizeFocused) {
+        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
+        setSourcesExpanded(false);
+        setTvControlsVisible(true);
+        wakeTvControls();
+        focusSizeControl();
+        return;
+      }
+
+      handleCloseClick();
     };
 
     const handleKeyDown = (e) => {
@@ -1632,9 +1711,7 @@ export function VideoPlayerModal({ request, onClose }) {
           >
             {(isFetching || (isPureKartoons && !activeUrl && !kartoonResolveDone)) ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-6">
-                <div className="batman-loader-wrapper">
-                  <div className="batman-loader" />
-                </div>
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
                 <div className="animate-pulse text-sm font-medium tracking-widest text-white/40 uppercase">
                   Loading Player
                 </div>
@@ -1693,13 +1770,27 @@ export function VideoPlayerModal({ request, onClose }) {
                 <iframe
                   ref={iframeRef}
                   key={`${activeUrl}:${iframeReloadKey}`}
+                  data-player-frame="true"
                   tabIndex={0}
                   src={activeUrl}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      if (Capacitor.isNativePlatform() && iframeRef.current) {
+                        nativeTapCenter(iframeRef.current);
+                      }
+                    }
+                  }}
                   onLoad={() => {
                     console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
                     setIsStreamLoading(false);
                     setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
+                    if (isTv) {
+                      focusPlaybackContext('iframe-onload', iframeRef.current);
+                      if (Capacitor.isNativePlatform() && iframeRef.current) {
+                        nativeTapCenter(iframeRef.current);
+                      }
+                    }
                   }}
                   onError={(e) => {
                     console.log('[Soulstash Player Debug] Iframe error for URL:', activeUrl, e);
@@ -1736,17 +1827,7 @@ export function VideoPlayerModal({ request, onClose }) {
               </div>
             )}
 
-            {/* Batman loader overlay while stream/video is buffering or loading */}
-            {activeUrl && isStreamLoading && (
-              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/80 backdrop-blur-[2px] transition-opacity duration-300 pointer-events-none">
-                <div className="batman-loader-wrapper">
-                  <div className="batman-loader" />
-                </div>
-                <div className="mt-4 animate-pulse text-xs font-semibold tracking-widest uppercase text-neutral-300">
-                  Loading stream...
-                </div>
-              </div>
-            )}
+            {/* Buffering overlay disabled per user request */}
           </div>
 
           {/* Bottom Sources Section: Toggleable sources panel */}
@@ -1911,9 +1992,10 @@ export function VideoPlayerModal({ request, onClose }) {
                   ref={sourceHideRef}
                   type="button"
                   data-player-action="true"
+                  data-player-hide-sources="true"
                   onClick={handleCloseSources}
                   className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1.5 text-[11px] font-semibold text-white/80 hover:text-white transition-all"
-                  aria-label="Hide streams"
+                  aria-label="Hide sources"
                   title="Hide Streams"
                 >
                   <i className="fas fa-times text-[10px]" />

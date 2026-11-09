@@ -634,8 +634,8 @@ export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, epis
       id: 'vidbolt',
       key: 'vidbolt',
       label: 'VidBolt',
-      url: isMovie ? `https://vidbolt.xyz/movie/${id}` : `https://vidbolt.xyz/tv/${id}/${s}/${e}`,
-      urls: [isMovie ? `https://vidbolt.xyz/movie/${id}` : `https://vidbolt.xyz/tv/${id}/${s}/${e}`],
+      url: isMovie ? `https://vidbolt.xyz/movie/${id}?theme=e50914&autoPlay=true&audio=hindi` : `https://vidbolt.xyz/tv/${id}/${s}/${e}?theme=e50914&autoPlay=true&audio=hindi`,
+      urls: [isMovie ? `https://vidbolt.xyz/movie/${id}?theme=e50914&autoPlay=true&audio=hindi` : `https://vidbolt.xyz/tv/${id}/${s}/${e}?theme=e50914&autoPlay=true&audio=hindi`],
       embeddable: true,
       direct: true
     },

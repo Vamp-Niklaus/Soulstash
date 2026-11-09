@@ -13,6 +13,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.content.Intent;
 import android.net.Uri;
+import android.view.KeyEvent;
 import androidx.activity.OnBackPressedCallback;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
@@ -27,6 +28,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Register plugin BEFORE super.onCreate
         registerPlugin(ZoomPlugin.class);
+        registerPlugin(NativeTapPlugin.class);
 
         super.onCreate(savedInstanceState);
 
@@ -84,6 +86,33 @@ public class MainActivity extends BridgeActivity {
                 }
             }
         });
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && event.getAction() == KeyEvent.ACTION_UP) {
+            if (this.bridge != null && this.bridge.getWebView() != null) {
+                this.bridge.getWebView().post(new Runnable() {
+                    @Override
+                    public void run() {
+                        bridge.getWebView().evaluateJavascript(
+                            "(function(){var event=new CustomEvent('soulstash:native-back',{cancelable:true});return window.dispatchEvent(event);})()",
+                            handled -> {
+                                if ("false".equals(handled)) {
+                                    // Event was consumed/handled by SPA player back handler
+                                    return;
+                                }
+                                if (bridge.getWebView().canGoBack()) {
+                                    bridge.getWebView().goBack();
+                                }
+                            }
+                        );
+                    }
+                });
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     // Called from ZoomPlugin to update scale

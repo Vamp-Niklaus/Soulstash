@@ -50,7 +50,11 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
             const extra = advResults.filter(it => it?.id && !seen.has(Number(it.id)) && Number(it.id) !== currentIdNum && it.poster_path);
             if (extra.length) {
               preloadImages(extra.map(i => i.poster_path));
-              setItems(prev => [...prev, ...extra]);
+              setItems(prev => {
+                const existing = new Set(prev.map(i => Number(i.id)));
+                const uniqueExtra = extra.filter(i => !existing.has(Number(i.id)));
+                return [...prev, ...uniqueExtra];
+              });
               setPage(3);
             }
           }
@@ -97,7 +101,11 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
                 const extra = advResults.filter(it => it?.id && !seenSet.has(Number(it.id)) && Number(it.id) !== currentIdNum && it.poster_path);
                 if (extra.length) {
                   preloadImages(extra.map(i => i.poster_path));
-                  setItems(prev => [...prev, ...extra]);
+                  setItems(prev => {
+                    const existing = new Set(prev.map(i => Number(i.id)));
+                    const uniqueExtra = extra.filter(i => !existing.has(Number(i.id)));
+                    return [...prev, ...uniqueExtra];
+                  });
                   setPage(3);
                 }
               }
@@ -141,10 +149,13 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
           return true;
         });
         
-        preloadImages(newItems.map(item => item.poster_path));
-        setItems(prev => [...prev, ...newItems]);
+        setItems(prev => {
+          const existing = new Set(prev.map(i => Number(i.id)));
+          const uniqueNew = newItems.filter(i => !existing.has(Number(i.id)));
+          preloadImages(uniqueNew.map(item => item.poster_path));
+          return [...prev, ...uniqueNew];
+        });
         setPage(nextPage);
-        setHasMore(data.page < data.total_pages && data.results.length > 0);
       } else {
         setHasMore(false);
       }
@@ -172,13 +183,13 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
       <SectionHeader title={title} />
       
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mt-4">
-        {items.map((item) => {
+        {items.map((item, index) => {
           // Add media_type so ContentCard can route correctly
           const contentItem = { ...item, media_type: type };
           const status = user ? getCollectionStatus(collections, contentItem.id) : null;
           return (
             <ContentCard 
-              key={`${contentItem.id}-${contentItem.media_type}`} 
+              key={`${contentItem.id}-${contentItem.media_type}-${index}`} 
               item={contentItem} 
               status={status}
             />
