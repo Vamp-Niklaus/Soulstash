@@ -11,7 +11,9 @@ import {
 
 export const ContentCard = React.forwardRef(function ContentCard({ item, status = null, onRemove, itemId, ...props }, ref) {
   const navigate = useNavigate();
-  if (!item?.poster_path || !String(item.poster_path).trim()) return null;
+  const [imgFailed, setImgFailed] = useState(false);
+  const poster = item?.poster_path || item?.image || item?.coverImage;
+  if (!poster || !String(poster).trim() || String(poster).startsWith('data:image/svg+xml') || poster === FALLBACK_POSTER || imgFailed) return null;
   const title = item.title || item.name || 'Unknown';
   const rawContentType = String(item.media_type || item.type || (item.first_air_date ? 'Series' : item.title ? 'Movie' : 'Series')).toLowerCase();
   const contentType = rawContentType === 'tv' || rawContentType === 'series'
@@ -29,13 +31,13 @@ export const ContentCard = React.forwardRef(function ContentCard({ item, status 
     >
       <div className="cardImageWrap relative">
         <img
-          src={imageUrl(item.poster_path, 'w342')}
+          src={imageUrl(poster, 'w342')}
           alt={title}
           className="cardImg fadeImg"
           loading="lazy"
           decoding="async"
-          onError={(event) => {
-            event.currentTarget.src = FALLBACK_POSTER;
+          onError={() => {
+            setImgFailed(true);
           }}
         />
         {status?.watched ? (

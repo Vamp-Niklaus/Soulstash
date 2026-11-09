@@ -91,7 +91,15 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
   const movies = useMemo(() => {
     return (Array.isArray(rawMovies) ? rawMovies : []).filter((item) => {
       const p = item?.poster_path || item?.image || item?.coverImage;
-      return Boolean(p && typeof p === 'string' && p.trim() && p !== 'null' && p !== 'undefined');
+      return Boolean(
+        p &&
+        typeof p === 'string' &&
+        p.trim() &&
+        p !== 'null' &&
+        p !== 'undefined' &&
+        !p.startsWith('data:image/svg+xml') &&
+        !p.includes('placeholder')
+      );
     });
   }, [rawMovies]);
   

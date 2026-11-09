@@ -841,7 +841,15 @@ function isAdult(item, options = {}) {
 function hasValidPoster(item) {
   if (!item) return false;
   const p = item.poster_path || item.posterUrl || item.image || item.coverImage;
-  return Boolean(p && typeof p === 'string' && p.trim() && p !== 'null' && p !== 'undefined');
+  return Boolean(
+    p &&
+    typeof p === 'string' &&
+    p.trim() &&
+    p !== 'null' &&
+    p !== 'undefined' &&
+    !p.startsWith('data:image/svg+xml') &&
+    !p.includes('placeholder')
+  );
 }
 
 function shouldShow(item, adminMode = 0, options = {}) {

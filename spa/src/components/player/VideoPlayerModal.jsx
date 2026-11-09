@@ -1,5 +1,6 @@
 import { setNativeScale } from '../../utils/formatters.js';
 import { useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { SESSION_SCRAPED } from '../../utils/constants.js';
 import { isDirectMediaUrl } from '../../utils/formatters.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -870,6 +871,7 @@ export function VideoPlayerModal({ request, onClose }) {
     body.style.overflow = 'hidden';
     html.style.overscrollBehavior = 'none';
     body.style.overscrollBehavior = 'none';
+    body.classList.add('player-modal-open');
 
     const preventPageScroll = (event) => {
       const modal = playerBoxRef.current?.closest('[data-player-modal]');
@@ -886,6 +888,7 @@ export function VideoPlayerModal({ request, onClose }) {
       body.style.overflow = previousBodyOverflow;
       html.style.overscrollBehavior = previousHtmlOverscroll;
       body.style.overscrollBehavior = previousBodyOverscroll;
+      body.classList.remove('player-modal-open');
       window.removeEventListener('wheel', preventPageScroll, { capture: true });
       window.removeEventListener('touchmove', preventPageScroll, { capture: true });
     };
@@ -1386,7 +1389,7 @@ export function VideoPlayerModal({ request, onClose }) {
     maxWidth: isExpandedPlayerShell ? '100vw' : isDesktopViewport ? '1340px' : '96vw',
     height: isExpandedPlayerShell ? '100dvh' : sourcesExpanded ? (isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh') : undefined,
     maxHeight: isExpandedPlayerShell ? '100dvh' : isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh',
-    margin: '0 auto',
+    margin: isExpandedPlayerShell ? '0' : '0 auto',
     display: 'flex',
     flexDirection: 'column'
   };
@@ -1603,7 +1606,7 @@ export function VideoPlayerModal({ request, onClose }) {
     ? (fallbackSources.length ? '' : sourceError?.message || 'Failed to load sources.')
     : '';
 
-  return (
+  const modalContent = (
     <div className="pointer-events-none fixed inset-0 z-[1000000] bg-transparent" data-player-modal="true" data-player-mode={playerDisplayMode}>
       <div
         className="relative h-full w-full"
@@ -2050,4 +2053,6 @@ export function VideoPlayerModal({ request, onClose }) {
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

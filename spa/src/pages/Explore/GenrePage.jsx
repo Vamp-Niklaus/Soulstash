@@ -154,7 +154,8 @@ export function GenrePage() {
     for (const page of data.pages) {
       const list = Array.isArray(page?.results) ? page.results : (Array.isArray(page?.movies) ? page.movies : []);
       for (const item of list) {
-        if (!item?.poster_path || !String(item.poster_path).trim()) continue;
+        const posterStr = String(item?.poster_path || '').trim();
+        if (!posterStr || posterStr === 'null' || posterStr === 'undefined' || posterStr.startsWith('data:image/svg+xml') || posterStr.includes('placeholder')) continue;
         const itemId = item.id || item.slug || item.movieId || item.seriesId;
         const mediaType = ['Series', 'tv', 'series'].includes(String(item?.media_type || '')) || item?.first_air_date ? 'series' : 'movie';
         const itemKey = `${mediaType}:${itemId}`;

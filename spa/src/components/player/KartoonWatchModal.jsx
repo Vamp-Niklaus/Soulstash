@@ -8,6 +8,7 @@
  * Layout and chrome mirrors the existing VideoPlayerModal so the UX is identical.
  */
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { fetchKartoonsStremioStreams } from '../../api/kartoons.js';
 
 // Hls.js is loaded globally by the existing player infrastructure.
@@ -185,7 +186,7 @@ export function KartoonWatchModal({ title = '', streamType, streamId, subtitle =
       });
   };
 
-  return (
+  const modalMarkup = (
     <div className="fixed inset-0 z-[100010] flex items-center justify-center bg-black/95 p-2 sm:p-5" data-player-modal="true">
       <div className="flex w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#090909] shadow-2xl" style={{ height: 'min(92dvh, 900px)' }}>
 
@@ -302,4 +303,6 @@ export function KartoonWatchModal({ title = '', streamType, streamId, subtitle =
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalMarkup, document.body) : modalMarkup;
 }

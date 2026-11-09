@@ -313,7 +313,9 @@ body.collection-artwork-theme .collection-react-shell::before {
   overflow: visible !important;
 }
 
-body.search-overlay-open .mobile-bottom-nav-react {
+body.search-overlay-open .mobile-bottom-nav-react,
+body.player-modal-open .modern-navbar-react,
+body.player-modal-open aside[aria-label="TV Sidebar Navigation"] {
   display: none !important;
 }
 

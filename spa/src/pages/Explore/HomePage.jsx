@@ -86,7 +86,15 @@ export function HomePage() {
         if (Array.isArray(list)) {
           cleanCategoryData[key] = list.filter((item) => {
             const p = item?.poster_path || item?.image || item?.coverImage;
-            return Boolean(p && typeof p === 'string' && p.trim() && p !== 'null' && p !== 'undefined');
+            return Boolean(
+              p &&
+              typeof p === 'string' &&
+              p.trim() &&
+              p !== 'null' &&
+              p !== 'undefined' &&
+              !p.startsWith('data:image/svg+xml') &&
+              !p.includes('placeholder')
+            );
           });
         }
       }
