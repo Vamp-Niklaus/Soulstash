@@ -19,7 +19,8 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
       if (gLower === 'anime' || gLower === 'kartoons-anime') {
         const res = await fetch(`https://api.kartoons.me/api/shows?page=1&category=Anime`);
         const json = await res.json().catch(() => ({}));
-        const raw = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
+        const raw = (Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []))
+          .filter((item) => Boolean(item?.image || item?.coverImage));
         return raw.map((item) => ({
           id: `kartoons-${item.slug}`,
           title: item.title,
@@ -42,8 +43,10 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
         ]);
         const sJson = showsRes?.ok ? await showsRes.json().catch(() => ({})) : {};
         const mJson = moviesRes?.ok ? await moviesRes.json().catch(() => ({})) : {};
-        const sRaw = Array.isArray(sJson?.data) ? sJson.data : (Array.isArray(sJson) ? sJson : []);
-        const mRaw = Array.isArray(mJson?.data) ? mJson.data : (Array.isArray(mJson) ? mJson : []);
+        const sRaw = (Array.isArray(sJson?.data) ? sJson.data : (Array.isArray(sJson) ? sJson : []))
+          .filter((item) => Boolean(item?.image || item?.coverImage));
+        const mRaw = (Array.isArray(mJson?.data) ? mJson.data : (Array.isArray(mJson) ? mJson : []))
+          .filter((item) => Boolean(item?.image || item?.coverImage));
 
         const mappedShows = sRaw.map((item) => ({
           id: `kartoons-${item.slug}`,
@@ -84,7 +87,13 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
   });
 
   const fetchedList = fetchedMovies?.results || fetchedMovies?.movies || (Array.isArray(fetchedMovies) ? fetchedMovies : []);
-  const movies = preloadedMovies?.length ? preloadedMovies : fetchedList;
+  const rawMovies = preloadedMovies?.length ? preloadedMovies : fetchedList;
+  const movies = useMemo(() => {
+    return (Array.isArray(rawMovies) ? rawMovies : []).filter((item) => {
+      const p = item?.poster_path || item?.image || item?.coverImage;
+      return Boolean(p && typeof p === 'string' && p.trim() && p !== 'null' && p !== 'undefined');
+    });
+  }, [rawMovies]);
   
   // Preload images for dynamically fetched shelves
   useEffect(() => {

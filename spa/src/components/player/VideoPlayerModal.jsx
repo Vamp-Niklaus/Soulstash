@@ -197,6 +197,10 @@ export function VideoPlayerModal({ request, onClose }) {
         console.warn('[Soulstash Player Focus] size control unavailable');
         return;
       }
+      document.querySelectorAll('.tv-focused').forEach((el) => el.classList.remove('tv-focused'));
+      target.classList.add('tv-focused');
+      document.documentElement.classList.add('tv-nav-active');
+      document.documentElement.classList.remove('tv-nav-dim', 'tv-nav-hidden');
       target.focus({ preventScroll: true });
       console.info('[Soulstash Player Focus] size control focused', {
         parentDocumentFocusedControl: document.activeElement === target
@@ -311,8 +315,8 @@ export function VideoPlayerModal({ request, onClose }) {
         }
       } catch (_) {}
 
-      setSourcesExpanded(false);
       updatePlayerDisplayMode(2);
+      setSourcesExpanded(true);
       setTvControlsVisible(true);
       wakeTvControls();
       console.info('[Soulstash Player Focus] Back in mode 3 -> switched to mode 2 and focusing Size');
@@ -320,20 +324,40 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    // Mode 2 or Mode 1
-    if (!isSizeFocused) {
+    // In Mode 2: Back steps down to Mode 1, closes sources, and focuses Size
+    if (mode === 2) {
       setSourcesExpanded(false);
+      updatePlayerDisplayMode(1);
       setTvControlsVisible(true);
       wakeTvControls();
-      console.info(`[Soulstash Player Focus] Back in mode ${mode} (focus was on ${document.activeElement?.tagName || 'none'}) -> focusing Size`);
+      console.info('[Soulstash Player Focus] Back in mode 2 -> switched to mode 1 and focusing Size');
       focusSizeControl();
       return;
     }
 
-    // Mode 2 or Mode 1 and focus is ALREADY on Size button: close player
-    console.info(`[Soulstash Player Focus] Back on Size button in mode ${mode} -> closing player`);
+    // In Mode 1: if sources panel is open, close it and focus Size
+    if (sourcesExpanded) {
+      setSourcesExpanded(false);
+      setTvControlsVisible(true);
+      wakeTvControls();
+      console.info('[Soulstash Player Focus] Back while sources expanded -> closing sources and focusing Size');
+      focusSizeControl();
+      return;
+    }
+
+    // Mode 1 and sources closed: if focus is not on Size, focus Size
+    if (!isSizeFocused) {
+      setTvControlsVisible(true);
+      wakeTvControls();
+      console.info(`[Soulstash Player Focus] Back in mode 1 (focus was on ${document.activeElement?.tagName || 'none'}) -> focusing Size`);
+      focusSizeControl();
+      return;
+    }
+
+    // Mode 1, sources closed, and focus is ALREADY on Size button: close player
+    console.info('[Soulstash Player Focus] Back on Size button in mode 1 -> closing player');
     handleCloseClick();
-  }, [focusSizeControl, handleCloseClick, updatePlayerDisplayMode, wakeTvControls]);
+  }, [focusSizeControl, handleCloseClick, sourcesExpanded, updatePlayerDisplayMode, wakeTvControls]);
 
   useEffect(() => {
     window.addEventListener('soulstash:player-back', handlePlayerBackEvent);
@@ -362,7 +386,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const handleToggleFullscreen = useCallback(async () => {
     const mode = playerDisplayModeRef.current;
     if (mode === 1) {
-      setSourcesExpanded(false);
+      setSourcesExpanded(true);
       updatePlayerDisplayMode(2);
       console.info('[Soulstash Player Focus] player mode transition', { from: 1, to: 2 });
       focusSizeControl();
@@ -888,8 +912,27 @@ export function VideoPlayerModal({ request, onClose }) {
             Promise.resolve(exit.call(document)).catch(() => {});
           }
         } catch (_) {}
-        setSourcesExpanded(false);
         updatePlayerDisplayMode(2);
+        setSourcesExpanded(true);
+        setTvControlsVisible(true);
+        wakeTvControls();
+        focusSizeControl();
+        return;
+      }
+
+      if (mode === 2) {
+        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
+        setSourcesExpanded(false);
+        updatePlayerDisplayMode(1);
+        setTvControlsVisible(true);
+        wakeTvControls();
+        focusSizeControl();
+        return;
+      }
+
+      if (sourcesExpanded) {
+        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
+        setSourcesExpanded(false);
         setTvControlsVisible(true);
         wakeTvControls();
         focusSizeControl();
@@ -898,7 +941,6 @@ export function VideoPlayerModal({ request, onClose }) {
 
       if (!isSizeFocused) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-        setSourcesExpanded(false);
         setTvControlsVisible(true);
         wakeTvControls();
         focusSizeControl();
@@ -1348,7 +1390,7 @@ export function VideoPlayerModal({ request, onClose }) {
     display: 'flex',
     flexDirection: 'column'
   };
-  const mediaAreaStyle = isTv ? {
+  const mediaAreaStyle = (isExpandedPlayerShell || isTv) ? {
     width: '100%',
     flex: '1 1 0%',
     minHeight: 0,

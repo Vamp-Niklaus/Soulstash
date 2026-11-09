@@ -838,7 +838,14 @@ function isAdult(item, options = {}) {
   return evaluateAdultItem(item, null, options);
 }
 
+function hasValidPoster(item) {
+  if (!item) return false;
+  const p = item.poster_path || item.posterUrl || item.image || item.coverImage;
+  return Boolean(p && typeof p === 'string' && p.trim() && p !== 'null' && p !== 'undefined');
+}
+
 function shouldShow(item, adminMode = 0, options = {}) {
+  if (options.requirePoster && !hasValidPoster(item)) return false;
   if (adminMode === 1) return true; // Mode 1: All Content (Normal + Adult shown - returns 1 always)
   if (adminMode === 2) return isAdult(item, options); // Mode 2: Reverse Filter (Adult only)
   return !isAdult(item, options); // Mode 0 / Public: Normal Filter (Adult content hidden)
@@ -1916,7 +1923,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       if (String(genre) !== '16') {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
       }
-      pageItems = pageItems.filter(item => shouldShow(item, adminMode));
+      pageItems = pageItems.filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
 
       for (const item of pageItems) {
         if (!finalItems.some(existing => existing.id === item.id)) {
@@ -1940,7 +1947,7 @@ async function refreshCategoryCache(genre, year, page, limit, adminMode) {
       const supItems = [
         ...(supMovieData?.results || []).map(i => ({ ...i, media_type: 'Movie', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) })),
         ...(supTvData?.results || []).map(i => ({ ...i, media_type: 'Series', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) }))
-      ].filter(item => shouldShow(item, adminMode));
+      ].filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
 
       for (const item of supItems) {
         if (finalItems.length >= (page === 1 ? 14 : limit)) break;
@@ -2405,7 +2412,7 @@ router.get('/movies', async (req, res) => {
         let pageItems = [...rawMovies, ...rawTv].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
         pageItems = pageItems.filter(item => !isAnimeContent(item));
-        pageItems = pageItems.filter(item => shouldShow(item, adminMode));
+        pageItems = pageItems.filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
 
         for (const item of pageItems) {
           if (!finalItems.some(existing => existing.id === item.id)) {
@@ -2497,7 +2504,7 @@ router.get('/movies', async (req, res) => {
         pageItems = pageItems.filter(item => !isAnimeContent(item));
       }
 
-      pageItems = pageItems.filter(item => shouldShow(item, adminMode));
+      pageItems = pageItems.filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
 
       for (const item of pageItems) {
         if (!finalItems.some(existing => existing.id === item.id)) {
@@ -2521,7 +2528,7 @@ router.get('/movies', async (req, res) => {
       const supItems = [
         ...(supMovieData?.results || []).map(i => ({ ...i, media_type: 'Movie', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) })),
         ...(supTvData?.results || []).map(i => ({ ...i, media_type: 'Series', ...(isBollywood ? { is_bollywood_endpoint: true } : {}) }))
-      ].filter(item => shouldShow(item, adminMode));
+      ].filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
 
       for (const item of supItems) {
         if (finalItems.length >= (page === 1 ? 14 : limit)) break;
@@ -3469,10 +3476,10 @@ function filterHomePayload(payload, adminMode) {
   if (!payload) return payload;
   const filteredCategories = {};
   for (const [gid, movies] of Object.entries(payload.categories || {})) {
-    filteredCategories[gid] = (movies || []).filter(m => shouldShow(m, adminMode));
+    filteredCategories[gid] = (movies || []).filter(m => shouldShow(m, adminMode) && hasValidPoster(m));
   }
-  const filteredTrending = (payload.trending || []).filter(m => shouldShow(m, adminMode));
-  const filteredPopular = (payload.popular || []).filter(m => shouldShow(m, adminMode));
+  const filteredTrending = (payload.trending || []).filter(m => shouldShow(m, adminMode) && hasValidPoster(m));
+  const filteredPopular = (payload.popular || []).filter(m => shouldShow(m, adminMode) && hasValidPoster(m));
   return {
     ...payload,
     trending: filteredTrending,
@@ -3648,8 +3655,11 @@ async function buildHomePayload(adminMode = 0) {
             mItems = mItems.filter(item => !isAnimeContent(item));
             tItems = tItems.filter(item => !isAnimeContent(item));
           }
-          mItems = mItems.filter(item => shouldShow(item, adminMode));
-          tItems = tItems.filter(item => shouldShow(item, adminMode));
+          mItems = mItems.filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
+          tItems = tItems.filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
+        } else {
+          mItems = mItems.filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
+          tItems = tItems.filter(item => shouldShow(item, adminMode) && hasValidPoster(item));
         }
 
         let combined = [...mItems, ...tItems].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));

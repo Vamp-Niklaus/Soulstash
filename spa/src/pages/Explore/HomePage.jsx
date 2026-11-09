@@ -80,11 +80,22 @@ export function HomePage() {
         ...baseGenres.filter(g => !['kartoons-anime', 'kartoons-cartoon'].includes(String(g?.id || g)))
       ];
 
+      const rawCategoryData = homeData?.categories && typeof homeData.categories === 'object' ? homeData.categories : {};
+      const cleanCategoryData = {};
+      for (const [key, list] of Object.entries(rawCategoryData)) {
+        if (Array.isArray(list)) {
+          cleanCategoryData[key] = list.filter((item) => {
+            const p = item?.poster_path || item?.image || item?.coverImage;
+            return Boolean(p && typeof p === 'string' && p.trim() && p !== 'null' && p !== 'undefined');
+          });
+        }
+      }
+
       return {
         trending,
         popular,
         genres: rawGenres,
-        categoryData: homeData?.categories && typeof homeData.categories === 'object' ? homeData.categories : {},
+        categoryData: cleanCategoryData,
         publishedCollections: rawPublished
       };
     }
