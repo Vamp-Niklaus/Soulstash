@@ -32,13 +32,13 @@ const refreshLocks = new Set();
 
 const DIRECT_SOURCES = [
   { id: 'vidlink', label: 'VidLink', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidlink.pro/tv/${t}/${s || 1}/${e || 1}` : `https://vidlink.pro/movie/${t}` },
-  { id: 'vidrift', label: 'VidRift', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://embed.vidrift.net/embed/tv/${t}/${s || 1}/${e || 1}` : `https://embed.vidrift.net/embed/movie/${t}` },
-  { id: 'vidly', label: 'Vidly', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidly.pro/tv/${t}/${s || 1}/${e || 1}` : `https://vidly.pro/movie/${t}` },
-  { id: 'framextv', label: 'FrameXTV', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://framextv.cc/embed/tv/${t}/${s || 1}/${e || 1}` : `https://framextv.cc/embed/movie/${t}` },
+  { id: 'vidrift', label: 'VidRift', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://embed.vidrift.net/embed/tv/${t}/${s || 1}/${e || 1}?autoplay=1` : `https://embed.vidrift.net/embed/movie/${t}?autoplay=1` },
+  { id: 'vidly', label: 'Vidly', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidly.pro/tv/${t}/${s || 1}/${e || 1}?autoPlay=true` : `https://vidly.pro/movie/${t}?autoPlay=true` },
+  { id: 'framextv', label: 'FrameXTV', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://framextv.cc/embed/tv/${t}/${s || 1}/${e || 1}?autoplay=1&muted=0` : `https://framextv.cc/embed/movie/${t}?autoplay=1&muted=0` },
   { id: 'cineverse', label: 'Cineverse', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://rozgarlelo.modiplay.xyz/embed/tmdb/tv?id=${t}&s=${s || 1}&e=${e || 1}` : `https://rozgarlelo.modiplay.xyz/embed/tmdb/movie?id=${t}` },
   { id: 'vidbolt', label: 'VidBolt', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidbolt.xyz/tv/${t}/${s || 1}/${e || 1}?theme=e50914&autoPlay=true&audio=hindi` : `https://vidbolt.xyz/movie/${t}?theme=e50914&autoPlay=true&audio=hindi` },
-  { id: 'filmu', label: 'Filmu', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://embed.filmu.in/tv/${t}/${s || 1}/${e || 1}` : `https://embed.filmu.in/movie/${t}` },
-  { id: 'vidout', label: 'VIDOUT', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidout.pages.dev/tv/${t}/s${s || 1}/e${e || 1}` : `https://vidout.pages.dev/movie/${t}` },
+  { id: 'filmu', label: 'Filmu', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://embed.filmu.in/tv/${t}/${s || 1}/${e || 1}?autoplay=1` : `https://embed.filmu.in/movie/${t}?autoplay=1` },
+  { id: 'vidout', label: 'VIDOUT', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidout.pages.dev/tv/${t}/s${s || 1}/e${e || 1}?autoplay=1` : `https://vidout.pages.dev/movie/${t}?autoplay=1` },
   { id: 'vidfast', label: 'vidfast', template: (m, t, s, e) => (m === 'tv' || m === 'series') ? `https://vidfast.pro/tv/${t}/${s || 1}/${e || 1}?autoPlay=true&title=true&poster=true&theme=F97316&nextButton=true&autoNext=true` : `https://vidfast.pro/movie/${t}?autoPlay=true&title=true&poster=true&theme=F97316` }
 ];
 

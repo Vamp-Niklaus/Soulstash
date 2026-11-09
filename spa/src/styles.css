@@ -674,7 +674,7 @@ body.search-overlay-open .mobile-bottom-nav-react {
   }
 }
 
-/* Batman Loader Animation */
+/* Batman Loader Animation (Disabled)
 .batman-loader-wrapper {
   display: flex;
   flex-direction: column;
@@ -695,7 +695,7 @@ body.search-overlay-open .mobile-bottom-nav-react {
   content: "";
   position: absolute;
   inset: 0;
-  background: white; /* Changed from #000 for visibility on dark UI */
+  background: white;
   box-shadow: 0 0 0 50px white;
   clip-path: polygon(
     -50px -20px, 10% -12px, 20% 0, 
@@ -710,7 +710,7 @@ body.search-overlay-open .mobile-bottom-nav-react {
 .batman-loader:after {
   animation: batman-pulse 1s infinite;
   transform: perspective(300px) translateZ(0px);
-  background: #d0a4ff; /* Accent color */
+  background: #d0a4ff;
   box-shadow: 0 0 0 50px #d0a4ff;
   opacity: 0.5;
 }
@@ -721,6 +721,7 @@ body.search-overlay-open .mobile-bottom-nav-react {
     opacity: 0;
   }
 }
+*/
 
 
 /* ── Marquee scrolling text for long collection names ── */
