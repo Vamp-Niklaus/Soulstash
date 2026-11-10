@@ -104,7 +104,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const playerDisplayModeRef = useRef(1);
   const openerRef = useRef(typeof document !== 'undefined' ? document.activeElement : null);
   // Tracks where focus was last targeted in the player: 'size' | 'controls' | 'iframe'
-  const playerFocusTargetRef = useRef('size');
+  const playerFocusTargetRef = useRef('iframe');
   // Timestamp when Size button was last focused
   const sizeFocusLastAtRef = useRef(0);
   const sizeFocusedRef = useRef(false);
@@ -425,6 +425,17 @@ export function VideoPlayerModal({ request, onClose }) {
     return () => window.removeEventListener('soulstash:player-iframe-activate', handleIframeActivate);
   }, []);
 
+  useEffect(() => {
+    const handleWindowBlur = () => {
+      // When the user clicks or focuses into the cross-origin playback iframe, window blurs
+      playerFocusTargetRef.current = 'iframe';
+      sizeFocusedRef.current = false;
+      setIsSizeFocusedVisual(false);
+    };
+    window.addEventListener('blur', handleWindowBlur);
+    return () => window.removeEventListener('blur', handleWindowBlur);
+  }, []);
+
   const returnToDefaultPlayerMode = useCallback(() => {
     try {
       const exit = document.exitFullscreen || document.webkitExitFullscreen;
@@ -445,12 +456,11 @@ export function VideoPlayerModal({ request, onClose }) {
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
     const mode = playerDisplayModeRef.current;
-    const isSizeFocused = playerFocusTargetRef.current === 'size' ||
+    const isSizeFocused = Boolean(
       sizeFocusedRef.current ||
       document.activeElement === fullscreenButtonRef.current ||
-      Boolean(document.activeElement?.hasAttribute?.('data-player-size'));
-
-    const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' && !isSizeFocused;
+      document.activeElement?.hasAttribute?.('data-player-size')
+    );
 
     if (mode === 3) {
       try {
@@ -471,10 +481,10 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    // In Mode 2: If focus was inside the playback/video, focus the Size button (stay in Mode 2).
-    // If focus was ALREADY on Size button or player controls, step down to Mode 1.
+    // In Mode 2: If focus was inside the playback/video (not on Size), focus the Size button (stay in Mode 2).
+    // If focus was ALREADY on Size button, step down to Mode 1 and focus Size.
     if (mode === 2) {
-      if (isPlaybackFocused) {
+      if (!isSizeFocused) {
         playerFocusTargetRef.current = 'size';
         sizeFocusedRef.current = true;
         setTvControlsVisible(true);
@@ -507,8 +517,9 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    // Mode 1 and sources closed: if focus was in playback, focus Size
-    if (isPlaybackFocused) {
+    // In Mode 1 and sources closed: if focus is in iframe/playback (not already on Size button),
+    // DO NOT CLOSE! Shift focus to Size button and show visual focus.
+    if (!isSizeFocused) {
       playerFocusTargetRef.current = 'size';
       sizeFocusedRef.current = true;
       setTvControlsVisible(true);
@@ -1049,12 +1060,11 @@ export function VideoPlayerModal({ request, onClose }) {
     const handlePopState = () => {
       if (isClosingRef.current) return;
       const mode = playerDisplayModeRef.current;
-      const isSizeFocused = playerFocusTargetRef.current === 'size' ||
+      const isSizeFocused = Boolean(
         sizeFocusedRef.current ||
         document.activeElement === fullscreenButtonRef.current ||
-        Boolean(document.activeElement?.hasAttribute?.('data-player-size'));
-
-      const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' && !isSizeFocused;
+        Boolean(document.activeElement?.hasAttribute?.('data-player-size'))
+      );
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
@@ -1076,7 +1086,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
       if (mode === 2) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-        if (isPlaybackFocused) {
+        if (!isSizeFocused) {
           playerFocusTargetRef.current = 'size';
           sizeFocusedRef.current = true;
           setTvControlsVisible(true);
@@ -1107,12 +1117,14 @@ export function VideoPlayerModal({ request, onClose }) {
         return;
       }
 
-      if (isPlaybackFocused) {
+      // In Mode 1: if focus is NOT on Size button, DO NOT CLOSE! Focus Size button and stay in Mode 1.
+      if (!isSizeFocused) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         playerFocusTargetRef.current = 'size';
         sizeFocusedRef.current = true;
         setTvControlsVisible(true);
         wakeTvControls();
+        console.info('[Soulstash Player Focus] PopState in mode 1 (was in playback) -> focusing Size');
         focusSizeControl();
         return;
       }

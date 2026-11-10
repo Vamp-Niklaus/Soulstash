@@ -235,6 +235,17 @@ export function imageUrl(path, size = 'w500') {
  */
 export function mediaRoute(item) {
   if (!item) return '#';
+
+  const rawId = item.id || item.tmdbID || item.movieId || item.seriesId || item.tmdbId || item._id;
+  const isNumericTmdb = rawId && (/^\d+$/.test(String(rawId)) || typeof rawId === 'number');
+
+  // If this item has a TMDB numeric ID (even if merged from a kartoon), route directly to TMDB movie/series page
+  if (isNumericTmdb) {
+    const type = String(item.media_type || item.type || (item.seriesId || item.seasonNumber || item.episodeNumber ? 'Series' : 'Movie')).toLowerCase();
+    if (type === 'series' || type === 'tv') return `/series/${rawId}`;
+    return `/movie/${rawId}`;
+  }
+
   if (item.is_kartoons || item.isKartoons || String(item.id || '').startsWith('kartoons-')) {
     const slug = item.kartoons_slug || item.slug || String(item.id || '').replace(/^kartoons-/, '');
     const type = String(item.media_type || item.type || '').toLowerCase();
@@ -242,7 +253,7 @@ export function mediaRoute(item) {
     return `/kartoons/${slug}${movieQuery}`;
   }
   const type = String(item.media_type || item.type || (item.seriesId ? 'Series' : 'Movie')).toLowerCase();
-  const id = item.id || item.tmdbID || item.movieId || item.seriesId || item._id;
+  const id = rawId;
   if (!id) return '#';
   if (type === 'person') return `/person/${id}`;
   if (type === 'series' || type === 'tv') return `/series/${id}`;

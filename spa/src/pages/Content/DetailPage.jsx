@@ -158,8 +158,12 @@ export function DetailPage({ type }) {
 
   useEffect(() => {
     if (autoPlayHandledRef.current || !content) return;
-    if (location.state?.autoPlay || location.state?.resumeTime) {
+    if (location.state?.autoPlay) {
       autoPlayHandledRef.current = true;
+      try {
+        const nextState = { ...(location.state || {}), autoPlay: false };
+        window.history.replaceState({ ...window.history.state, usr: nextState }, '');
+      } catch (_) {}
       handlePlayClick(
         location.state.resumeTime,
         location.state.seasonNumber,

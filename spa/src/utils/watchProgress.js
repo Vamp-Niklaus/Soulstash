@@ -90,9 +90,15 @@ export function saveWatchProgress(item, currentTime, duration) {
       const title = item.title || item.name || item.seriesTitle || 'Unknown';
       const mediaType = (item.media_type || item.type || (item.seasonNumber || item.episodeNumber ? 'Series' : 'Movie'));
 
+      const rawTmdb = item.tmdbId || (typeof item.id === 'number' || /^\d+$/.test(String(item.id)) ? item.id : null);
+      const isTmdb = Boolean(rawTmdb && String(rawTmdb) !== '0');
+      const resolvedId = isTmdb ? rawTmdb : (item.id || item.kartoons_slug || item.slug);
+      const resolvedSlug = item.kartoons_slug || item.kartoonsSlug || item.slug || '';
+
       list.unshift({
         key,
-        id: item.id || item.tmdbId || item.movieId || item.seriesId || item.kartoons_slug || item.slug,
+        id: resolvedId,
+        tmdbId: isTmdb ? rawTmdb : null,
         title,
         name: title,
         seriesTitle: item.seriesTitle || item.name || '',
@@ -102,8 +108,8 @@ export function saveWatchProgress(item, currentTime, duration) {
         image: poster,
         backdrop_path: backdrop,
         media_type: mediaType,
-        is_kartoons: Boolean(item.is_kartoons || item.isKartoons || String(item.id || '').startsWith('kartoons-')),
-        kartoons_slug: item.kartoons_slug || item.slug || '',
+        is_kartoons: !isTmdb && Boolean(item.is_kartoons || item.isKartoons || String(item.id || '').startsWith('kartoons-')),
+        kartoons_slug: resolvedSlug,
         currentTime: Math.floor(time),
         duration: Math.floor(dur),
         progress: dur > 0 ? Math.min(1, time / dur) : 0,

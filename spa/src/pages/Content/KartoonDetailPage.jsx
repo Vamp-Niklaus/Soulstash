@@ -364,8 +364,12 @@ export function KartoonDetailPage() {
 
   useEffect(() => {
     if (autoPlayTriggeredRef.current || !show) return;
-    if (location.state?.autoPlay || location.state?.resumeTime) {
+    if (location.state?.autoPlay) {
       autoPlayTriggeredRef.current = true;
+      try {
+        const nextState = { ...(location.state || {}), autoPlay: false };
+        window.history.replaceState({ ...window.history.state, usr: nextState }, '');
+      } catch (_) {}
       handlePlayClick(
         location.state.resumeTime,
         location.state.seasonNumber,

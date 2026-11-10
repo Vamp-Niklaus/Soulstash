@@ -44,6 +44,7 @@ export const ContinueWatchingCard = React.forwardRef(function ContinueWatchingCa
         resumeTime: entry.currentTime,
         seasonNumber: entry.seasonNumber,
         episodeNumber: entry.episodeNumber,
+        kartoonsSlug: entry.kartoons_slug || entry.kartoonsSlug || '',
         autoPlay: true
       }
     });
