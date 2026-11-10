@@ -224,7 +224,9 @@ export function getKartoonsSearchQueries(query) {
     { key: 'haddi mera buddy', alternate: 'Hadi Mera Buddy' },
     { key: 'hadi mera buddy', alternate: 'Haddi Mera Buddy' },
     { key: 'grim adventures of billy and mandy', alternate: 'Billy and Mandy' },
-    { key: 'billy and mandy', alternate: 'The Grim Adventures of Billy and Mandy' }
+    { key: 'billy and mandy', alternate: 'The Grim Adventures of Billy and Mandy' },
+    { key: 'pakdam pakdai', alternate: 'Rat-A-Tat' },
+    { key: 'rat tat', alternate: 'Pakdam Pakdai' }
   ];
   const pair = titlePairs.find((item) => normalized === item.key);
   return pair ? [...new Set([value, pair.alternate])] : [value];
