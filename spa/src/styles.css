@@ -314,8 +314,8 @@ body.collection-artwork-theme .collection-react-shell::before {
 }
 
 body.search-overlay-open .mobile-bottom-nav-react,
-body.player-modal-open .modern-navbar-react,
-body.player-modal-open aside[aria-label="TV Sidebar Navigation"] {
+body.player-fullscreen-active .modern-navbar-react,
+body.player-fullscreen-active aside[aria-label="TV Sidebar Navigation"] {
   display: none !important;
 }
 

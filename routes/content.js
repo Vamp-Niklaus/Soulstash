@@ -3477,7 +3477,7 @@ let homeCacheTime = 0;
 let homeCacheAdult = null;
 let homeCacheAdultTime = 0;
 const HOME_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-const HOME_CATEGORY_LIMIT = 20; // movies per genre shelf
+const HOME_CATEGORY_LIMIT = 24; // movies per genre shelf (ensures full 14+ items even after poster filtering)
 const HOME_PRELOAD_GENRES = 8;  // how many genre shelves to pre-bake
 
 function filterHomePayload(payload, adminMode) {
@@ -3539,7 +3539,7 @@ async function buildHomePayload(adminMode = 0) {
           ...i,
           media_type: (i.media_type === 'tv' || i.media_type === 'series') ? 'Series' : 'Movie'
         }));
-        trending = all.slice(0, 18);
+        trending = all.slice(0, 24);
       }
     }
 
@@ -3574,7 +3574,7 @@ async function buildHomePayload(adminMode = 0) {
       pItems = pItems.filter(item => !isAnimeContent(item));
       pItems = pItems.filter(item => shouldShow(item, adminMode));
       pItems = await attachCachedRatings(pItems);
-      popular = pItems.slice(0, 18);
+      popular = pItems.slice(0, 24);
     }
   } catch (e) {
     console.warn('[Home] Popular fetch failed:', e.message);
@@ -3606,7 +3606,7 @@ async function buildHomePayload(adminMode = 0) {
       const maxPages = adminMode === 2 ? 4 : 3;
       const isBollywood = String(genre?.id).toLowerCase() === 'bollywood';
 
-      while (finalItems.length < 14 && pageNum <= maxPages) {
+      while (finalItems.length < 24 && pageNum <= maxPages) {
         let movieUrl = null;
         let tvUrl = null;
         if (adminMode === 2) {
@@ -3697,7 +3697,7 @@ async function buildHomePayload(adminMode = 0) {
           ...(supTvData?.results || []).map(i => ({ ...i, media_type: 'Series', adult: true, _isAdultDiscover: true }))
         ];
         for (const item of supItems) {
-          if (finalItems.length >= 14) break;
+          if (finalItems.length >= 24) break;
           if (!finalItems.some(x => x.id === item.id)) {
             finalItems.push(item);
           }

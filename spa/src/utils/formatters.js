@@ -216,9 +216,17 @@ export function getLanguageName(languageCode, fallback = 'Unknown') {
  */
 export function imageUrl(path, size = 'w500') {
   if (!path) return FALLBACK_AVATAR;
-  if (/^https?:\/\//i.test(String(path))) return path;
-  if (String(path).includes('avatar.png') || String(path).startsWith('data:')) return path;
-  const cleanPath = String(path).startsWith('/') ? path : `/${path}`;
+  let p = String(path).trim();
+  if (p.includes('google.com/url?')) {
+    try {
+      const parsed = new URL(p);
+      const target = parsed.searchParams.get('q') || parsed.searchParams.get('url');
+      if (target) p = target;
+    } catch (_) {}
+  }
+  if (/^https?:\/\//i.test(p)) return p;
+  if (p.includes('avatar.png') || p.startsWith('data:')) return p;
+  const cleanPath = p.startsWith('/') ? p : `/${p}`;
   return `${IMAGE_BASE}/${size}${cleanPath}`;
 }
 

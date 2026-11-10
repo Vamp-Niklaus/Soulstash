@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, getToken } from '../../api/client.js';
@@ -118,13 +118,32 @@ export function HomePage() {
 
   const homeShelfLimit = useHomeTwoRowLimit();
 
+  const [failedCardIds, setFailedCardIds] = useState(() => new Set());
+  const handleCardImageError = useCallback((itemId) => {
+    if (!itemId) return;
+    setFailedCardIds((prev) => {
+      if (prev.has(itemId)) return prev;
+      const next = new Set(prev);
+      next.add(itemId);
+      return next;
+    });
+  }, []);
+
+  const visibleTrending = useMemo(() => {
+    return trending.filter((item) => !failedCardIds.has(item.id || item.title));
+  }, [trending, failedCardIds]);
+
+  const visiblePopular = useMemo(() => {
+    return popular.filter((item) => !failedCardIds.has(item.id || item.title));
+  }, [popular, failedCardIds]);
+
   // Aggressively preload images for trending and preloaded categories
   useEffect(() => {
-    if (trending.length > 0) {
-      preloadImages(trending.slice(0, homeShelfLimit).map(item => item.poster_path));
+    if (visibleTrending.length > 0) {
+      preloadImages(visibleTrending.slice(0, homeShelfLimit).map(item => item.poster_path));
     }
-    if (popular.length > 0) {
-      preloadImages(popular.slice(0, homeShelfLimit).map(item => item.poster_path));
+    if (visiblePopular.length > 0) {
+      preloadImages(visiblePopular.slice(0, homeShelfLimit).map(item => item.poster_path));
     }
     
     // Preload first row for each pre-filled category
@@ -133,7 +152,7 @@ export function HomePage() {
         preloadImages(movies.slice(0, homeShelfLimit).map(item => item.poster_path));
       }
     });
-  }, [trending, popular, categoryData, homeShelfLimit]);
+  }, [visibleTrending, visiblePopular, categoryData, homeShelfLimit]);
 
   const firstCardRef = useRef(null);
 
@@ -162,19 +181,30 @@ export function HomePage() {
         ) : null}
         {!loading && !error ? (
           <div className={HOME_GRID_CLASS}>
-            {trending.slice(0, homeShelfLimit).map((item, index) => (
-              <ContentCard key={`trending-${item.id}-${index}`} item={item} ref={index === 0 ? firstCardRef : null} data-card />
+            {visibleTrending.slice(0, homeShelfLimit).map((item, index) => (
+              <ContentCard
+                key={`trending-${item.id}-${index}`}
+                item={item}
+                ref={index === 0 ? firstCardRef : null}
+                data-card
+                onImageError={() => handleCardImageError(item.id || item.title)}
+              />
             ))}
           </div>
         ) : null}
       </section>
 
-      {popular.length > 0 && !loading && !error ? (
+      {visiblePopular.length > 0 && !loading && !error ? (
         <section className="content-section">
           <HomeShelfHeader title="Popular" onViewAll={() => navigate('/popular')} />
           <div className={HOME_GRID_CLASS}>
-            {popular.slice(0, homeShelfLimit).map((item, index) => (
-              <ContentCard key={`pop-${item.media_type || 'Movie'}-${item.id}-${index}`} item={item} data-card />
+            {visiblePopular.slice(0, homeShelfLimit).map((item, index) => (
+              <ContentCard
+                key={`pop-${item.media_type || 'Movie'}-${item.id}-${index}`}
+                item={item}
+                data-card
+                onImageError={() => handleCardImageError(item.id || item.title)}
+              />
             ))}
           </div>
         </section>
@@ -200,8 +230,13 @@ export function HomePage() {
                 />
                 {items.length ? (
                   <div className={HOME_GRID_CLASS}>
-                    {items.slice(0, homeShelfLimit).map((item, index) => (
-                      <ContentCard key={`${colPublisher}-${colTitle}-${item.id || index}-${item.media_type}`} item={item} data-card />
+                    {items.filter(it => !failedCardIds.has(it.id || it.title)).slice(0, homeShelfLimit).map((item, index) => (
+                      <ContentCard
+                        key={`${colPublisher}-${colTitle}-${item.id || index}-${item.media_type}`}
+                        item={item}
+                        data-card
+                        onImageError={() => handleCardImageError(item.id || item.title)}
+                      />
                     ))}
                   </div>
                 ) : (

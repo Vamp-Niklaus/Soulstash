@@ -9,11 +9,26 @@ import {
   isContentInCollection, imageUrl, normalizeStoredCollectionItem, mediaRoute
 } from '../../../utils/formatters.js';
 
-export const ContentCard = React.forwardRef(function ContentCard({ item, status = null, onRemove, itemId, ...props }, ref) {
+export const ContentCard = React.forwardRef(function ContentCard({ item, status = null, onRemove, itemId, onImageError, ...props }, ref) {
   const navigate = useNavigate();
   const [imgFailed, setImgFailed] = useState(false);
   const poster = item?.poster_path || item?.image || item?.coverImage;
-  if (!poster || !String(poster).trim() || String(poster).startsWith('data:image/svg+xml') || poster === FALLBACK_POSTER || imgFailed) return null;
+  const isInvalidPoster = !poster ||
+    typeof poster !== 'string' ||
+    !poster.trim() ||
+    poster === 'null' ||
+    poster === 'undefined' ||
+    poster.startsWith('data:image/svg+xml') ||
+    poster === FALLBACK_POSTER ||
+    poster.includes('placeholder');
+
+  useEffect(() => {
+    if (isInvalidPoster) {
+      onImageError?.();
+    }
+  }, [isInvalidPoster, onImageError]);
+
+  if (isInvalidPoster || imgFailed) return null;
   const title = item.title || item.name || 'Unknown';
   const rawContentType = String(item.media_type || item.type || (item.first_air_date ? 'Series' : item.title ? 'Movie' : 'Series')).toLowerCase();
   const contentType = rawContentType === 'tv' || rawContentType === 'series'
@@ -38,6 +53,7 @@ export const ContentCard = React.forwardRef(function ContentCard({ item, status 
           decoding="async"
           onError={() => {
             setImgFailed(true);
+            onImageError?.();
           }}
         />
         {status?.watched ? (

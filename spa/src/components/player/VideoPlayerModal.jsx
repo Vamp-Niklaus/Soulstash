@@ -274,6 +274,14 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [playerDisplayMode, focusSizeControl]);
 
   useEffect(() => {
+    const isExpanded = playerDisplayMode >= 2;
+    document.body.classList.toggle('player-fullscreen-active', isExpanded);
+    return () => {
+      document.body.classList.remove('player-fullscreen-active');
+    };
+  }, [playerDisplayMode]);
+
+  useEffect(() => {
     const handleIframeActivate = (e) => {
       const frame = e.detail?.target || iframeRef.current;
       if (frame && Capacitor.isNativePlatform()) {
@@ -325,13 +333,22 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    // In Mode 2: Back steps down to Mode 1, closes sources, and focuses Size
+    // In Mode 2: If focus is not on Size button, focus Size button first (staying in Mode 2).
+    // Only if focus is ALREADY on Size button does Back step down to Mode 1.
     if (mode === 2) {
+      if (!isSizeFocused) {
+        setTvControlsVisible(true);
+        wakeTvControls();
+        console.info(`[Soulstash Player Focus] Back in mode 2 (focus was on ${document.activeElement?.tagName || 'none'}) -> focusing Size`);
+        focusSizeControl();
+        return;
+      }
+
       setSourcesExpanded(false);
       updatePlayerDisplayMode(1);
       setTvControlsVisible(true);
       wakeTvControls();
-      console.info('[Soulstash Player Focus] Back in mode 2 -> switched to mode 1 and focusing Size');
+      console.info('[Soulstash Player Focus] Back on Size button in mode 2 -> switched to mode 1 and focusing Size');
       focusSizeControl();
       return;
     }
@@ -925,10 +942,18 @@ export function VideoPlayerModal({ request, onClose }) {
 
       if (mode === 2) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
+        if (!isSizeFocused) {
+          setTvControlsVisible(true);
+          wakeTvControls();
+          console.info(`[Soulstash Player Focus] PopState in mode 2 (focus was on ${document.activeElement?.tagName || 'none'}) -> focusing Size`);
+          focusSizeControl();
+          return;
+        }
         setSourcesExpanded(false);
         updatePlayerDisplayMode(1);
         setTvControlsVisible(true);
         wakeTvControls();
+        console.info('[Soulstash Player Focus] PopState on Size button in mode 2 -> switched to mode 1 and focusing Size');
         focusSizeControl();
         return;
       }

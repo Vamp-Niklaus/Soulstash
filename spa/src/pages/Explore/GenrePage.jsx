@@ -55,11 +55,24 @@ export function GenrePage() {
     queryKey: ['genre', genreId, adminMode],
     queryFn: async ({ pageParam = 1 }) => {
       const gLower = String(genreId).toLowerCase();
+      const isValidImage = (item) => {
+        const p = item?.image || item?.coverImage || item?.poster_path;
+        return Boolean(
+          p &&
+          typeof p === 'string' &&
+          p.trim() &&
+          p !== 'null' &&
+          p !== 'undefined' &&
+          !p.startsWith('data:image/svg+xml') &&
+          !p.includes('placeholder')
+        );
+      };
+
       if (gLower === 'anime' || gLower === 'kartoons-anime') {
         const res = await fetch(`https://api.kartoons.me/api/shows?page=${pageParam}&category=Anime`);
         const json = await res.json().catch(() => ({}));
         const raw = (Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []))
-          .filter((item) => Boolean(item?.image || item?.coverImage));
+          .filter(isValidImage);
         const movies = raw.map((item) => ({
           id: `kartoons-${item.slug}`,
           title: item.title,
@@ -87,9 +100,9 @@ export function GenrePage() {
         const sJson = showsRes?.ok ? await showsRes.json().catch(() => ({})) : {};
         const mJson = moviesRes?.ok ? await moviesRes.json().catch(() => ({})) : {};
         const sRaw = (Array.isArray(sJson?.data) ? sJson.data : (Array.isArray(sJson) ? sJson : []))
-          .filter((item) => Boolean(item?.image || item?.coverImage));
+          .filter(isValidImage);
         const mRaw = (Array.isArray(mJson?.data) ? mJson.data : (Array.isArray(mJson) ? mJson : []))
-          .filter((item) => Boolean(item?.image || item?.coverImage));
+          .filter(isValidImage);
 
         const mappedShows = sRaw.map((item) => ({
           id: `kartoons-${item.slug}`,

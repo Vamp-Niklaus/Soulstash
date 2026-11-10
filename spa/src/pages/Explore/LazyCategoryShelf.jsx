@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
@@ -11,16 +11,40 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
   const navigate = useNavigate();
   const genreId = genre.id || genre;
   const displayLimit = limit || 14; // Apply limit for 2 rows on desktop
+  const [failedCardIds, setFailedCardIds] = useState(() => new Set());
+
+  const handleCardImageError = useCallback((itemId) => {
+    if (!itemId) return;
+    setFailedCardIds((prev) => {
+      if (prev.has(itemId)) return prev;
+      const next = new Set(prev);
+      next.add(itemId);
+      return next;
+    });
+  }, []);
 
   const { data: fetchedMovies, isLoading } = useQuery({
     queryKey: ['moviesByGenre', genreId],
     queryFn: async () => {
       const gLower = String(genreId).toLowerCase();
+      const isValidImage = (item) => {
+        const p = item?.image || item?.coverImage || item?.poster_path;
+        return Boolean(
+          p &&
+          typeof p === 'string' &&
+          p.trim() &&
+          p !== 'null' &&
+          p !== 'undefined' &&
+          !p.startsWith('data:image/svg+xml') &&
+          !p.includes('placeholder')
+        );
+      };
+
       if (gLower === 'anime' || gLower === 'kartoons-anime') {
         const res = await fetch(`https://api.kartoons.me/api/shows?page=1&category=Anime`);
         const json = await res.json().catch(() => ({}));
         const raw = (Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []))
-          .filter((item) => Boolean(item?.image || item?.coverImage));
+          .filter(isValidImage);
         return raw.map((item) => ({
           id: `kartoons-${item.slug}`,
           title: item.title,
@@ -44,9 +68,9 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
         const sJson = showsRes?.ok ? await showsRes.json().catch(() => ({})) : {};
         const mJson = moviesRes?.ok ? await moviesRes.json().catch(() => ({})) : {};
         const sRaw = (Array.isArray(sJson?.data) ? sJson.data : (Array.isArray(sJson) ? sJson : []))
-          .filter((item) => Boolean(item?.image || item?.coverImage));
+          .filter(isValidImage);
         const mRaw = (Array.isArray(mJson?.data) ? mJson.data : (Array.isArray(mJson) ? mJson : []))
-          .filter((item) => Boolean(item?.image || item?.coverImage));
+          .filter(isValidImage);
 
         const mappedShows = sRaw.map((item) => ({
           id: `kartoons-${item.slug}`,
@@ -80,7 +104,7 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
 
         return [...mappedShows, ...mappedMovies];
       }
-      return apiFetch(`/api/movies?genre=${genreId}&limit=20`);
+      return apiFetch(`/api/movies?genre=${genreId}&limit=28`);
     },
     enabled: !preloadedMovies || preloadedMovies.length === 0,
     staleTime: 1000 * 60 * 30, // 30 minutes
@@ -102,17 +126,24 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
       );
     });
   }, [rawMovies]);
+
+  const visibleMovies = useMemo(() => {
+    return movies.filter((item) => {
+      const idKey = item.id || item.slug || item.kartoons_slug || item.title;
+      return !failedCardIds.has(idKey);
+    });
+  }, [movies, failedCardIds]);
   
   // Preload images for dynamically fetched shelves
   useEffect(() => {
-    if (!preloadedMovies?.length && movies.length > 0) {
-      preloadImages(movies.slice(0, displayLimit).map(item => item.poster_path));
+    if (!preloadedMovies?.length && visibleMovies.length > 0) {
+      preloadImages(visibleMovies.slice(0, displayLimit).map(item => item.poster_path));
     }
-  }, [movies, preloadedMovies, displayLimit]);
+  }, [visibleMovies, preloadedMovies, displayLimit]);
 
   const loading = (!preloadedMovies || preloadedMovies.length === 0) && isLoading;
 
-  if (loading || !movies.length) return null;
+  if (loading || !visibleMovies.length) return null;
 
   const title = genre.name || genre;
 
@@ -123,8 +154,13 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
         onViewAll={() => navigate(`/genre/${genreId}/${encodeURIComponent(String(title))}`)}
       />
       <div className={HOME_GRID_CLASS}>
-        {movies.slice(0, displayLimit).map((item, index) => (
-          <ContentCard key={`genre-${genreId}-${item.id}-${index}`} item={item} data-card />
+        {visibleMovies.slice(0, displayLimit).map((item, index) => (
+          <ContentCard
+            key={`genre-${genreId}-${item.id || item.slug || index}-${index}`}
+            item={item}
+            data-card
+            onImageError={() => handleCardImageError(item.id || item.slug || item.kartoons_slug || item.title)}
+          />
         ))}
       </div>
     </section>
