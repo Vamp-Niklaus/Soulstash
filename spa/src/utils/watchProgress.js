@@ -1,5 +1,5 @@
 const STORAGE_KEY = 'soulstash_continue_watching';
-const MIN_TIME_SECONDS = 10;
+const MIN_TIME_SECONDS = 5;
 const COMPLETION_THRESHOLD = 0.90; // 90% watched = completed
 
 export function getProgressItemKey(item) {
@@ -22,6 +22,8 @@ export function getContinueWatchingList() {
     return list
       .filter((entry) => {
         if (!entry || !entry.key) return false;
+        const poster = entry.poster_path || entry.image;
+        if (!poster || !String(poster).trim() || String(poster).startsWith('data:image/svg+xml')) return false;
         const time = Number(entry.currentTime) || 0;
         const duration = Number(entry.duration) || 0;
         if (time < MIN_TIME_SECONDS) return false;

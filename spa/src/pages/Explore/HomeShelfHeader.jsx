@@ -28,14 +28,16 @@ export function HomeShelfHeader({ title, publisher = '', onViewAll, onPublisherC
           ) : null}
         </div>
       </div>
-      <button
-        type="button"
-        className="shelf-action focus:outline-none focus:ring-2 focus:ring-[var(--cinema-accent)]"
-        onClick={onViewAll}
-      >
-        <span>View all</span>
-        <span aria-hidden="true">→</span>
-      </button>
+      {onViewAll ? (
+        <button
+          type="button"
+          className="shelf-action focus:outline-none focus:ring-2 focus:ring-[var(--cinema-accent)]"
+          onClick={onViewAll}
+        >
+          <span>View all</span>
+          <span aria-hidden="true">→</span>
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -237,6 +237,8 @@ export function KartoonDetailPage() {
     if (!show || contentKind !== 'series') return;
     const epNum = Number(ep?.episode_number || ep?.episodeNumber || 1);
     const sNum = Number(ep?.season_number || seasonNumber || 1);
+    const posterVal = show.poster || show.image || show.coverImage || '';
+    const backdropVal = show.backdrop || posterVal;
     setPlayerRequest({
       mediaType: 'series',
       tmdbId: tmdbMatch?.id ? tmdbMatch.id : `kartoons-${slug}`,
@@ -247,12 +249,17 @@ export function KartoonDetailPage() {
       year: show.startYear,
       kartoonsSlug: slug,
       kartoonsEpisodeId: ep?.id || ep?._id,
-      isKartoons: true
+      isKartoons: true,
+      poster_path: posterVal,
+      backdrop_path: backdropVal,
+      image: posterVal
     });
   }, [show, slug, seasonNumber, tmdbMatch, contentKind]);
 
   const handlePlayClick = useCallback(() => {
     if (!show) return;
+    const posterVal = show.poster || show.image || show.coverImage || '';
+    const backdropVal = show.backdrop || posterVal;
     if (contentKind === 'movie') {
       setPlayerRequest({
         mediaType: 'movie',
@@ -260,7 +267,10 @@ export function KartoonDetailPage() {
         title: show.title,
         year: show.startYear,
         kartoonsSlug: slug,
-        isKartoons: true
+        isKartoons: true,
+        poster_path: posterVal,
+        backdrop_path: backdropVal,
+        image: posterVal
       });
       return;
     }
@@ -277,7 +287,10 @@ export function KartoonDetailPage() {
       year: show.startYear,
       kartoonsSlug: slug,
       kartoonsEpisodeId: firstEp?.id || firstEp?._id,
-      isKartoons: true
+      isKartoons: true,
+      poster_path: posterVal,
+      backdrop_path: backdropVal,
+      image: posterVal
     });
   }, [show, slug, seasonNumber, seasonDetails, tmdbMatch, contentKind]);
 

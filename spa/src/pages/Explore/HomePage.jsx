@@ -88,9 +88,7 @@ export function HomePage() {
 
       const cleanBaseGenres = baseGenres.filter((g) => !isKidsOrDocOrTvMovie(g));
 
-      const bollywoodGenre = cleanBaseGenres.find(
-        (g) => String(g?.id).toLowerCase() === 'bollywood'
-      ) || { id: 'bollywood', name: 'Latest in India' };
+      const bollywoodGenre = { id: 'bollywood', name: 'Latest in India' };
 
       const cartoonGenre = { id: 'kartoons-cartoon', name: 'Cartoon' };
       const animeGenre = { id: 'kartoons-anime', name: 'Anime' };
@@ -191,6 +189,12 @@ export function HomePage() {
     return popular.filter((item) => !failedCardIds.has(item.id || item.title));
   }, [popular, failedCardIds]);
 
+  const visibleContinueWatching = useMemo(() => {
+    return continueWatchingList.filter(
+      (entry) => (entry.poster_path || entry.image) && !failedCardIds.has(entry.id || entry.key)
+    );
+  }, [continueWatchingList, failedCardIds]);
+
   // Aggressively preload images for trending and preloaded categories
   useEffect(() => {
     if (visibleTrending.length > 0) {
@@ -217,12 +221,12 @@ export function HomePage() {
 
   return (
     <div className="space-y-8">
-      {/* 1. Continue Watching (shown ONLY if at least 1 in-progress content exists) */}
-      {continueWatchingList.length > 0 && (
+      {/* 1. Continue Watching (shown ONLY if at least 1 in-progress content with poster exists) */}
+      {visibleContinueWatching.length > 0 && (
         <section className="content-section">
           <HomeShelfHeader title="Continue Watching" />
           <div className={HOME_GRID_CLASS}>
-            {continueWatchingList.slice(0, homeShelfLimit).map((entry) => (
+            {visibleContinueWatching.slice(0, homeShelfLimit).map((entry) => (
               <ContinueWatchingCard
                 key={entry.key || `continue-${entry.id}`}
                 entry={entry}

@@ -143,9 +143,11 @@ export function DetailPage({ type }) {
     const originalTitle = content?.original_title || content?.original_name || '';
     const originalName = content?.original_name || content?.original_title || '';
     const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
+    const posterVal = content?.poster_path || content?.image || '';
+    const backdropVal = content?.backdrop_path || content?.backdrop || '';
     if (type === 'movie') {
       page.setPlayerRequest(
-        createPlayerRequest({ mediaType: 'movie', tmdbId, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal })
+        createPlayerRequest({ mediaType: 'movie', tmdbId, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal, poster_path: posterVal, backdrop_path: backdropVal, image: posterVal })
       );
     } else {
       const season = page.selectedSeason || 1;
@@ -165,7 +167,10 @@ export function DetailPage({ type }) {
           originalTitle,
           originalName,
           seriesTitle: title,
-          year: yearVal
+          year: yearVal,
+          poster_path: posterVal,
+          backdrop_path: backdropVal,
+          image: posterVal
         })
       );
     }
@@ -175,6 +180,8 @@ export function DetailPage({ type }) {
     const originalTitle = content?.original_title || content?.original_name || '';
     const originalName = content?.original_name || content?.original_title || '';
     const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
+    const posterVal = content?.poster_path || content?.image || '';
+    const backdropVal = content?.backdrop_path || content?.backdrop || '';
     page.setPlayerRequest(
       createPlayerRequest({
         mediaType: 'series',
@@ -189,7 +196,10 @@ export function DetailPage({ type }) {
         originalTitle,
         originalName,
         seriesTitle: title,
-        year: yearVal
+        year: yearVal,
+        poster_path: posterVal,
+        backdrop_path: backdropVal,
+        image: posterVal
       })
     );
   }

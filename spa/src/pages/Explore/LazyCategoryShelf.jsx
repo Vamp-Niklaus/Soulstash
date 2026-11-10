@@ -145,7 +145,8 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
 
   if (loading || !visibleMovies.length) return null;
 
-  const title = genre.name || genre;
+  const isBollywood = String(genreId).toLowerCase() === 'bollywood';
+  const title = isBollywood ? 'Latest in India' : (genre.name || genre);
 
   return (
     <section className="content-section">

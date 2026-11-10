@@ -33,7 +33,7 @@ async function ensureHlsJs() {
   return getHls();
 }
 
-export function KartoonWatchModal({ title = '', streamType, streamId, subtitle = '', onClose }) {
+export function KartoonWatchModal({ title = '', streamType, streamId, subtitle = '', poster = '', onClose }) {
   const [streams, setStreams] = useState([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [status, setStatus] = useState('loading'); // loading | playing | error | nostream
@@ -49,8 +49,10 @@ export function KartoonWatchModal({ title = '', streamType, streamId, subtitle =
     name: title || 'Kartoon Video',
     seriesTitle: title,
     media_type: streamType === 'series' ? 'Series' : 'Movie',
-    is_kartoons: true
-  }), [streamId, title, streamType]);
+    is_kartoons: true,
+    poster_path: poster || '',
+    image: poster || ''
+  }), [streamId, title, streamType, poster]);
 
   const saved = useMemo(() => getSavedProgress(kartoonItem), [kartoonItem]);
   const initialResumeTime = Number(saved?.currentTime) || 0;

@@ -102,9 +102,10 @@ export function VideoPlayerModal({ request, onClose }) {
   const focusSourceAfterExpandRef = useRef(false);
   const playerDisplayModeRef = useRef(1);
   const openerRef = useRef(typeof document !== 'undefined' ? document.activeElement : null);
-  // Tracks whether the Size button is currently focused using focus/blur events.
-  // This is read in popstate / back handlers which fire AFTER the iframe steals
-  // focus, so reading document.activeElement there always returns IFRAME.
+  // Tracks where focus was last targeted in the player: 'size' | 'controls' | 'iframe'
+  const playerFocusTargetRef = useRef('size');
+  // Timestamp when Size button was last focused
+  const sizeFocusLastAtRef = useRef(0);
   const sizeFocusedRef = useRef(false);
   const hlsInstanceRef = useRef(null);
   const hlsErrorHandlerRef = useRef(null);
@@ -129,7 +130,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const resolvedEmbedUrl = useMemo(() => {
     if (!activeUrl) return '';
-    if (initialResumeTime <= 10) return activeUrl;
+    if (initialResumeTime <= 5) return activeUrl;
     try {
       const u = new URL(activeUrl);
       const host = u.hostname.toLowerCase();
@@ -158,6 +159,8 @@ export function VideoPlayerModal({ request, onClose }) {
   }, []);
 
   const focusPlaybackContext = useCallback((reason, preferredTarget = null) => {
+    playerFocusTargetRef.current = 'iframe';
+    sizeFocusedRef.current = false;
     const resolveTarget = () => {
       if (preferredTarget?.isConnected) return preferredTarget;
       const target = isDirectMediaUrl(activeUrl) ? directVideoRef.current : iframeRef.current;
@@ -219,6 +222,9 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [activeUrl]);
 
   const focusSizeControl = useCallback(() => {
+    playerFocusTargetRef.current = 'size';
+    sizeFocusLastAtRef.current = Date.now();
+    sizeFocusedRef.current = true;
     window.requestAnimationFrame(() => {
       const target = fullscreenButtonRef.current || playerBoxRef.current?.querySelector('button[data-player-size="true"]');
       if (!target?.isConnected) {
@@ -348,6 +354,18 @@ export function VideoPlayerModal({ request, onClose }) {
         time = Number(data.currentTime);
         duration = Number(data.duration);
       }
+      // Vidly
+      else if (data.type === 'VIDLY_PLAYER_EVENT' && data.data) {
+        if (data.data.event === 'ended') {
+          isEnded = true;
+        } else if (data.data.currentTime != null) {
+          time = Number(data.data.currentTime);
+          duration = Number(data.data.duration);
+        }
+      } else if (data.type === 'SYNC_HISTORY' && data.data) {
+        time = Number(data.data.watched);
+        duration = Number(data.data.duration);
+      }
       // Generic
       else if (typeof data.currentTime === 'number' && Number.isFinite(data.currentTime)) {
         time = data.currentTime;
@@ -400,9 +418,13 @@ export function VideoPlayerModal({ request, onClose }) {
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
     const mode = playerDisplayModeRef.current;
-    // Use the ref-tracked value — not document.activeElement which may already
-    // point to the IFRAME by the time this handler fires.
-    const isSizeFocused = sizeFocusedRef.current;
+    const isSizeFocused = playerFocusTargetRef.current === 'size' ||
+      sizeFocusedRef.current ||
+      document.activeElement === fullscreenButtonRef.current ||
+      Boolean(document.activeElement?.hasAttribute?.('data-player-size')) ||
+      (Date.now() - sizeFocusLastAtRef.current < 2500);
+
+    const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' && !isSizeFocused;
 
     if (mode === 3) {
       try {
@@ -421,13 +443,13 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    // In Mode 2: If focus is not on Size button, focus Size button first (staying in Mode 2).
-    // Only if focus is ALREADY on Size button does Back step down to Mode 1.
+    // In Mode 2: If focus was inside the playback/video, focus the Size button (stay in Mode 2).
+    // If focus was ALREADY on Size button or player controls, step down to Mode 1.
     if (mode === 2) {
-      if (!isSizeFocused) {
+      if (isPlaybackFocused) {
         setTvControlsVisible(true);
         wakeTvControls();
-        console.info(`[Soulstash Player Focus] Back in mode 2 (focus was on ${document.activeElement?.tagName || 'none'}) -> focusing Size`);
+        console.info('[Soulstash Player Focus] Back in mode 2 (was in playback) -> focusing Size');
         focusSizeControl();
         return;
       }
@@ -451,11 +473,11 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    // Mode 1 and sources closed: if focus is not on Size, focus Size
-    if (!isSizeFocused) {
+    // Mode 1 and sources closed: if focus was in playback, focus Size
+    if (isPlaybackFocused) {
       setTvControlsVisible(true);
       wakeTvControls();
-      console.info(`[Soulstash Player Focus] Back in mode 1 (focus was on ${document.activeElement?.tagName || 'none'}) -> focusing Size`);
+      console.info('[Soulstash Player Focus] Back in mode 1 (was in playback) -> focusing Size');
       focusSizeControl();
       return;
     }
@@ -1009,8 +1031,13 @@ export function VideoPlayerModal({ request, onClose }) {
     const handlePopState = () => {
       if (isClosingRef.current) return;
       const mode = playerDisplayModeRef.current;
-      // Use ref — document.activeElement is already IFRAME when popstate fires.
-      const isSizeFocused = sizeFocusedRef.current;
+      const isSizeFocused = playerFocusTargetRef.current === 'size' ||
+        sizeFocusedRef.current ||
+        document.activeElement === fullscreenButtonRef.current ||
+        Boolean(document.activeElement?.hasAttribute?.('data-player-size')) ||
+        (Date.now() - sizeFocusLastAtRef.current < 2500);
+
+      const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' && !isSizeFocused;
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
@@ -1030,10 +1057,10 @@ export function VideoPlayerModal({ request, onClose }) {
 
       if (mode === 2) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-        if (!isSizeFocused) {
+        if (isPlaybackFocused) {
           setTvControlsVisible(true);
           wakeTvControls();
-          console.info(`[Soulstash Player Focus] PopState in mode 2 (focus was on ${document.activeElement?.tagName || 'none'}) -> focusing Size`);
+          console.info('[Soulstash Player Focus] PopState in mode 2 (was in playback) -> focusing Size');
           focusSizeControl();
           return;
         }
@@ -1041,7 +1068,7 @@ export function VideoPlayerModal({ request, onClose }) {
         updatePlayerDisplayMode(1);
         setTvControlsVisible(true);
         wakeTvControls();
-        console.info('[Soulstash Player Focus] PopState on Size button in mode 2 -> switched to mode 1 and focusing Size');
+        console.info('[Soulstash Player Focus] PopState in mode 2 -> switched to mode 1 and focusing Size');
         focusSizeControl();
         return;
       }
@@ -1055,7 +1082,7 @@ export function VideoPlayerModal({ request, onClose }) {
         return;
       }
 
-      if (!isSizeFocused) {
+      if (isPlaybackFocused) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setTvControlsVisible(true);
         wakeTvControls();
@@ -1773,8 +1800,14 @@ export function VideoPlayerModal({ request, onClose }) {
                 data-player-size="true"
                 ref={fullscreenButtonRef}
                 onClick={handleToggleFullscreen}
-                onFocus={() => { sizeFocusedRef.current = true; }}
-                onBlur={() => { sizeFocusedRef.current = false; }}
+                onFocus={() => {
+                  playerFocusTargetRef.current = 'size';
+                  sizeFocusLastAtRef.current = Date.now();
+                  sizeFocusedRef.current = true;
+                }}
+                onBlur={() => {
+                  sizeFocusedRef.current = false;
+                }}
                 className={iconButtonClass}
                 aria-label={`Player size ${playerDisplayMode} of 3`}
                 title={`Player size ${playerDisplayMode} of 3`}
@@ -1787,6 +1820,9 @@ export function VideoPlayerModal({ request, onClose }) {
                 data-player-source-toggle="true"
                 ref={sourceToggleRef}
                 onClick={sourcesExpanded ? handleCloseSources : handleOpenSources}
+                onFocus={() => {
+                  playerFocusTargetRef.current = 'controls';
+                }}
                 className={`${actionButtonClass} inline-flex items-center gap-1.5`}
                 aria-label={sourcesExpanded ? 'Hide streams and sources' : 'Show streams and sources'}
                 aria-expanded={sourcesExpanded}
@@ -1868,6 +1904,10 @@ export function VideoPlayerModal({ request, onClose }) {
             ref={mediaAreaRef}
             className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden bg-black"
             style={mediaAreaStyle}
+            onPointerDown={() => {
+              playerFocusTargetRef.current = 'iframe';
+              sizeFocusedRef.current = false;
+            }}
           >
             {(isFetching || (isPureKartoons && !activeUrl && !kartoonResolveDone)) ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-6">
@@ -1958,15 +1998,22 @@ export function VideoPlayerModal({ request, onClose }) {
                     setIsStreamLoading(false);
                     setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
 
-                    // Kick-start VidRift progress telemetry: the player only
-                    // emits vidrift:progress AFTER it receives vidrift:get-state.
+                    // Kick-start telemetry across all supported embed providers:
+                    // - VidRift emits vidrift:progress after receiving vidrift:get-state
+                    // - VidFast emits player events on getstatus / playerstatus
+                    // - VidBolt & FrameXTV & Vidly emit timeupdate / status
                     if (iframeRef.current?.contentWindow) {
+                      const win = iframeRef.current.contentWindow;
                       try {
-                        iframeRef.current.contentWindow.postMessage({ type: 'vidrift:get-state' }, '*');
+                        win.postMessage({ type: 'vidrift:get-state' }, '*');
+                        win.postMessage({ type: 'getstatus' }, '*');
+                        win.postMessage({ type: 'PLAYER_EVENT', data: { event: 'playerstatus' } }, '*');
+                        win.postMessage({ action: 'getState' }, '*');
+                        win.postMessage({ type: 'ping' }, '*');
                       } catch (_) {}
                     }
 
-                    if (initialResumeTime > 10 && iframeRef.current?.contentWindow) {
+                    if (initialResumeTime > 5 && iframeRef.current?.contentWindow) {
                       const win = iframeRef.current.contentWindow;
                       const t = Math.floor(initialResumeTime);
                       try {
@@ -1974,6 +2021,7 @@ export function VideoPlayerModal({ request, onClose }) {
                         win.postMessage({ type: 'seek', time: t }, '*');
                         win.postMessage({ command: 'seek', time: t }, '*');
                         win.postMessage({ action: 'seek', time: t }, '*');
+                        win.postMessage({ type: 'PLAYER_EVENT', data: { event: 'seek', time: t } }, '*');
                       } catch (_) {}
                     }
 

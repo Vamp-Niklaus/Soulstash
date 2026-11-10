@@ -770,12 +770,18 @@ export function createPlayerRequest({
   originalName,
   seriesTitle,
   year,
-  youtubeTrailerKey
+  youtubeTrailerKey,
+  poster_path,
+  backdrop_path,
+  image,
+  poster
 }) {
   const normalizedType = String(mediaType || '').toLowerCase() === 'movie' ? 'movie' : 'series';
   const resolvedTmdbId = String(tmdbId || '').startsWith('kartoons-') ? tmdbId : (Number(tmdbId) || tmdbId);
   const resolvedSeasonNumber = normalizedType === 'series' ? Number(seasonNumber || 1) : null;
   const resolvedEpisodeNumber = normalizedType === 'series' ? (typeof episodeNumber === 'string' && episodeNumber.includes('.') ? episodeNumber : Number(episodeNumber || 1)) : null;
+  const resolvedPoster = poster_path || image || poster || '';
+  const resolvedBackdrop = backdrop_path || resolvedPoster;
 
   return {
     mediaType: normalizedType,
@@ -793,6 +799,9 @@ export function createPlayerRequest({
     seriesTitle: seriesTitle || '',
     year: Number(year) || null,
     youtubeTrailerKey: youtubeTrailerKey || '',
+    poster_path: resolvedPoster,
+    backdrop_path: resolvedBackdrop,
+    image: resolvedPoster,
     fallbackSources: typeof resolvedTmdbId === 'number' && !isNaN(resolvedTmdbId) ? buildLegacyPlayerSources({
       mediaType: normalizedType,
       tmdbId: resolvedTmdbId,

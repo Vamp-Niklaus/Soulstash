@@ -293,9 +293,13 @@ function tryClose() {
   );
   if (closeBtn && isVisible(closeBtn)) { closeBtn.click(); return true; }
 
-  // Player close button
-  const playerClose = document.querySelector('[data-player-modal] button[aria-label="Close player"]');
-  if (playerClose && isVisible(playerClose)) { playerClose.click(); return true; }
+  // Player modal — delegate to player back event so it steps down modes properly
+  const playerModal = document.querySelector('[data-player-modal]');
+  if (playerModal && isVisible(playerModal)) {
+    const backEvent = new CustomEvent('soulstash:player-back', { cancelable: true });
+    window.dispatchEvent(backEvent);
+    return true;
+  }
 
   // Click on a visible dark backdrop
   const backdrop = document.querySelector(
