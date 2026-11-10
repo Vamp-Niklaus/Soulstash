@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Soulstash",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "identifier": "app.soul.soulstash.desktop",
   "build": {
     "frontendDist": "../spa/dist",
@@ -23,8 +23,20 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBCNkRGRkE4MkZDOEYyQjMKUldTejhzZ3ZxUDl0QytLaFNHd0R2RjRZTldUaUNZY0xsU0VLcC9rd1BYVFgvQlNBTXh3NXhiMjcK",
+      "endpoints": [
+        "https://github.com/Vamp-Niklaus/soulstash-backend/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": [
       "nsis"
     ],

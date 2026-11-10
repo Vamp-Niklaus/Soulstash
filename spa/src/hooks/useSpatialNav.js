@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { moveFocus, getOpenModal, getPreferredModalFocus, getPlayerModal, tryClose, focusFirstPlayerControl, restorePlayerStreamFocus } from '../utils/tvNavMappings.js';
 import { getFocusableIn, isVisible, applyFocus, FOCUSED, FOCUSABLE_SEL, getFocusable, lastFocused, setLastFocused } from '../utils/spatialCore.js';
+import { handleDirectOverlayKey } from '../components/player/directOverlayNav.js';
 
 const ACTIVATE  = new Set(['Enter', ' ']);
 const NAV       = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
@@ -33,8 +34,9 @@ function handleTvLinkClick(event) {
 }
 
 function focusPlaybackSurface(playerModal, reason = 'dpad-navigation') {
-  const playback = playerModal.querySelector('iframe[tabindex="0"], video[tabindex="0"]');
-  if (!playback?.isConnected || !isVisible(playback)) {
+  const playback = playerModal.querySelector('iframe[tabindex="0"], video[tabindex="0"]') || playerModal.querySelector('video, iframe');
+  // Size check only: the internal player's overlay fades out (opacity 0), which isVisible() would reject.
+  if (!playback?.isConnected || playback.getClientRects().length === 0) {
     console.warn('[Soulstash Player Focus] playback focus target is missing or hidden', {
       reason,
       mode: playerModal.getAttribute('data-player-mode'),
@@ -214,19 +216,25 @@ function handleKeyDown(e) {
         showRing();
         return;
       }
+      // Up/Down on the focused video change volume (in every player mode).
       if (key === 'ArrowUp' || key === 'ArrowDown') {
-        if (playerModal.getAttribute('data-player-mode') === '3') return;
         e.preventDefault();
         e.stopPropagation();
         showRing();
-        if (key === 'ArrowUp') {
-          focusFirstPlayerControl(playerModal, showRing);
-        } else {
-          const source = playerModal.querySelector(
-            'button[data-active-source="true"], button[data-player-source-toggle="true"]'
-          );
-          if (source && isVisible(source)) applyFocus(source);
-        }
+        const next = Math.max(0, Math.min(1, (active.volume ?? 1) + (key === 'ArrowUp' ? 0.1 : -0.1)));
+        active.volume = next;
+        active.muted = next === 0;
+        window.dispatchEvent(new CustomEvent('soulstash:player-volume-changed'));
+        return;
+      }
+      // Menu key on the video moves focus into the internal player's on-screen buttons.
+      if (key === 'ContextMenu') {
+        e.preventDefault();
+        e.stopPropagation();
+        showRing();
+        const firstButton = playerModal.querySelector('[data-direct-player] button:not(:disabled)');
+        if (firstButton && isVisible(firstButton)) applyFocus(firstButton);
+        else focusFirstPlayerControl(playerModal, showRing);
         return;
       }
       if (ACTIVATE.has(key)) {
@@ -317,6 +325,16 @@ function handleKeyDown(e) {
         applyFocus(controls[nextIndex]);
       }
       return;
+    }
+
+    // Internal (direct video) player overlay: rows, seek line and volume, shared with the desktop handler.
+    const directOverlay = playerModal.querySelector('[data-direct-player]');
+    if (directOverlay && directOverlay.contains(active) && NAV.has(key)) {
+      const handled = handleDirectOverlayKey(key, active, directOverlay, playerModal.querySelector('video'), (el) => {
+        showRing();
+        applyFocus(el);
+      });
+      if (handled) return;
     }
 
     if (active.closest('[data-player-source]') && key === 'ArrowUp') {

@@ -29,6 +29,7 @@ public class MainActivity extends BridgeActivity {
         // Register plugin BEFORE super.onCreate
         registerPlugin(ZoomPlugin.class);
         registerPlugin(NativeTapPlugin.class);
+        registerPlugin(ApkUpdaterPlugin.class);
 
         super.onCreate(savedInstanceState);
 

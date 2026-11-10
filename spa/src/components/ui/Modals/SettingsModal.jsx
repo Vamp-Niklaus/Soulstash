@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { check as checkTauriUpdate } from '@tauri-apps/plugin-updater';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from '../../../utils/toast.js';
 import { useAuthSession } from '../../../hooks/useAuthSession.js';
 import { clearAuthSession } from '../../../api/client.js';
+
+// Native Android plugin (ApkUpdaterPlugin.java): downloads the APK and opens the installer.
+const ApkUpdater = registerPlugin('ApkUpdater');
 
 async function fetchLatestPublishedRelease(repository, assetExtension = '') {
   const response = await fetch(`https://api.github.com/repos/Vamp-Niklaus/${repository}/releases?per_page=20`, {
@@ -38,7 +42,10 @@ export function SettingsModal({
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [windowsExeInfo, setWindowsExeInfo] = useState(null);
-  const currentVersion = 'v2.0.0';
+  const currentVersion = 'v4.0.0';
+  const [installing, setInstalling] = useState(false);
+  const [installProgress, setInstallProgress] = useState(null);
+  const tauriUpdateRef = useRef(null);
 
   const isNative = Capacitor.isNativePlatform();
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -120,6 +127,32 @@ export function SettingsModal({
     setCheckingUpdate(true);
     setUpdateInfo(null);
     try {
+      if (isTauri) {
+        try {
+          const update = await checkTauriUpdate();
+          tauriUpdateRef.current = update || null;
+          if (update) {
+            setUpdateInfo({
+              checked: true,
+              isNewer: true,
+              tagName: `v${update.version}`,
+              downloadUrl: '',
+              inApp: true,
+              publishedAt: update.date ? new Date(update.date).toLocaleDateString() : '',
+              body: update.body || '',
+              assetExtension: '.exe'
+            });
+            toast(`New update available: v${update.version}`, 'success');
+          } else {
+            setUpdateInfo({ checked: true, isLatest: true, tagName: currentVersion, downloadUrl: '', assetExtension: '.exe' });
+            toast(`You are running the latest version (${currentVersion})`, 'success');
+          }
+          return;
+        } catch (err) {
+          // latest.json missing or unreachable: fall back to the GitHub release lookup below.
+          console.warn('Tauri updater check failed, falling back to release lookup:', err);
+        }
+      }
       const releaseRepo = isTauri ? 'soulstash-backend' : 'Soulstash';
       const assetExtension = isTauri ? '.exe' : '.apk';
       const data = await fetchLatestPublishedRelease(releaseRepo, assetExtension);
@@ -186,6 +219,53 @@ export function SettingsModal({
       document.body.removeChild(a);
     } catch (e) {
       window.location.href = url;
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (installing) return;
+    setInstalling(true);
+    setInstallProgress(0);
+    let listener = null;
+    try {
+      if (isTauri) {
+        const update = tauriUpdateRef.current;
+        if (!update) throw new Error('No update is ready to install');
+        let total = 0;
+        let received = 0;
+        await update.downloadAndInstall((event) => {
+          if (event.event === 'Started') total = event.data?.contentLength || 0;
+          else if (event.event === 'Progress') {
+            received += event.data?.chunkLength || 0;
+            if (total > 0) setInstallProgress(Math.min(100, Math.round((received * 100) / total)));
+          } else if (event.event === 'Finished') setInstallProgress(100);
+        });
+        toast('Update installed. The app will restart.', 'success');
+        return;
+      }
+
+      if (isNative) {
+        const url = updateInfo?.downloadUrl;
+        if (!url) throw new Error('No APK is attached to this release');
+        listener = await ApkUpdater.addListener('downloadProgress', (p) => {
+          if (typeof p?.percent === 'number') setInstallProgress(p.percent);
+        });
+        const result = await ApkUpdater.downloadAndInstall({ url, fileName: 'soulstash-update.apk' });
+        if (result?.needsPermission) {
+          toast('Allow "Install unknown apps" for Soulstash, then tap Update again.', 'info');
+          await ApkUpdater.openInstallPermission();
+        } else {
+          toast('Tap Install in the Android prompt to finish updating.', 'success');
+        }
+      }
+    } catch (err) {
+      console.warn('In-app update failed:', err);
+      toast('In-app update failed. Opening the download instead.', 'info');
+      if (updateInfo?.downloadUrl) await handleDownloadUrl(updateInfo.downloadUrl);
+    } finally {
+      if (listener?.remove) listener.remove();
+      setInstalling(false);
+      setInstallProgress(null);
     }
   };
 
@@ -372,12 +452,12 @@ export function SettingsModal({
                       <span>New Version Available: {updateInfo.tagName}</span>
                       <span className="text-[10px] text-white/40">{updateInfo.publishedAt}</span>
                     </div>
-                    {updateInfo.downloadUrl ? (
-                      <button type="button" onClick={() => handleDownloadUrl(updateInfo.downloadUrl)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold py-2.5 text-xs transition-colors shadow-lg active:scale-98 cursor-pointer">
-                        <i className="fas fa-download"></i><span>Download Update</span>
+                    {updateInfo.downloadUrl || updateInfo.inApp ? (
+                      <button type="button" disabled={installing} onClick={handleInstallUpdate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-black font-bold py-2.5 text-xs transition-colors shadow-lg active:scale-98 cursor-pointer">
+                        <i className={`fas ${installing ? 'fa-spinner fa-spin' : 'fa-download'}`}></i><span>{installing ? (installProgress != null ? `Downloading... ${installProgress}%` : 'Preparing...') : 'Update Now'}</span>
                       </button>
                     ) : <p className="text-amber-300 text-center">No {isTauri ? 'EXE installer' : 'APK'} is attached to this release.</p>}
-                    <p className="text-[10px] text-white/40 text-center leading-tight">{isTauri ? 'Run the downloaded installer to update the Windows app.' : 'After download, open the APK to install the update.'}</p>
+                    <p className="text-[10px] text-white/40 text-center leading-tight">{isTauri ? 'The update downloads and installs inside the app, then it restarts.' : 'The update downloads inside the app. Tap Install in the Android prompt to finish.'}</p>
                   </div>
                 ) : updateInfo.isLatest ? (
                   <div className="flex items-center justify-between text-white/80 py-1">

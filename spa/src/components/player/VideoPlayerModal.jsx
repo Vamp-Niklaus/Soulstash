@@ -1105,7 +1105,7 @@ export function VideoPlayerModal({ request, onClose }) {
     // for keyboard, remote and mouse focus moves into the cross-origin iframe.
     const handleFocusIn = (e) => {
       const target = e.target;
-      if (target === iframeRef.current || target?.tagName === 'IFRAME' || target === directVideoRef.current) {
+      if (target === iframeRef.current || target?.tagName === 'IFRAME' || target === directVideoRef.current || target?.closest?.('[data-direct-player]')) {
         focusZoneRef.current = 'playback';
         playerFocusTargetRef.current = 'iframe';
         sizeFocusedRef.current = false;
@@ -2069,6 +2069,8 @@ export function VideoPlayerModal({ request, onClose }) {
                 <DirectVideoControls
                   videoRef={directVideoRef}
                   hlsRef={hlsInstanceRef}
+                  isTv={isTv}
+                  title={request?.seriesTitle || request?.title || ''}
                   onToggleFullscreen={handleToggleFullscreen}
                 />
               </div>
