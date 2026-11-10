@@ -135,11 +135,41 @@ export async function searchKartoonsMovies(query, { signal } = {}) {
 
 export async function fetchKartoonsMovieDetail(slug, { signal } = {}) {
   const value = String(slug || '').trim();
+  if (!value) throw new Error('Kartoons movie not found');
+
+  // Direct fetch from /movies/:slug (returns full movie details + related titles)
+  try {
+    const res = await fetch(`${KARTOONS_API}/movies/${encodeURIComponent(value)}`, {
+      headers: { Accept: 'application/json' },
+      signal,
+      mode: 'cors'
+    });
+    if (res.ok) {
+      const payload = await res.json();
+      const item = payload?.data || payload;
+      if (item && (item.title || item._id)) {
+        return {
+          id: item._id || item.slug || '',
+          slug: item.slug || '',
+          title: item.title || 'Unknown title',
+          category: item.category || '',
+          image: item.image || '',
+          coverImage: item.coverImage || item.image || '',
+          startYear: Number(item.startYear || item.releaseYear) || null,
+          rating: Number(item.rating) || 0,
+          tags: Array.isArray(item.tags) ? item.tags : [],
+          description: item.description || item.overview || '',
+          related: Array.isArray(payload.related) ? payload.related : (Array.isArray(item.related) ? item.related : [])
+        };
+      }
+    }
+  } catch (_) {}
+
   const titleQuery = value
     .replace(/-[a-f0-9]{5,24}$/i, '')
     .replace(/-/g, ' ')
     .trim();
-  if (!value || titleQuery.length < 2) throw new Error('Kartoons movie not found');
+  if (titleQuery.length < 2) throw new Error('Kartoons movie not found');
 
   const { data } = await searchKartoonsMovies(titleQuery, { signal });
   const item = data.find((candidate) => candidate.slug === value);
@@ -155,7 +185,8 @@ export async function fetchKartoonsMovieDetail(slug, { signal } = {}) {
     startYear: Number(item.startYear || item.releaseYear) || null,
     rating: Number(item.rating) || 0,
     tags: Array.isArray(item.tags) ? item.tags : [],
-    description: item.description || item.overview || ''
+    description: item.description || item.overview || '',
+    related: Array.isArray(item.related) ? item.related : []
   };
 }
 
@@ -213,6 +244,7 @@ export function normalizeKartoonsShow(item = {}) {
     status: item.status || '',
     seasons: Array.isArray(item.seasons) ? item.seasons : [],
     description: item.description || '',
-    episodeCount: Number(item.episodeCount) || 0
+    episodeCount: Number(item.episodeCount) || 0,
+    related: Array.isArray(item.related) ? item.related : []
   };
 }

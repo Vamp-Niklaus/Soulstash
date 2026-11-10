@@ -13,11 +13,12 @@
  *   3. Render subcomponents in order
  */
 
-import { useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useMemo, useEffect, useRef } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { useDetailPage } from '../../hooks/useDetailPage.js';
 import { toast } from '../../utils/toast.js';
+import { getLastWatchedForSeries } from '../../utils/watchProgress.js';
 
 import { DetailPageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { CastCard } from '../../components/ui/Cards/CastCard.jsx';
@@ -79,8 +80,10 @@ const GENRE_NAME_TO_ID = {
 
 export function DetailPage({ type }) {
   const { id } = useParams();
+  const location = useLocation();
   const auth = useAuthSession();
   const page = useDetailPage(id, type, auth);
+  const autoPlayHandledRef = useRef(false);
 
   // ΓöÇΓöÇ Loading / error states ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (page.loading || !page.content) {
@@ -138,7 +141,7 @@ export function DetailPage({ type }) {
 
   // ΓöÇΓöÇ Play button handler ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-  function handlePlayClick() {
+  function handlePlayClick(customResumeTime = null, customSeason = null, customEpisode = null) {
     const tmdbId = content?.id || id;
     const originalTitle = content?.original_title || content?.original_name || '';
     const originalName = content?.original_name || content?.original_title || '';
@@ -147,34 +150,71 @@ export function DetailPage({ type }) {
     const backdropVal = content?.backdrop_path || content?.backdrop || '';
     if (type === 'movie') {
       page.setPlayerRequest(
-        createPlayerRequest({ mediaType: 'movie', tmdbId, imdbId: content?.imdb_id, title, originalTitle, originalName, seriesTitle: title, year: yearVal, poster_path: posterVal, backdrop_path: backdropVal, image: posterVal })
-      );
-    } else {
-      const season = page.selectedSeason || 1;
-      const firstEp = page.seasonDetails?.episodes?.[0];
-      const ep = firstEp?.episode_number || 1;
-      page.setPlayerRequest(
         createPlayerRequest({
-          mediaType: 'series',
+          mediaType: 'movie',
           tmdbId,
-          seasonNumber: season,
-          episodeNumber: ep,
-          episodeTitle: firstEp?.name || '',
-          kartoonsEpisodeId: firstEp?.kartoons_episode_id || firstEp?.kartoonsEpisodeId || '',
-          kartoonsSlug: firstEp?.kartoons_slug || firstEp?.kartoonsSlug || '',
           imdbId: content?.imdb_id,
-          title: `${title} S${season}E${ep}`,
+          title,
           originalTitle,
           originalName,
           seriesTitle: title,
           year: yearVal,
           poster_path: posterVal,
           backdrop_path: backdropVal,
-          image: posterVal
+          image: posterVal,
+          resumeTime: customResumeTime
+        })
+      );
+    } else {
+      // For series: look up last-watched episode if user previously watched this series
+      const lastWatched = getLastWatchedForSeries(tmdbId);
+      const targetSeason = customSeason != null
+        ? Number(customSeason)
+        : (lastWatched?.seasonNumber != null ? Number(lastWatched.seasonNumber) : (page.selectedSeason || 1));
+      const targetEp = customEpisode != null
+        ? Number(customEpisode)
+        : (lastWatched?.episodeNumber != null ? Number(lastWatched.episodeNumber) : (page.seasonDetails?.episodes?.[0]?.episode_number || 1));
+      const resume = customResumeTime != null ? customResumeTime : (lastWatched?.currentTime || 0);
+
+      if (targetSeason !== page.selectedSeason) {
+        page.setSelectedSeason?.(targetSeason);
+      }
+
+      page.setPlayerRequest(
+        createPlayerRequest({
+          mediaType: 'series',
+          tmdbId,
+          seasonNumber: targetSeason,
+          episodeNumber: targetEp,
+          episodeTitle: lastWatched?.episodeTitle || '',
+          kartoonsEpisodeId: lastWatched?.kartoons_episode_id || '',
+          kartoonsSlug: lastWatched?.kartoons_slug || '',
+          imdbId: content?.imdb_id,
+          title: `${title} S${targetSeason}E${targetEp}`,
+          originalTitle,
+          originalName,
+          seriesTitle: title,
+          year: yearVal,
+          poster_path: posterVal,
+          backdrop_path: backdropVal,
+          image: posterVal,
+          resumeTime: resume
         })
       );
     }
   }
+
+  useEffect(() => {
+    if (autoPlayHandledRef.current || !content) return;
+    if (location.state?.autoPlay || location.state?.resumeTime) {
+      autoPlayHandledRef.current = true;
+      handlePlayClick(
+        location.state.resumeTime,
+        location.state.seasonNumber,
+        location.state.episodeNumber
+      );
+    }
+  }, [content, location.state]);
 
   function handlePlayEpisode(episode) {
     const originalTitle = content?.original_title || content?.original_name || '';

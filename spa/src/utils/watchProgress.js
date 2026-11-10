@@ -1,3 +1,5 @@
+import { apiFetch, getToken } from '../api/client.js';
+
 const STORAGE_KEY = 'soulstash_continue_watching';
 const MIN_TIME_SECONDS = 5;
 const COMPLETION_THRESHOLD = 0.90; // 90% watched = completed
@@ -11,6 +13,22 @@ export function getProgressItemKey(item) {
     return `${id}_s${s}_e${e}`;
   }
   return String(id);
+}
+
+export function getLastWatchedForSeries(seriesId) {
+  if (!seriesId) return null;
+  const list = getContinueWatchingList();
+  const idStr = String(seriesId).toLowerCase();
+  return list.find((entry) => {
+    const entryId = String(entry.id || entry.tmdbId || entry.seriesId || entry.kartoons_slug || '').toLowerCase();
+    const entryKey = String(entry.key || '').toLowerCase();
+    return (
+      entryId === idStr ||
+      entryId.replace(/^kartoons-/, '') === idStr.replace(/^kartoons-/, '') ||
+      entryKey.startsWith(`${idStr}_`) ||
+      entryKey.startsWith(`kartoons-${idStr}_`)
+    );
+  }) || null;
 }
 
 export function getContinueWatchingList() {
@@ -96,8 +114,18 @@ export function saveWatchProgress(item, currentTime, duration) {
       if (list.length > 30) list = list.slice(0, 30);
     }
 
+    const savedEntry = list[0];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
     window.dispatchEvent(new CustomEvent('soulstash:continue-watching-updated'));
+
+    // Sync to backend user account if logged in
+    if (getToken() && savedEntry) {
+      apiFetch('/api/auth/watch-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(savedEntry)
+      }).catch(() => {});
+    }
   } catch (_) {}
 }
 
@@ -113,6 +141,41 @@ export function removeWatchProgress(item) {
     if (!Array.isArray(list)) return;
     list = list.filter((x) => x.key !== key && x.id !== key);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    window.dispatchEvent(new CustomEvent('soulstash:continue-watching-updated'));
+
+    if (getToken()) {
+      apiFetch(`/api/auth/watch-progress/${encodeURIComponent(key)}`, {
+        method: 'DELETE'
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+export async function syncAccountWatchProgress() {
+  if (!getToken()) return;
+  try {
+    const serverList = await apiFetch('/api/auth/watch-progress');
+    if (!Array.isArray(serverList)) return;
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const localList = raw ? JSON.parse(raw) : [];
+    const map = new Map();
+
+    for (const item of serverList) {
+      if (item?.key) map.set(item.key, item);
+    }
+    for (const item of localList) {
+      if (!item?.key) continue;
+      const existing = map.get(item.key);
+      if (!existing || (item.updatedAt || 0) >= (existing.updatedAt || 0)) {
+        map.set(item.key, item);
+      }
+    }
+    const merged = Array.from(map.values())
+      .filter((entry) => (entry.poster_path || entry.image) && Number(entry.currentTime) >= MIN_TIME_SECONDS)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .slice(0, 30);
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
     window.dispatchEvent(new CustomEvent('soulstash:continue-watching-updated'));
   } catch (_) {}
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, Link, useLocation } from 'react-router-dom';
 import { fetchKartoonsEpisodes, fetchKartoonsMovieDetail, fetchKartoonsShowDetail } from '../../api/kartoons.js';
 import { apiFetch } from '../../api/client.js';
 import { useMediaAction } from '../../hooks/useMediaAction.js';
@@ -12,11 +12,34 @@ import { VideoPlayerModal } from '../../components/player/VideoPlayerModal.jsx';
 import { PlayerErrorBoundary } from '../../components/player/PlayerErrorBoundary.jsx';
 import { SaveToCollectionModal } from '../../components/ui/Modals/SaveToCollectionModal.jsx';
 import { CollectionFormModal } from '../../components/ui/Modals/CollectionFormModal.jsx';
+import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { toast } from '../../utils/toast.js';
 import { createEmptyCollectionDraft } from '../../utils/formatters.js';
+import { getLastWatchedForSeries, getSavedProgress } from '../../utils/watchProgress.js';
+import { HOME_GRID_CLASS } from '../../utils/constants.js';
+
+const GENRE_TAG_MAP = {
+  family: 10751,
+  comedy: 35,
+  animation: 16,
+  'science fiction': 878,
+  'sci-fi': 878,
+  adventure: 12,
+  action: 28,
+  fantasy: 14,
+  kids: 10762
+};
+
+function getTagGenreUrl(tag) {
+  const norm = String(tag || '').trim().toLowerCase();
+  const genreId = GENRE_TAG_MAP[norm];
+  if (genreId) return `/genre/${genreId}/${encodeURIComponent(tag)}`;
+  return `/genre/${encodeURIComponent(norm)}/${encodeURIComponent(tag)}`;
+}
 
 export function KartoonDetailPage() {
   const { slug = '' } = useParams();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const contentKindHint = searchParams.get('type') === 'movie' ? 'movie' : 'series';
   const [show, setShow] = useState(null);
@@ -28,6 +51,7 @@ export function KartoonDetailPage() {
   const [error, setError] = useState('');
   const [playerRequest, setPlayerRequest] = useState(null);
   const [tmdbMatch, setTmdbMatch] = useState(null);
+  const autoPlayTriggeredRef = useRef(false);
 
   const seasonScrollerRef = useRef(null);
   const episodeScrollerRef = useRef(null);
@@ -256,11 +280,12 @@ export function KartoonDetailPage() {
     });
   }, [show, slug, seasonNumber, tmdbMatch, contentKind]);
 
-  const handlePlayClick = useCallback(() => {
+  const handlePlayClick = useCallback((customResumeTime = null, customSeason = null, customEpisode = null) => {
     if (!show) return;
     const posterVal = show.poster || show.image || show.coverImage || '';
     const backdropVal = show.backdrop || posterVal;
     if (contentKind === 'movie') {
+      const resume = customResumeTime != null ? customResumeTime : (getSavedProgress({ kartoons_slug: slug })?.currentTime || 0);
       setPlayerRequest({
         mediaType: 'movie',
         tmdbId: tmdbMatch?.id ? tmdbMatch.id : `kartoons-${slug}`,
@@ -270,29 +295,71 @@ export function KartoonDetailPage() {
         isKartoons: true,
         poster_path: posterVal,
         backdrop_path: backdropVal,
-        image: posterVal
+        image: posterVal,
+        resumeTime: resume
       });
       return;
     }
-    const firstEp = seasonDetails?.episodes?.[0];
-    const epNum = Number(firstEp?.episode_number || 1);
-    const sNum = Number(seasonNumber || 1);
+    const lastWatched = getLastWatchedForSeries(slug);
+    const targetSeason = customSeason != null
+      ? Number(customSeason)
+      : (lastWatched?.seasonNumber != null ? Number(lastWatched.seasonNumber) : Number(seasonNumber || 1));
+    const targetEp = customEpisode != null
+      ? Number(customEpisode)
+      : (lastWatched?.episodeNumber != null ? Number(lastWatched.episodeNumber) : Number(seasonDetails?.episodes?.[0]?.episode_number || 1));
+    const resume = customResumeTime != null ? customResumeTime : (lastWatched?.currentTime || 0);
+
+    if (targetSeason !== seasonNumber) {
+      setSeasonNumber(targetSeason);
+    }
+
     setPlayerRequest({
       mediaType: 'series',
       tmdbId: tmdbMatch?.id ? tmdbMatch.id : `kartoons-${slug}`,
-      seasonNumber: sNum,
-      episodeNumber: epNum,
-      title: `${show.title} S${sNum}E${epNum}`,
+      seasonNumber: targetSeason,
+      episodeNumber: targetEp,
+      title: `${show.title} S${targetSeason}E${targetEp}`,
       seriesTitle: show.title,
       year: show.startYear,
       kartoonsSlug: slug,
-      kartoonsEpisodeId: firstEp?.id || firstEp?._id,
+      kartoonsEpisodeId: lastWatched?.kartoons_episode_id || seasonDetails?.episodes?.[0]?.id || '',
       isKartoons: true,
       poster_path: posterVal,
       backdrop_path: backdropVal,
-      image: posterVal
+      image: posterVal,
+      resumeTime: resume
     });
   }, [show, slug, seasonNumber, seasonDetails, tmdbMatch, contentKind]);
+
+  useEffect(() => {
+    if (autoPlayTriggeredRef.current || !show) return;
+    if (location.state?.autoPlay || location.state?.resumeTime) {
+      autoPlayTriggeredRef.current = true;
+      handlePlayClick(
+        location.state.resumeTime,
+        location.state.seasonNumber,
+        location.state.episodeNumber
+      );
+    }
+  }, [show, location.state, handlePlayClick]);
+
+  const relatedItems = useMemo(() => {
+    const rawList = Array.isArray(show?.related) ? show.related : [];
+    return rawList.map((item, idx) => ({
+      id: `kartoons-${item.slug || item._id || idx}`,
+      slug: item.slug,
+      kartoons_slug: item.slug,
+      is_kartoons: true,
+      media_type: item.type === 'movie' ? 'Movie' : 'Series',
+      title: item.title,
+      name: item.title,
+      poster_path: item.image,
+      image: item.image,
+      vote_average: item.rating,
+      release_date: item.releaseYear ? `${item.releaseYear}-01-01` : null,
+      first_air_date: item.releaseYear ? `${item.releaseYear}-01-01` : null
+    })).filter((item) => item.poster_path && item.slug);
+  }, [show?.related]);
 
   if (loading) {
     return <DetailPageSkeleton type="series" />;
@@ -344,12 +411,13 @@ export function KartoonDetailPage() {
           {Array.isArray(show.tags) && show.tags.length > 0 && (
             <div className="mt-5 flex flex-wrap gap-2">
               {show.tags.map((tag) => (
-                <span
+                <Link
                   key={tag}
-                  className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-sm text-[#d8d8d8]"
+                  to={getTagGenreUrl(tag)}
+                  className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-sm text-[#d8d8d8] transition-colors hover:border-white/30 hover:bg-white/[0.1] hover:text-white"
                 >
                   {tag}
-                </span>
+                </Link>
               ))}
             </div>
           )}
@@ -370,7 +438,23 @@ export function KartoonDetailPage() {
         />
       )}
 
-      {/* 4. Video player */}
+      {/* 4. Similar / Related Content */}
+      {relatedItems.length > 0 && (
+        <section className="content-section relative z-10">
+          <SectionHeader title="Similar Content" />
+          <div className={HOME_GRID_CLASS}>
+            {relatedItems.map((item, index) => (
+              <ContentCard
+                key={`related-${item.slug || index}`}
+                item={item}
+                data-card
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 5. Video player */}
       {playerRequest && (
         <PlayerErrorBoundary onClose={() => setPlayerRequest(null)}>
           <VideoPlayerModal

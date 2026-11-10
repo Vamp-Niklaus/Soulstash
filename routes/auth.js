@@ -240,6 +240,58 @@ router.get('/profile', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/auth/watch-progress
+router.get('/watch-progress', authenticateToken, async (req, res) => {
+  try {
+    const user = await getDb().collection('users').findOne(
+      { _id: new ObjectId(req.user.userId) },
+      { projection: { watchProgress: 1 } }
+    );
+    res.json(Array.isArray(user?.watchProgress) ? user.watchProgress : []);
+  } catch (err) {
+    console.error('Get watch-progress error:', err);
+    res.status(500).json({ error: 'Failed to get watch progress' });
+  }
+});
+
+// POST /api/auth/watch-progress
+router.post('/watch-progress', authenticateToken, async (req, res) => {
+  try {
+    const entry = req.body;
+    if (!entry || !entry.key) return res.status(400).json({ error: 'Missing entry key' });
+    const db = getDb();
+    const user = await db.collection('users').findOne({ _id: new ObjectId(req.user.userId) });
+    let list = Array.isArray(user?.watchProgress) ? user.watchProgress : [];
+    list = list.filter((x) => x.key !== entry.key);
+    list.unshift(entry);
+    if (list.length > 50) list = list.slice(0, 50);
+    await db.collection('users').updateOne(
+      { _id: new ObjectId(req.user.userId) },
+      { $set: { watchProgress: list } }
+    );
+    res.json({ success: true, count: list.length });
+  } catch (err) {
+    console.error('Save watch-progress error:', err);
+    res.status(500).json({ error: 'Failed to save watch progress' });
+  }
+});
+
+// DELETE /api/auth/watch-progress/:key
+router.delete('/watch-progress/:key', authenticateToken, async (req, res) => {
+  try {
+    const { key } = req.params;
+    const db = getDb();
+    await db.collection('users').updateOne(
+      { _id: new ObjectId(req.user.userId) },
+      { $pull: { watchProgress: { key } } }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete watch-progress error:', err);
+    res.status(500).json({ error: 'Failed to delete watch progress' });
+  }
+});
+
 // POST /api/auth/update-profile
 router.post('/update-profile', authenticateToken, upload.single('avatar'), async (req, res) => {
   try {

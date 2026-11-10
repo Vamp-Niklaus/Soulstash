@@ -11,7 +11,7 @@ import { HOME_GRID_CLASS, HOME_TRENDING_TTL } from '../../utils/constants.js';
 import { HomePageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { ContinueWatchingCard } from '../../components/ui/Cards/ContinueWatchingCard.jsx';
-import { getContinueWatchingList, removeWatchProgress } from '../../utils/watchProgress.js';
+import { getContinueWatchingList, removeWatchProgress, syncAccountWatchProgress } from '../../utils/watchProgress.js';
 import { HomeShelfHeader } from './HomeShelfHeader.jsx';
 import { LazyCategoryShelf } from './LazyCategoryShelf.jsx';
 import { preloadImages } from '../../utils/preload.js';
@@ -160,6 +160,7 @@ export function HomePage() {
   const [continueWatchingList, setContinueWatchingList] = useState(() => getContinueWatchingList());
 
   useEffect(() => {
+    syncAccountWatchProgress().catch(() => {});
     const handleUpdate = () => {
       setContinueWatchingList(getContinueWatchingList());
     };

@@ -35,7 +35,14 @@ export const ContinueWatchingCard = React.forwardRef(function ContinueWatchingCa
     // If remove button was clicked, don't navigate
     if (e.target.closest('button[data-remove-button="true"]')) return;
     const targetRoute = mediaRoute(entry);
-    navigate(targetRoute, { state: { resumeTime: entry.currentTime } });
+    navigate(targetRoute, {
+      state: {
+        resumeTime: entry.currentTime,
+        seasonNumber: entry.seasonNumber,
+        episodeNumber: entry.episodeNumber,
+        autoPlay: true
+      }
+    });
   };
 
   return (
