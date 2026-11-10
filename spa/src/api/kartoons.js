@@ -92,14 +92,11 @@ export async function resolveKartoonsEpisodeId(slug, season, episode) {
   const key = `${slug}|${season}|${episode}`;
   if (_episodeIdCache[key]) return _episodeIdCache[key];
   let eps = await fetchKartoonsEpisodes(slug, season);
-  if (!eps.length) {
-    // try to find first season that has episodes
-    const detail = await kartFetch(`/shows/${encodeURIComponent(slug)}`).catch(() => ({}));
-    const seasons = Array.isArray(detail?.seasons) ? detail.seasons : [];
-    const first = seasons.find((s) => Number(s.episodeCount || 0) > 0);
-    if (first) eps = await fetchKartoonsEpisodes(slug, Number(first.seasonNumber));
+  let ep = eps.find((e) => String(e.episodeNumber) === String(episode));
+  if (!ep) {
+    // Never substitute a different episode (that made every missing episode play episode 1).
+    throw new Error(`Episode ${episode} of season ${season} not found on Kartoons`);
   }
-  const ep = eps.find((e) => String(e.episodeNumber) === String(episode)) || eps[0];
   if (!ep?._id) throw new Error('Episode not found');
   _episodeIdCache[key] = ep._id;
   return ep._id;

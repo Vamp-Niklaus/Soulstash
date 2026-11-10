@@ -31,7 +31,7 @@ export function SeasonEpisodeSection({
   episodeScrollerRef,
   onPlayEpisode,
 }) {
-  const visibleSeasonList = (Array.isArray(content.seasons) ? content.seasons : []).filter(
+  const visibleSeasonList = [...(Array.isArray(content.seasons) ? content.seasons : [])].sort((a, b) => Number(a?.season_number) - Number(b?.season_number)).filter(
     (s) => Number(s?.season_number) > 0
   );
 
