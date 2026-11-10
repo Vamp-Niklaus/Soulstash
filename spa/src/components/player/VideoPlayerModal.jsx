@@ -1093,12 +1093,17 @@ export function VideoPlayerModal({ request, onClose }) {
       handleCloseClick();
     };
 
-    const handleWindowBlur = () => {
-      if (document.activeElement === iframeRef.current || document.activeElement?.tagName === 'IFRAME') {
+    // Track focus zone from document focus events. Unlike window blur, focusin fires
+    // for keyboard, remote and mouse focus moves into the cross-origin iframe.
+    const handleFocusIn = (e) => {
+      const target = e.target;
+      if (target === iframeRef.current || target?.tagName === 'IFRAME' || target === directVideoRef.current) {
         focusZoneRef.current = 'playback';
         playerFocusTargetRef.current = 'iframe';
         sizeFocusedRef.current = false;
         setIsSizeFocusedVisual(false);
+      } else {
+        focusZoneRef.current = 'controls';
       }
     };
 
@@ -1114,12 +1119,12 @@ export function VideoPlayerModal({ request, onClose }) {
     };
 
     window.addEventListener('popstate', handlePopState);
-    window.addEventListener('blur', handleWindowBlur);
+    document.addEventListener('focusin', handleFocusIn, true);
     window.addEventListener('keydown', handleKeyDown);
     
     return () => {
       window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('blur', handleWindowBlur);
+      document.removeEventListener('focusin', handleFocusIn, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleCloseClick, handleToggleFullscreen, returnToDefaultPlayerMode]);
