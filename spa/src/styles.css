@@ -308,7 +308,7 @@ body.collection-artwork-theme .collection-react-shell::before {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 99999;
+  z-index: 1000001;
   border-bottom: 1px solid var(--cinema-border);
   overflow: visible !important;
 }

@@ -225,7 +225,7 @@ export function HomePage() {
       {/* 1. Continue Watching (shown ONLY if at least 1 in-progress content with poster exists) */}
       {visibleContinueWatching.length > 0 && (
         <section className="content-section">
-          <HomeShelfHeader title="Continue Watching" />
+          <HomeShelfHeader title="Continue Watching" onViewAll={() => navigate('/continue-watching')} />
           <div className={HOME_GRID_CLASS}>
             {visibleContinueWatching.slice(0, homeShelfLimit).map((entry) => (
               <ContinueWatchingCard

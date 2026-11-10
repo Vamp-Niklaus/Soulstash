@@ -564,6 +564,8 @@ export function isDirectMediaUrl(url = '') {
     normalized.endsWith('.mp4') ||
     normalized.endsWith('.m3u8') ||
     normalized.includes('.m3u8') ||
+    normalized.includes('/playlist/') ||
+    normalized.includes('workers.dev') ||
     normalized.endsWith('.webm') ||
     normalized.endsWith('.ogg')
   );

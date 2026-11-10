@@ -1,3 +1,5 @@
+import { apiFetch } from './client.js';
+
 const KARTOONS_API = 'https://api.kartoons.me/api';
 const KARTOONS_STREMIO = `${KARTOONS_API}/stremio`;
 const KARTOONS_TOKEN = 'OK_DGA031TQOAsyYaGa3LrOu9xdIjNCDRsxbos0-XCs';
@@ -24,6 +26,17 @@ export async function fetchKartoonsStremioStreams(type, id, force = false) {
     const cached = _streamCache[cacheKey];
     if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.streams;
   }
+
+  // 1. Try our backend stream resolver first (fetches and un-proxies worker m3u8 playlists)
+  try {
+    const backendData = await apiFetch(`/api/kartoons/resolve-stream?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`);
+    if (backendData?.success && Array.isArray(backendData.streams) && backendData.streams.length > 0) {
+      _streamCache[cacheKey] = { at: Date.now(), streams: backendData.streams };
+      return backendData.streams;
+    }
+  } catch (_) {}
+
+  // 2. Direct client fallback
   const url = `${KARTOONS_STREMIO}/stream/${type}/${encodeURIComponent(id)}.json?token=${KARTOONS_TOKEN}`;
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Kartoons Stremio ${res.status}`);
@@ -32,18 +45,30 @@ export async function fetchKartoonsStremioStreams(type, id, force = false) {
     .filter((s) => s.url)
     .map((s, i) => ({
       url: s.url,
-      // "Odelu 1 - S1E1" → "Odelu 1"
       label: String(s.title || `Server ${i + 1}`).replace(/\s*-\s*S\d+E\d+\s*$/i, '').trim() || `Server ${i + 1}`
     }));
   if (!streams.length) throw new Error('No streams available');
   _streamCache[cacheKey] = { at: Date.now(), streams };
   return streams;
 }
+
 /**
- * Resolve a movie _id from its slug using the Stremio movie catalog.
- * The slug's trailing hex segment is the start of the Mongo ObjectId.
+ * Resolve a movie _id from its slug using direct movie lookup or Stremio catalog.
  */
 export async function resolveKartoonsMovieId(slug) {
+  if (!slug) return null;
+  if (/^[0-9a-f]{24}$/i.test(slug)) return slug;
+
+  // 1. Fast direct movie detail lookup (returns exact _id and preserves related metadata)
+  try {
+    const res = await fetch(`https://api.kartoons.to/api/movies/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (json?.data?._id) return json.data._id;
+    }
+  } catch (_) {}
+
+  // 2. Catalog fallback
   const hex = String((slug || '').split('-').pop() || '').toLowerCase();
   if (!hex) return null;
   if (!_movieCatalogCache.data || Date.now() - _movieCatalogCache.at > 6 * 3600 * 1000) {

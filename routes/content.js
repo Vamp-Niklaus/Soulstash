@@ -4677,6 +4677,103 @@ router.get('/search/users', async (req, res) => {
 });
 
 
+// GET /api/anime/multinime-sources
+router.get('/anime/multinime-sources', async (req, res) => {
+  const { slug, ep = 1, aid } = req.query;
+  if (!slug || !aid) return res.status(400).json({ success: false, sources: [] });
+
+  try {
+    const url = `https://multinime.site/watch.php?slug=${encodeURIComponent(slug)}&ep=${encodeURIComponent(ep)}&lang=sub&aid=${encodeURIComponent(aid)}`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!response.ok) return res.json({ success: false, sources: [] });
+
+    const html = await response.text();
+    const btnMatches = [...html.matchAll(/<button[^>]*class=["'][^"']*server-btn[^"']*["'][^>]*data-src=["']([^"']+)["'][^>]*>([\s\S]*?)<\/button>/gi)];
+    const scraped = btnMatches.map((m, idx) => {
+      const label = m[2].replace(/<[^>]+>/g, '').trim();
+      const sUrl = m[1].replace(/&amp;/g, '&');
+      const isFlix = /flixcloud/i.test(label);
+      return {
+        id: isFlix ? (label.includes('2') ? 'flixcloud-2' : 'flixcloud-1') : `multinime-${idx}`,
+        key: isFlix ? (label.includes('2') ? 'flixcloud-2' : 'flixcloud-1') : `multinime-${idx}`,
+        label,
+        url: sUrl,
+        embeddable: true
+      };
+    }).filter(s => s.url);
+
+    res.json({ success: true, sources: scraped });
+  } catch (err) {
+    console.warn('[MultiNime Scraper] error:', err.message);
+    res.json({ success: false, sources: [] });
+  }
+});
+
+// GET /api/kartoons/resolve-stream
+const KARTOONS_TOKEN = 'OK_DGA031TQOAsyYaGa3LrOu9xdIjNCDRsxbos0-XCs';
+router.get('/kartoons/resolve-stream', async (req, res) => {
+  const { type = 'movie', id: rawId, slug } = req.query;
+  let targetId = rawId;
+
+  try {
+    if (!targetId && slug) {
+      const infoUrl = type === 'series'
+        ? `https://api.kartoons.to/api/shows/${encodeURIComponent(slug)}`
+        : `https://api.kartoons.to/api/movies/${encodeURIComponent(slug)}`;
+      const infoRes = await fetch(infoUrl, { signal: AbortSignal.timeout(5000) }).catch(() => null);
+      if (infoRes && infoRes.ok) {
+        const infoJson = await infoRes.json().catch(() => ({}));
+        if (infoJson?.data?._id) targetId = infoJson.data._id;
+      }
+    }
+
+    if (!targetId) return res.status(400).json({ success: false, error: 'Missing id or slug', streams: [] });
+
+    const stremioUrl = `https://api.kartoons.me/api/stremio/stream/${encodeURIComponent(type)}/${encodeURIComponent(targetId)}.json?token=${KARTOONS_TOKEN}`;
+    const stremioRes = await fetch(stremioUrl, { signal: AbortSignal.timeout(6000) });
+    if (!stremioRes.ok) return res.status(stremioRes.status).json({ success: false, streams: [] });
+
+    const stremioJson = await stremioRes.json();
+    const rawStreams = Array.isArray(stremioJson.streams) ? stremioJson.streams : [];
+    const playableStreams = [];
+
+    for (const s of rawStreams) {
+      if (!s?.url) continue;
+      let playableUrl = s.url;
+      try {
+        const hopRes = await fetch(s.url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Origin': 'https://web.stremio.com',
+            'Referer': 'https://web.stremio.com/'
+          },
+          signal: AbortSignal.timeout(5000)
+        });
+        if (hopRes.ok) {
+          const body = await hopRes.text();
+          const workerLine = body.trim().split('\n').find((l) => l.trim().startsWith('http'));
+          if (workerLine) playableUrl = workerLine.trim();
+        }
+      } catch (_) {}
+
+      playableStreams.push({
+        url: playableUrl,
+        label: String(s.title || s.name || 'Kartoon Stream').replace(/\s*-\s*S\d+E\d+\s*$/i, '').trim()
+      });
+    }
+
+    res.json({ success: true, streams: playableStreams });
+  } catch (err) {
+    console.warn('[Kartoons Stream Resolver] error:', err.message);
+    res.status(500).json({ success: false, error: err.message, streams: [] });
+  }
+});
+
 router.get('/scrape-embed', async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).send('Missing url');

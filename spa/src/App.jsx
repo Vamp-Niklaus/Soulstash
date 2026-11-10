@@ -29,6 +29,7 @@ import { CollectionsLayout } from './pages/Collections/CollectionsLayout.jsx';
 import { HomePage } from './pages/Explore/HomePage.jsx';
 import { TrendingPage } from './pages/Explore/TrendingPage.jsx';
 import { PopularPage } from './pages/Explore/PopularPage.jsx';
+import { ContinueWatchingPage } from './pages/Explore/ContinueWatchingPage.jsx';
 import { GenrePage } from './pages/Explore/GenrePage.jsx';
 import { DetailPage } from './pages/Content/DetailPage.jsx';
 import { PersonPage } from './pages/Content/PersonPage.jsx';
@@ -94,6 +95,7 @@ export function AppShell() {
       <Route path="/" element={<HomePage />} />
       <Route path="/trending" element={<TrendingPage />} />
       <Route path="/popular" element={<PopularPage />} />
+      <Route path="/continue-watching" element={<ContinueWatchingPage />} />
       <Route path="/genre/" element={<Navigate to="/" replace />} />
       <Route path="/genre" element={<Navigate to="/" replace />} />
       <Route path="/genre/:id/:name?" element={<GenrePage />} />

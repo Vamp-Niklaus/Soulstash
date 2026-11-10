@@ -93,6 +93,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const [playerDisplayMode, setPlayerDisplayMode] = useState(1);
   const [isStreamLoading, setIsStreamLoading] = useState(true);
   const [isDirectVideoPlaying, setIsDirectVideoPlaying] = useState(false);
+  const [isSizeFocusedVisual, setIsSizeFocusedVisual] = useState(false);
   const iframeRef = useRef(null);
   const directVideoRef = useRef(null);
   const mediaAreaRef = useRef(null);
@@ -225,6 +226,7 @@ export function VideoPlayerModal({ request, onClose }) {
     playerFocusTargetRef.current = 'size';
     sizeFocusLastAtRef.current = Date.now();
     sizeFocusedRef.current = true;
+    setIsSizeFocusedVisual(true);
     window.requestAnimationFrame(() => {
       const target = fullscreenButtonRef.current || playerBoxRef.current?.querySelector('button[data-player-size="true"]');
       if (!target?.isConnected) {
@@ -421,8 +423,7 @@ export function VideoPlayerModal({ request, onClose }) {
     const isSizeFocused = playerFocusTargetRef.current === 'size' ||
       sizeFocusedRef.current ||
       document.activeElement === fullscreenButtonRef.current ||
-      Boolean(document.activeElement?.hasAttribute?.('data-player-size')) ||
-      (Date.now() - sizeFocusLastAtRef.current < 2500);
+      Boolean(document.activeElement?.hasAttribute?.('data-player-size'));
 
     const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' && !isSizeFocused;
 
@@ -436,6 +437,8 @@ export function VideoPlayerModal({ request, onClose }) {
 
       updatePlayerDisplayMode(2);
       setSourcesExpanded(true);
+      playerFocusTargetRef.current = 'size';
+      sizeFocusedRef.current = true;
       setTvControlsVisible(true);
       wakeTvControls();
       console.info('[Soulstash Player Focus] Back in mode 3 -> switched to mode 2 and focusing Size');
@@ -447,6 +450,8 @@ export function VideoPlayerModal({ request, onClose }) {
     // If focus was ALREADY on Size button or player controls, step down to Mode 1.
     if (mode === 2) {
       if (isPlaybackFocused) {
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
         setTvControlsVisible(true);
         wakeTvControls();
         console.info('[Soulstash Player Focus] Back in mode 2 (was in playback) -> focusing Size');
@@ -456,6 +461,8 @@ export function VideoPlayerModal({ request, onClose }) {
 
       setSourcesExpanded(false);
       updatePlayerDisplayMode(1);
+      playerFocusTargetRef.current = 'size';
+      sizeFocusedRef.current = true;
       setTvControlsVisible(true);
       wakeTvControls();
       console.info('[Soulstash Player Focus] Back on Size button in mode 2 -> switched to mode 1 and focusing Size');
@@ -466,6 +473,8 @@ export function VideoPlayerModal({ request, onClose }) {
     // In Mode 1: if sources panel is open, close it and focus Size
     if (sourcesExpanded) {
       setSourcesExpanded(false);
+      playerFocusTargetRef.current = 'size';
+      sizeFocusedRef.current = true;
       setTvControlsVisible(true);
       wakeTvControls();
       console.info('[Soulstash Player Focus] Back while sources expanded -> closing sources and focusing Size');
@@ -475,6 +484,8 @@ export function VideoPlayerModal({ request, onClose }) {
 
     // Mode 1 and sources closed: if focus was in playback, focus Size
     if (isPlaybackFocused) {
+      playerFocusTargetRef.current = 'size';
+      sizeFocusedRef.current = true;
       setTvControlsVisible(true);
       wakeTvControls();
       console.info('[Soulstash Player Focus] Back in mode 1 (was in playback) -> focusing Size');
@@ -851,40 +862,21 @@ export function VideoPlayerModal({ request, onClose }) {
 
         setAnimeSources(animeList);
 
-        // Fetch MultiNime watch page for FlixCloud mirrors
+        // Fetch MultiNime watch page for FlixCloud mirrors via backend proxy (eliminates CORS errors)
         try {
-          const mnRes = await fetch(`https://multinime.site/watch.php?slug=${slug}&ep=${ep}&lang=sub&aid=${resolvedAnilistId}`);
-          if (mnRes.ok) {
-            const html = await mnRes.text();
-            const btnMatches = [...html.matchAll(/<button[^>]*class=["'][^"']*server-btn[^"']*["'][^>]*data-src=["']([^"']+)["'][^>]*>([\s\S]*?)<\/button>/gi)];
-            const scraped = btnMatches.map((m, idx) => {
-              const label = m[2].replace(/<[^>]+>/g, '').trim();
-              const url = m[1].replace(/&amp;/g, '&');
-              const isFlix = /flixcloud/i.test(label);
-              return {
-                id: isFlix ? (label.includes('2') ? 'flixcloud-2' : 'flixcloud-1') : `multinime-${idx}`,
-                key: isFlix ? (label.includes('2') ? 'flixcloud-2' : 'flixcloud-1') : `multinime-${idx}`,
-                label,
-                url,
-                embeddable: true
-              };
-            }).filter(s => s.url);
-
-            if (scraped.length) {
-              setAnimeSources((prev) => {
-                const combined = [...scraped, ...prev];
-                const seen = new Set();
-                return combined.filter(s => {
-                  if (seen.has(s.url)) return false;
-                  seen.add(s.url);
-                  return true;
-                });
+          const mnData = await apiFetch(`/api/anime/multinime-sources?slug=${encodeURIComponent(slug)}&ep=${encodeURIComponent(ep)}&aid=${encodeURIComponent(resolvedAnilistId)}`);
+          if (mnData?.success && Array.isArray(mnData.sources) && mnData.sources.length) {
+            setAnimeSources((prev) => {
+              const combined = [...mnData.sources, ...prev];
+              const seen = new Set();
+              return combined.filter(s => {
+                if (seen.has(s.url)) return false;
+                seen.add(s.url);
+                return true;
               });
-            }
+            });
           }
-        } catch (mnErr) {
-          // MultiNime scrape fallback
-        }
+        } catch (_) {}
       } catch (err) {
         console.warn('[Soulstash Player] AniList lookup failed:', err.message);
       }
@@ -1034,8 +1026,7 @@ export function VideoPlayerModal({ request, onClose }) {
       const isSizeFocused = playerFocusTargetRef.current === 'size' ||
         sizeFocusedRef.current ||
         document.activeElement === fullscreenButtonRef.current ||
-        Boolean(document.activeElement?.hasAttribute?.('data-player-size')) ||
-        (Date.now() - sizeFocusLastAtRef.current < 2500);
+        Boolean(document.activeElement?.hasAttribute?.('data-player-size'));
 
       const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' && !isSizeFocused;
 
@@ -1049,6 +1040,8 @@ export function VideoPlayerModal({ request, onClose }) {
         } catch (_) {}
         updatePlayerDisplayMode(2);
         setSourcesExpanded(true);
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
         setTvControlsVisible(true);
         wakeTvControls();
         focusSizeControl();
@@ -1058,6 +1051,8 @@ export function VideoPlayerModal({ request, onClose }) {
       if (mode === 2) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         if (isPlaybackFocused) {
+          playerFocusTargetRef.current = 'size';
+          sizeFocusedRef.current = true;
           setTvControlsVisible(true);
           wakeTvControls();
           console.info('[Soulstash Player Focus] PopState in mode 2 (was in playback) -> focusing Size');
@@ -1066,6 +1061,8 @@ export function VideoPlayerModal({ request, onClose }) {
         }
         setSourcesExpanded(false);
         updatePlayerDisplayMode(1);
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
         setTvControlsVisible(true);
         wakeTvControls();
         console.info('[Soulstash Player Focus] PopState in mode 2 -> switched to mode 1 and focusing Size');
@@ -1076,6 +1073,8 @@ export function VideoPlayerModal({ request, onClose }) {
       if (sourcesExpanded) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
         setTvControlsVisible(true);
         wakeTvControls();
         focusSizeControl();
@@ -1084,6 +1083,8 @@ export function VideoPlayerModal({ request, onClose }) {
 
       if (isPlaybackFocused) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
         setTvControlsVisible(true);
         wakeTvControls();
         focusSizeControl();
@@ -1804,11 +1805,17 @@ export function VideoPlayerModal({ request, onClose }) {
                   playerFocusTargetRef.current = 'size';
                   sizeFocusLastAtRef.current = Date.now();
                   sizeFocusedRef.current = true;
+                  setIsSizeFocusedVisual(true);
                 }}
                 onBlur={() => {
                   sizeFocusedRef.current = false;
+                  setIsSizeFocusedVisual(false);
                 }}
-                className={iconButtonClass}
+                className={`${iconButtonClass} transition-all duration-200 ${
+                  isSizeFocusedVisual
+                    ? '!ring-2 !ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.9)] bg-white/30 scale-105 !outline-none'
+                    : ''
+                }`}
                 aria-label={`Player size ${playerDisplayMode} of 3`}
                 title={`Player size ${playerDisplayMode} of 3`}
               >
