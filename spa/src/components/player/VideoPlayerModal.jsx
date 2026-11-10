@@ -103,6 +103,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const focusSourceAfterExpandRef = useRef(false);
   const playerDisplayModeRef = useRef(1);
   const openerRef = useRef(typeof document !== 'undefined' ? document.activeElement : null);
+  // Tracks active focus zone: 'playback' | 'controls'
+  const focusZoneRef = useRef('playback');
   // Tracks where focus was last targeted in the player: 'size' | 'controls' | 'iframe'
   const playerFocusTargetRef = useRef('iframe');
   // Timestamp when Size button was last focused
@@ -180,8 +182,10 @@ export function VideoPlayerModal({ request, onClose }) {
   }, []);
 
   const focusPlaybackContext = useCallback((reason, preferredTarget = null) => {
+    focusZoneRef.current = 'playback';
     playerFocusTargetRef.current = 'iframe';
     sizeFocusedRef.current = false;
+    setIsSizeFocusedVisual(false);
     const resolveTarget = () => {
       if (preferredTarget?.isConnected) return preferredTarget;
       const target = isDirectMediaUrl(activeUrl) ? directVideoRef.current : iframeRef.current;
@@ -243,6 +247,7 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [activeUrl]);
 
   const focusSizeControl = useCallback(() => {
+    focusZoneRef.current = 'controls';
     playerFocusTargetRef.current = 'size';
     sizeFocusLastAtRef.current = Date.now();
     sizeFocusedRef.current = true;
@@ -439,6 +444,7 @@ export function VideoPlayerModal({ request, onClose }) {
   useEffect(() => {
     const handleIframeActivate = (e) => {
       const frame = e.detail?.target || iframeRef.current;
+      focusZoneRef.current = 'playback';
       playerFocusTargetRef.current = 'iframe';
       sizeFocusedRef.current = false;
       setIsSizeFocusedVisual(false);
@@ -471,11 +477,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
     const mode = playerDisplayModeRef.current;
-    const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' ||
-      document.activeElement === iframeRef.current ||
-      document.activeElement === directVideoRef.current ||
-      document.activeElement?.tagName === 'IFRAME' ||
-      document.activeElement?.tagName === 'VIDEO';
+    const isPlaybackFocused = focusZoneRef.current === 'playback';
 
     if (mode === 3) {
       try {
@@ -487,44 +489,29 @@ export function VideoPlayerModal({ request, onClose }) {
 
       updatePlayerDisplayMode(2);
       setSourcesExpanded(true);
-      playerFocusTargetRef.current = 'size';
-      sizeFocusedRef.current = true;
-      setIsSizeFocusedVisual(true);
       focusSizeControl();
       return;
     }
 
     if (mode === 2) {
       if (isPlaybackFocused) {
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
 
       setSourcesExpanded(false);
       updatePlayerDisplayMode(1);
-      playerFocusTargetRef.current = 'size';
-      sizeFocusedRef.current = true;
-      setIsSizeFocusedVisual(true);
       focusSizeControl();
       return;
     }
 
     if (sourcesExpanded) {
       setSourcesExpanded(false);
-      playerFocusTargetRef.current = 'size';
-      sizeFocusedRef.current = true;
-      setIsSizeFocusedVisual(true);
       focusSizeControl();
       return;
     }
 
     if (isPlaybackFocused) {
-      playerFocusTargetRef.current = 'size';
-      sizeFocusedRef.current = true;
-      setIsSizeFocusedVisual(true);
       focusSizeControl();
       return;
     }
@@ -1058,11 +1045,7 @@ export function VideoPlayerModal({ request, onClose }) {
     const handlePopState = () => {
       if (isClosingRef.current) return;
       const mode = playerDisplayModeRef.current;
-      const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' ||
-        document.activeElement === iframeRef.current ||
-        document.activeElement === directVideoRef.current ||
-        document.activeElement?.tagName === 'IFRAME' ||
-        document.activeElement?.tagName === 'VIDEO';
+      const isPlaybackFocused = focusZoneRef.current === 'playback';
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
@@ -1074,9 +1057,6 @@ export function VideoPlayerModal({ request, onClose }) {
         } catch (_) {}
         updatePlayerDisplayMode(2);
         setSourcesExpanded(true);
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
@@ -1084,9 +1064,6 @@ export function VideoPlayerModal({ request, onClose }) {
       if (mode === 2) {
         if (isPlaybackFocused) {
           try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-          playerFocusTargetRef.current = 'size';
-          sizeFocusedRef.current = true;
-          setIsSizeFocusedVisual(true);
           focusSizeControl();
           return;
         }
@@ -1094,9 +1071,6 @@ export function VideoPlayerModal({ request, onClose }) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
         updatePlayerDisplayMode(1);
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
@@ -1104,9 +1078,6 @@ export function VideoPlayerModal({ request, onClose }) {
       if (sourcesExpanded) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
@@ -1114,15 +1085,21 @@ export function VideoPlayerModal({ request, onClose }) {
       // In Mode 1:
       if (isPlaybackFocused) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
 
       // Focus was already on Size button or player controls outside playback -> close player cleanly
       handleCloseClick();
+    };
+
+    const handleWindowBlur = () => {
+      if (document.activeElement === iframeRef.current || document.activeElement?.tagName === 'IFRAME') {
+        focusZoneRef.current = 'playback';
+        playerFocusTargetRef.current = 'iframe';
+        sizeFocusedRef.current = false;
+        setIsSizeFocusedVisual(false);
+      }
     };
 
     const handleKeyDown = (e) => {
@@ -1137,10 +1114,12 @@ export function VideoPlayerModal({ request, onClose }) {
     };
 
     window.addEventListener('popstate', handlePopState);
+    window.addEventListener('blur', handleWindowBlur);
     window.addEventListener('keydown', handleKeyDown);
     
     return () => {
       window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleCloseClick, handleToggleFullscreen, returnToDefaultPlayerMode]);
@@ -1809,8 +1788,12 @@ export function VideoPlayerModal({ request, onClose }) {
               isTv && !tvControlsVisible ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}
             style={{ height: controlsHeight, touchAction: 'none', display: playerDisplayMode === 3 ? 'none' : undefined }}
-            onPointerDown={handlePlayerPointerDown}
+            onPointerDown={(e) => {
+              focusZoneRef.current = 'controls';
+              handlePlayerPointerDown(e);
+            }}
             onFocusCapture={(e) => {
+              focusZoneRef.current = 'controls';
               if (e.target !== fullscreenButtonRef.current) {
                 playerFocusTargetRef.current = 'controls';
                 sizeFocusedRef.current = false;
@@ -1840,6 +1823,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 ref={fullscreenButtonRef}
                 onClick={handleToggleFullscreen}
                 onFocus={() => {
+                  focusZoneRef.current = 'controls';
                   playerFocusTargetRef.current = 'size';
                   sizeFocusLastAtRef.current = Date.now();
                   sizeFocusedRef.current = true;
@@ -1866,6 +1850,7 @@ export function VideoPlayerModal({ request, onClose }) {
                 ref={sourceToggleRef}
                 onClick={sourcesExpanded ? handleCloseSources : handleOpenSources}
                 onFocus={() => {
+                  focusZoneRef.current = 'controls';
                   playerFocusTargetRef.current = 'controls';
                 }}
                 className={`${actionButtonClass} inline-flex items-center gap-1.5`}
@@ -1950,6 +1935,7 @@ export function VideoPlayerModal({ request, onClose }) {
             className="relative flex flex-1 min-h-0 items-center justify-center overflow-hidden bg-black"
             style={mediaAreaStyle}
             onPointerDown={() => {
+              focusZoneRef.current = 'playback';
               playerFocusTargetRef.current = 'iframe';
               sizeFocusedRef.current = false;
               setIsSizeFocusedVisual(false);
@@ -1975,9 +1961,13 @@ export function VideoPlayerModal({ request, onClose }) {
                   autoPlay
                   playsInline
                   onFocus={() => {
+                    focusZoneRef.current = 'playback';
                     playerFocusTargetRef.current = 'iframe';
                     sizeFocusedRef.current = false;
                     setIsSizeFocusedVisual(false);
+                  }}
+                  onPlay={() => {
+                    focusZoneRef.current = 'playback';
                   }}
                   onLoadedMetadata={(e) => {
                     if (initialResumeTime > 10) {
@@ -2039,6 +2029,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   src={resolvedEmbedUrl}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onFocus={() => {
+                    focusZoneRef.current = 'playback';
                     playerFocusTargetRef.current = 'iframe';
                     sizeFocusedRef.current = false;
                     setIsSizeFocusedVisual(false);
@@ -2051,6 +2042,7 @@ export function VideoPlayerModal({ request, onClose }) {
                     }
                   }}
                   onLoad={() => {
+                    focusZoneRef.current = 'playback';
                     console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
                     setIsStreamLoading(false);
                     setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
@@ -2129,7 +2121,19 @@ export function VideoPlayerModal({ request, onClose }) {
 
           {/* Bottom Sources Section: Toggleable sources panel */}
           {sourcesExpanded && playerDisplayMode !== 3 && (
-            <div data-player-sources-panel="true" className="shrink-0 flex flex-col min-h-0 max-h-[38vh] overflow-hidden border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none">
+            <div
+              data-player-sources-panel="true"
+              onPointerDown={() => {
+                focusZoneRef.current = 'controls';
+              }}
+              onFocusCapture={() => {
+                focusZoneRef.current = 'controls';
+                playerFocusTargetRef.current = 'controls';
+                sizeFocusedRef.current = false;
+                setIsSizeFocusedVisual(false);
+              }}
+              className="shrink-0 flex flex-col min-h-0 max-h-[38vh] overflow-hidden border-t border-white/10 bg-black/95 px-3 sm:px-4 py-2.5 gap-2.5 select-none"
+            >
               {/* Sources heading */}
               <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
                 <div className="flex items-center gap-2">
