@@ -1,0 +1,6 @@
+./admin_handler.go
+./auth_handler.go
+./collection_handler.go
+./content_handler.go
+./pages_handler.go
+./youtube_source.go

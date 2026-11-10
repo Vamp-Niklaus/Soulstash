@@ -1,0 +1,4 @@
+./decode.go
+./decode_strict.go
+./encode.go
+./snappy.go

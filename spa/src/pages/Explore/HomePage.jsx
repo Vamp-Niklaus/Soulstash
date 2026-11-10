@@ -268,12 +268,12 @@ export function HomePage() {
         ) : null}
       </section>
 
-      {/* 3. Bollywood, 4. Cartoon, 5. Anime, 6. Other genres */}
-      {genres.map((genre) => (
+      {/* 3. Bollywood (Latest in India) */}
+      {genres.slice(0, 1).map((genre) => (
         <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} preloadedMovies={categoryData[String(genre.id)]} />
       ))}
 
-      {/* Popular */}
+      {/* 4. Popular — after Bollywood, before Cartoon/Anime */}
       {visiblePopular.length > 0 && !loading && !error ? (
         <section className="content-section">
           <HomeShelfHeader title="Popular" onViewAll={() => navigate('/popular')} />
@@ -289,6 +289,11 @@ export function HomePage() {
           </div>
         </section>
       ) : null}
+
+      {/* 5. Cartoon, 6. Anime, 7. Other genres */}
+      {genres.slice(1).map((genre) => (
+        <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} preloadedMovies={categoryData[String(genre.id)]} />
+      ))}
 
       {publishedCollections.length ? (
         <section className="content-section space-y-6">

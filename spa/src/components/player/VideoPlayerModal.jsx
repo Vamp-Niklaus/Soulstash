@@ -102,6 +102,10 @@ export function VideoPlayerModal({ request, onClose }) {
   const focusSourceAfterExpandRef = useRef(false);
   const playerDisplayModeRef = useRef(1);
   const openerRef = useRef(typeof document !== 'undefined' ? document.activeElement : null);
+  // Tracks whether the Size button is currently focused using focus/blur events.
+  // This is read in popstate / back handlers which fire AFTER the iframe steals
+  // focus, so reading document.activeElement there always returns IFRAME.
+  const sizeFocusedRef = useRef(false);
   const hlsInstanceRef = useRef(null);
   const hlsErrorHandlerRef = useRef(null);
   const scrollContainerRef = useRef(null);
@@ -396,8 +400,9 @@ export function VideoPlayerModal({ request, onClose }) {
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
     const mode = playerDisplayModeRef.current;
-    const isSizeFocused = document.activeElement === fullscreenButtonRef.current ||
-      Boolean(document.activeElement?.hasAttribute?.('data-player-size'));
+    // Use the ref-tracked value — not document.activeElement which may already
+    // point to the IFRAME by the time this handler fires.
+    const isSizeFocused = sizeFocusedRef.current;
 
     if (mode === 3) {
       try {
@@ -1004,8 +1009,8 @@ export function VideoPlayerModal({ request, onClose }) {
     const handlePopState = () => {
       if (isClosingRef.current) return;
       const mode = playerDisplayModeRef.current;
-      const isSizeFocused = document.activeElement === fullscreenButtonRef.current ||
-        Boolean(document.activeElement?.hasAttribute?.('data-player-size'));
+      // Use ref — document.activeElement is already IFRAME when popstate fires.
+      const isSizeFocused = sizeFocusedRef.current;
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
@@ -1768,6 +1773,8 @@ export function VideoPlayerModal({ request, onClose }) {
                 data-player-size="true"
                 ref={fullscreenButtonRef}
                 onClick={handleToggleFullscreen}
+                onFocus={() => { sizeFocusedRef.current = true; }}
+                onBlur={() => { sizeFocusedRef.current = false; }}
                 className={iconButtonClass}
                 aria-label={`Player size ${playerDisplayMode} of 3`}
                 title={`Player size ${playerDisplayMode} of 3`}
@@ -1950,6 +1957,14 @@ export function VideoPlayerModal({ request, onClose }) {
                     console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
                     setIsStreamLoading(false);
                     setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
+
+                    // Kick-start VidRift progress telemetry: the player only
+                    // emits vidrift:progress AFTER it receives vidrift:get-state.
+                    if (iframeRef.current?.contentWindow) {
+                      try {
+                        iframeRef.current.contentWindow.postMessage({ type: 'vidrift:get-state' }, '*');
+                      } catch (_) {}
+                    }
 
                     if (initialResumeTime > 10 && iframeRef.current?.contentWindow) {
                       const win = iframeRef.current.contentWindow;

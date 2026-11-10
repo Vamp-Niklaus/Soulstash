@@ -1,0 +1,3 @@
+./collection_repository.go
+./ratings_repository.go
+./user_repository.go
