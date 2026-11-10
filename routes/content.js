@@ -1617,8 +1617,13 @@ function getDateWindow(daysBack = 210) {
 }
 
 // ── Hidden Genres & Kartoons Genre Mixing ────────────────────────────────────
-const HIDDEN_GENRE_IDS = new Set([10763, 10764, 10766, 10767, '10763', '10764', '10766', '10767']);
-const HIDDEN_GENRE_NAMES = new Set(['news', 'reality', 'soap', 'talk']);
+const HIDDEN_GENRE_IDS = new Set([
+  10763, 10764, 10766, 10767, '10763', '10764', '10766', '10767',
+  10762, '10762', // Kids
+  10770, '10770', // TV Movie
+  99, '99'        // Documentary
+]);
+const HIDDEN_GENRE_NAMES = new Set(['news', 'reality', 'soap', 'talk', 'kids', 'tv movie', 'documentary']);
 
 function isHiddenGenre(g) {
   if (!g) return false;

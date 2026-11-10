@@ -7,8 +7,9 @@
  *
  * Layout and chrome mirrors the existing VideoPlayerModal so the UX is identical.
  */
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { saveWatchProgress, removeWatchProgress, getSavedProgress } from '../../utils/watchProgress.js';
 import { fetchKartoonsStremioStreams } from '../../api/kartoons.js';
 
 // Hls.js is loaded globally by the existing player infrastructure.
@@ -40,6 +41,19 @@ export function KartoonWatchModal({ title = '', streamType, streamId, subtitle =
   const [showServers, setShowServers] = useState(false);
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+
+  const kartoonItem = useMemo(() => ({
+    id: streamId,
+    kartoons_slug: streamId,
+    title: title || 'Kartoon Video',
+    name: title || 'Kartoon Video',
+    seriesTitle: title,
+    media_type: streamType === 'series' ? 'Series' : 'Movie',
+    is_kartoons: true
+  }), [streamId, title, streamType]);
+
+  const saved = useMemo(() => getSavedProgress(kartoonItem), [kartoonItem]);
+  const initialResumeTime = Number(saved?.currentTime) || 0;
 
   // Lock body scroll while open
   useEffect(() => {
@@ -298,6 +312,18 @@ export function KartoonWatchModal({ title = '', streamType, streamId, subtitle =
             playsInline
             className="h-full w-full object-contain bg-black"
             style={{ display: status === 'playing' ? 'block' : 'none' }}
+            onLoadedMetadata={(e) => {
+              if (initialResumeTime > 10) {
+                try { e.currentTarget.currentTime = initialResumeTime; } catch (_) {}
+              }
+            }}
+            onTimeUpdate={(e) => {
+              const v = e.currentTarget;
+              if (v.currentTime > 5) {
+                saveWatchProgress(kartoonItem, v.currentTime, v.duration);
+              }
+            }}
+            onEnded={() => removeWatchProgress(kartoonItem)}
           />
         </div>
       </div>

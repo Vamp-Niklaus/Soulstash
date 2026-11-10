@@ -46,6 +46,7 @@ import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
 
 // Assume buildPlayerSourceSlots is imported
 import { buildPlayerSourceSlots, firstPlayableUrl, sourceKeyText } from '../../utils/playerUtils.js';
+import { saveWatchProgress, removeWatchProgress, getSavedProgress } from '../../utils/watchProgress.js';
 
 function getHls() {
   return window.Hls ?? null;
@@ -118,6 +119,28 @@ export function VideoPlayerModal({ request, onClose }) {
   const fallbackSources = Array.isArray(request?.fallbackSources)
     ? request.fallbackSources.filter((source) => source?.url)
     : [];
+
+  const savedProgress = useMemo(() => getSavedProgress(request), [request]);
+  const initialResumeTime = Number(request?.resumeTime || savedProgress?.currentTime) || 0;
+
+  const resolvedEmbedUrl = useMemo(() => {
+    if (!activeUrl) return '';
+    if (initialResumeTime <= 10) return activeUrl;
+    try {
+      const u = new URL(activeUrl);
+      const host = u.hostname.toLowerCase();
+      const t = Math.floor(initialResumeTime);
+      if (host.includes('vidbolt') || host.includes('vidfast') || host.includes('vidrift')) {
+        if (!u.searchParams.has('startAt')) u.searchParams.set('startAt', String(t));
+      }
+      if (host.includes('framex') || host.includes('framextv')) {
+        if (!u.searchParams.has('t') && !u.searchParams.has('start')) u.searchParams.set('t', String(t));
+      }
+      return u.toString();
+    } catch (_) {
+      return activeUrl;
+    }
+  }, [activeUrl, initialResumeTime]);
 
   const { isTvLayout } = useAppLayoutMode();
   const isTv = isTvLayout || (typeof document !== 'undefined' && document.documentElement.classList.contains('layout-tv-mode'));
@@ -280,6 +303,66 @@ export function VideoPlayerModal({ request, onClose }) {
       document.body.classList.remove('player-fullscreen-active');
     };
   }, [playerDisplayMode]);
+
+  useEffect(() => {
+    const handlePlaybackTelemetry = (event) => {
+      const data = event?.data;
+      if (!data) return;
+
+      let time = null;
+      let duration = null;
+      let isEnded = false;
+
+      // VidRift
+      if (data.type === 'vidrift:progress') {
+        time = Number(data.currentTime);
+        duration = Number(data.duration);
+      } else if (data.type === 'vidrift:ended') {
+        isEnded = true;
+      }
+      // VidBolt
+      else if (data.event === 'timeupdate' || data.type === 'timeupdate') {
+        time = Number(data.time ?? data.currentTime);
+        duration = Number(data.duration);
+      } else if (data.event === 'ended' || data.type === 'ended') {
+        isEnded = true;
+      }
+      // VidFast
+      else if (data.type === 'PLAYER_EVENT' && data.data) {
+        if (data.data.event === 'ended') {
+          isEnded = true;
+        } else if (data.data.event === 'timeupdate' || data.data.currentTime != null) {
+          time = Number(data.data.currentTime);
+          duration = Number(data.data.duration);
+        }
+      } else if (data.type === 'MEDIA_DATA' && data.data) {
+        time = Number(data.data.currentTime);
+        duration = Number(data.data.duration);
+      }
+      // FrameXTV
+      else if (data.event === 'frameXTV:timeupdate') {
+        time = Number(data.currentTime);
+        duration = Number(data.duration);
+      }
+      // Generic
+      else if (typeof data.currentTime === 'number' && Number.isFinite(data.currentTime)) {
+        time = data.currentTime;
+        duration = Number(data.duration);
+      }
+
+      if (isEnded) {
+        removeWatchProgress(request);
+        return;
+      }
+
+      if (time != null && Number.isFinite(time) && time > 5) {
+        saveWatchProgress(request, time, duration);
+      }
+    };
+
+    window.addEventListener('message', handlePlaybackTelemetry);
+    return () => window.removeEventListener('message', handlePlaybackTelemetry);
+  }, [request]);
 
   useEffect(() => {
     const handleIframeActivate = (e) => {
@@ -1798,6 +1881,18 @@ export function VideoPlayerModal({ request, onClose }) {
                   tabIndex={isTv ? 0 : -1}
                   autoPlay
                   playsInline
+                  onLoadedMetadata={(e) => {
+                    if (initialResumeTime > 10) {
+                      try { e.currentTarget.currentTime = initialResumeTime; } catch (_) {}
+                    }
+                  }}
+                  onTimeUpdate={(e) => {
+                    const v = e.currentTarget;
+                    if (v.currentTime > 5) {
+                      saveWatchProgress(request, v.currentTime, v.duration);
+                    }
+                  }}
+                  onEnded={() => removeWatchProgress(request)}
                   onWaiting={() => {
                     setIsStreamLoading(true);
                     setIsDirectVideoPlaying(false);
@@ -1839,10 +1934,10 @@ export function VideoPlayerModal({ request, onClose }) {
               <div className={`relative h-full w-full ${activeSource?.id?.includes('cinesu') ? 'cine-crop-wrapper' : ''}`}>
                 <iframe
                   ref={iframeRef}
-                  key={`${activeUrl}:${iframeReloadKey}`}
+                  key={`${resolvedEmbedUrl}:${iframeReloadKey}`}
                   data-player-frame="true"
                   tabIndex={0}
-                  src={activeUrl}
+                  src={resolvedEmbedUrl}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -1855,6 +1950,18 @@ export function VideoPlayerModal({ request, onClose }) {
                     console.log('[Soulstash Player Debug] Iframe loaded for URL:', activeUrl);
                     setIsStreamLoading(false);
                     setVerifiedUrls((prev) => new Set(prev).add(activeUrl));
+
+                    if (initialResumeTime > 10 && iframeRef.current?.contentWindow) {
+                      const win = iframeRef.current.contentWindow;
+                      const t = Math.floor(initialResumeTime);
+                      try {
+                        win.postMessage({ type: 'vidrift:resume', currentTime: t }, '*');
+                        win.postMessage({ type: 'seek', time: t }, '*');
+                        win.postMessage({ command: 'seek', time: t }, '*');
+                        win.postMessage({ action: 'seek', time: t }, '*');
+                      } catch (_) {}
+                    }
+
                     if (isTv) {
                       focusPlaybackContext('iframe-onload', iframeRef.current);
                       if (Capacitor.isNativePlatform() && iframeRef.current) {

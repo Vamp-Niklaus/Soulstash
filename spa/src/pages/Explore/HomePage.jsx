@@ -10,6 +10,8 @@ import { useHomeTwoRowLimit } from '../../hooks/index.js';
 import { HOME_GRID_CLASS, HOME_TRENDING_TTL } from '../../utils/constants.js';
 import { HomePageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
+import { ContinueWatchingCard } from '../../components/ui/Cards/ContinueWatchingCard.jsx';
+import { getContinueWatchingList, removeWatchProgress } from '../../utils/watchProgress.js';
 import { HomeShelfHeader } from './HomeShelfHeader.jsx';
 import { LazyCategoryShelf } from './LazyCategoryShelf.jsx';
 import { preloadImages } from '../../utils/preload.js';
@@ -70,14 +72,52 @@ export function HomePage() {
         ? genresData.genres
         : (Array.isArray(homeData?.genres) ? homeData.genres : []);
 
-      const kartoonGenres = [
-        { id: 'kartoons-anime', name: 'Anime' },
-        { id: 'kartoons-cartoon', name: 'Cartoon' }
-      ];
+      const isKidsOrDocOrTvMovie = (g) => {
+        const id = String(g?.id || g).toLowerCase();
+        const name = String(g?.name || '').toLowerCase();
+        return (
+          id === '10762' ||
+          id === '10770' ||
+          id === '99' ||
+          name === 'kids' ||
+          name === 'tv movie' ||
+          name === 'documentary' ||
+          name.includes('documentary')
+        );
+      };
 
+      const cleanBaseGenres = baseGenres.filter((g) => !isKidsOrDocOrTvMovie(g));
+
+      const bollywoodGenre = cleanBaseGenres.find(
+        (g) => String(g?.id).toLowerCase() === 'bollywood'
+      ) || { id: 'bollywood', name: 'Latest in India' };
+
+      const cartoonGenre = { id: 'kartoons-cartoon', name: 'Cartoon' };
+      const animeGenre = { id: 'kartoons-anime', name: 'Anime' };
+
+      const otherGenres = cleanBaseGenres.filter((g) => {
+        const id = String(g?.id || g).toLowerCase();
+        return (
+          id !== 'bollywood' &&
+          id !== 'kartoons-cartoon' &&
+          id !== 'kartoons-anime' &&
+          id !== 'anime' &&
+          id !== 'cartoon'
+        );
+      });
+
+      // Strict user-specified order:
+      // 1. (Continue Watching rendered directly above Trending Now)
+      // 2. (Trending Now rendered in Home JSX)
+      // 3. Bollywood
+      // 4. Cartoon
+      // 5. Anime
+      // 6. Other genres
       const rawGenres = [
-        ...kartoonGenres,
-        ...baseGenres.filter(g => !['kartoons-anime', 'kartoons-cartoon'].includes(String(g?.id || g)))
+        bollywoodGenre,
+        cartoonGenre,
+        animeGenre,
+        ...otherGenres
       ];
 
       const rawCategoryData = homeData?.categories && typeof homeData.categories === 'object' ? homeData.categories : {};
@@ -119,6 +159,20 @@ export function HomePage() {
   const homeShelfLimit = useHomeTwoRowLimit();
 
   const [failedCardIds, setFailedCardIds] = useState(() => new Set());
+  const [continueWatchingList, setContinueWatchingList] = useState(() => getContinueWatchingList());
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setContinueWatchingList(getContinueWatchingList());
+    };
+    window.addEventListener('soulstash:continue-watching-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('soulstash:continue-watching-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
   const handleCardImageError = useCallback((itemId) => {
     if (!itemId) return;
     setFailedCardIds((prev) => {
@@ -163,6 +217,26 @@ export function HomePage() {
 
   return (
     <div className="space-y-8">
+      {/* 1. Continue Watching (shown ONLY if at least 1 in-progress content exists) */}
+      {continueWatchingList.length > 0 && (
+        <section className="content-section">
+          <HomeShelfHeader title="Continue Watching" />
+          <div className={HOME_GRID_CLASS}>
+            {continueWatchingList.slice(0, homeShelfLimit).map((entry) => (
+              <ContinueWatchingCard
+                key={entry.key || `continue-${entry.id}`}
+                entry={entry}
+                onRemove={(it) => {
+                  removeWatchProgress(it);
+                  setContinueWatchingList(getContinueWatchingList());
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 2. Trending Now */}
       <section className="content-section">
         <HomeShelfHeader title="Trending Now" onViewAll={() => navigate('/trending')} />
         {error ? (
@@ -194,6 +268,12 @@ export function HomePage() {
         ) : null}
       </section>
 
+      {/* 3. Bollywood, 4. Cartoon, 5. Anime, 6. Other genres */}
+      {genres.map((genre) => (
+        <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} preloadedMovies={categoryData[String(genre.id)]} />
+      ))}
+
+      {/* Popular */}
       {visiblePopular.length > 0 && !loading && !error ? (
         <section className="content-section">
           <HomeShelfHeader title="Popular" onViewAll={() => navigate('/popular')} />
@@ -209,10 +289,6 @@ export function HomePage() {
           </div>
         </section>
       ) : null}
-
-      {genres.map((genre) => (
-        <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} preloadedMovies={categoryData[String(genre.id)]} />
-      ))}
 
       {publishedCollections.length ? (
         <section className="content-section space-y-6">
