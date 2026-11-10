@@ -3,6 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { SESSION_SCRAPED } from '../../utils/constants.js';
 import { isDirectMediaUrl } from '../../utils/formatters.js';
+import { DirectVideoControls } from './DirectVideoControls.jsx';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import React, { useState, useEffect, useRef } from 'react';
@@ -80,6 +81,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const [kartoonSources, setKartoonSources] = useState([]);
   const [kartoonResolveDone, setKartoonResolveDone] = useState(false);
   const [kartoonRetryKey, setKartoonRetryKey] = useState(0);
+  const [hlsForcedUrl, setHlsForcedUrl] = useState('');
   const kartoonAutoRetriedRef = useRef(false);
   const resumeAfterRetryRef = useRef(0);
   const [anilistId, setAnilistId] = useState(null);
@@ -647,6 +649,7 @@ export function VideoPlayerModal({ request, onClose }) {
     autoSwitchedToKartoonRef.current = false;
     kartoonAutoRetriedRef.current = false;
     resumeAfterRetryRef.current = 0;
+    setHlsForcedUrl('');
   }, [request, updatePlayerDisplayMode]);
 
   // Anime / AniList / MultiNime Resolution with multi-step search fallback
@@ -1437,6 +1440,13 @@ export function VideoPlayerModal({ request, onClose }) {
   const handleDirectStuck = () => {
     const stuckUrl = activeUrl;
     if (!stuckUrl || !isKartoonSource(activeSource)) return;
+    // Step 1: the worker URL may be an HLS playlist without ".m3u8" in the path,
+    // which native <video> can't play in most browsers. Retry the same URL via hls.js.
+    if (hlsForcedUrl !== stuckUrl && !/\.m3u8(\?|$)/i.test(stuckUrl)) {
+      setHlsForcedUrl(stuckUrl);
+      return;
+    }
+    // Step 2: re-resolve a fresh URL once.
     if (!kartoonAutoRetriedRef.current) {
       kartoonAutoRetriedRef.current = true;
       resumeAfterRetryRef.current = latestPlaybackTimeRef.current || 0;
@@ -1452,6 +1462,20 @@ export function VideoPlayerModal({ request, onClose }) {
   const handleDirectStuckRef = useRef(handleDirectStuck);
   handleDirectStuckRef.current = handleDirectStuck;
 
+  // Direct streams have no iframe, so move keyboard/remote focus onto the video itself
+  // whenever a new direct stream becomes active. This keeps focus in the internal player.
+  useEffect(() => {
+    if (!canUseVideoJs || !activeUrl) return undefined;
+    focusZoneRef.current = 'playback';
+    playerFocusTargetRef.current = 'iframe';
+    sizeFocusedRef.current = false;
+    setIsSizeFocusedVisual(false);
+    const t = window.setTimeout(() => {
+      directVideoRef.current?.focus({ preventScroll: true });
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, [activeUrl, canUseVideoJs]);
+
   useEffect(() => {
     if (activeUrl) {
       setIsStreamLoading(true);
@@ -1463,7 +1487,7 @@ export function VideoPlayerModal({ request, onClose }) {
     if (!canUseVideoJs || !activeUrl) return;
     let disposed = false;
     let localHls = null;
-    const isHls = /\.m3u8(\?|$)/i.test(activeUrl);
+    const isHls = /\.m3u8(\?|$)/i.test(activeUrl) || activeUrl.includes('/playlist/') || activeUrl.includes('workers.dev') || hlsForcedUrl === activeUrl;
     const video = directVideoRef.current;
     if (!video) return;
 
@@ -1519,7 +1543,8 @@ export function VideoPlayerModal({ request, onClose }) {
           if (!data?.fatal) return;
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); return; }
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch {} return; }
-          hlsErrorHandlerRef.current?.(activeUrl);
+          if (hlsForcedUrl === activeUrl) handleDirectStuckRef.current?.();
+          else hlsErrorHandlerRef.current?.(activeUrl);
         });
       });
     } else {
@@ -1543,7 +1568,7 @@ export function VideoPlayerModal({ request, onClose }) {
         if (hlsInstanceRef.current === localHls) hlsInstanceRef.current = null;
       }
     };
-  }, [activeUrl, canUseVideoJs]);
+  }, [activeUrl, canUseVideoJs, hlsForcedUrl]);
 
   useEffect(() => {
     return () => {
@@ -1995,8 +2020,8 @@ export function VideoPlayerModal({ request, onClose }) {
               <div className="relative flex h-full w-full items-center justify-center bg-black">
                 <video
                   ref={directVideoRef}
-                  controls={!isTv}
-                  tabIndex={isTv ? 0 : -1}
+                  controls={false}
+                  tabIndex={0}
                   autoPlay
                   playsInline
                   onFocus={() => {
@@ -2040,6 +2065,11 @@ export function VideoPlayerModal({ request, onClose }) {
                     transformOrigin: 'center center',
                     transition: 'transform 0.2s ease'
                   }}
+                />
+                <DirectVideoControls
+                  videoRef={directVideoRef}
+                  hlsRef={hlsInstanceRef}
+                  onToggleFullscreen={handleToggleFullscreen}
                 />
               </div>
             ) : !canEmbedSource ? (

@@ -31,7 +31,11 @@ export async function fetchKartoonsStremioStreams(type, id, force = false) {
   // Retry once: the backend can briefly return nothing when the upstream hiccups.
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const backendData = await apiFetch(`/api/kartoons/resolve-stream?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`);
+      // Render's free tier can take ~30-50s to wake up, so allow far longer than apiFetch's 20s default.
+      const backendData = await apiFetch(
+        `/api/kartoons/resolve-stream?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`,
+        { signal: AbortSignal.timeout(50000) }
+      );
       if (backendData?.success && Array.isArray(backendData.streams) && backendData.streams.length > 0) {
         _streamCache[cacheKey] = { at: Date.now(), streams: backendData.streams };
         return backendData.streams;
