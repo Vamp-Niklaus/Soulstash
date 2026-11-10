@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { imageUrl, mediaRoute } from '../../../utils/formatters.js';
+import { FALLBACK_POSTER } from '../../../utils/constants.js';
 
 function formatRemaining(currentTime, duration) {
   if (!duration || duration <= 0) return '';
@@ -20,17 +21,19 @@ export const ContinueWatchingCard = React.forwardRef(function ContinueWatchingCa
   const navigate = useNavigate();
   const [imgFailed, setImgFailed] = useState(false);
 
-  const poster = entry?.poster_path || entry?.image || entry?.coverImage;
-  const isInvalid = !entry || imgFailed || !poster || !String(poster).trim() || String(poster).startsWith('data:image/svg+xml');
+  if (!entry || !entry.key) return null;
 
-  useEffect(() => {
-    if (isInvalid) {
-      onImageError?.();
-    }
-  }, [isInvalid, onImageError]);
+  const rawPoster = entry.poster_path || entry.image || entry.backdrop_path || entry.backdrop || entry.coverImage;
+  const isBroken = !rawPoster ||
+    typeof rawPoster !== 'string' ||
+    !rawPoster.trim() ||
+    rawPoster === 'null' ||
+    rawPoster === '/null' ||
+    rawPoster === 'undefined' ||
+    rawPoster === '/undefined' ||
+    imgFailed;
 
-  if (isInvalid) return null;
-
+  const posterSrc = isBroken ? FALLBACK_POSTER : imageUrl(rawPoster, 'w342');
   const title = entry.title || entry.name || 'Unknown';
   const progressPercent = Math.min(100, Math.max(0, Math.round((entry.progress || 0) * 100)));
   const remainingText = formatRemaining(entry.currentTime, entry.duration);
@@ -68,7 +71,7 @@ export const ContinueWatchingCard = React.forwardRef(function ContinueWatchingCa
     >
       <div className="cardImageWrap relative overflow-hidden rounded-[14px] bg-[#1a1a1a]">
         <img
-          src={imageUrl(poster, 'w342')}
+          src={posterSrc}
           alt={title}
           className="cardImg fadeImg"
           loading="lazy"

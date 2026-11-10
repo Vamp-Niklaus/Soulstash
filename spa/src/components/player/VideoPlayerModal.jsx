@@ -130,6 +130,21 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const savedProgress = useMemo(() => getSavedProgress(request), [request]);
   const initialResumeTime = Number(request?.resumeTime || savedProgress?.currentTime) || 0;
+  const latestPlaybackTimeRef = useRef(initialResumeTime);
+  const requestRef = useRef(request);
+  useEffect(() => {
+    requestRef.current = request;
+  }, [request]);
+
+  useEffect(() => {
+    return () => {
+      if (latestPlaybackTimeRef.current >= 5 && requestRef.current) {
+        const req = requestRef.current;
+        const estDuration = Number(req?.duration) || (Number(req?.runtime) ? req.runtime * 60 : (req?.mediaType === 'movie' ? 7200 : 1440));
+        saveWatchProgress(req, latestPlaybackTimeRef.current, estDuration);
+      }
+    };
+  }, []);
 
   const resolvedEmbedUrl = useMemo(() => {
     if (!activeUrl) return '';
@@ -270,6 +285,12 @@ export function VideoPlayerModal({ request, onClose }) {
     if (isClosingRef.current) return;
     isClosingRef.current = true;
 
+    if (latestPlaybackTimeRef.current >= 5 && requestRef.current) {
+      const req = requestRef.current;
+      const estDuration = Number(req?.duration) || (Number(req?.runtime) ? req.runtime * 60 : (req?.mediaType === 'movie' ? 7200 : 1440));
+      saveWatchProgress(req, latestPlaybackTimeRef.current, estDuration);
+    }
+
     try {
       if (document.fullscreenElement || document.webkitFullscreenElement) {
         if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
@@ -386,6 +407,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
       if (time != null && Number.isFinite(time) && time > 5) {
         lastTelemetryTimeRef.current = Date.now();
+        latestPlaybackTimeRef.current = time;
         saveWatchProgress(request, time, duration);
       }
     };
@@ -405,7 +427,8 @@ export function VideoPlayerModal({ request, onClose }) {
       // If telemetry already gave us fresh updates within 10s, don't overwrite with elapsed
       if (Date.now() - lastTelemetryTimeRef.current < 10000) return;
       const elapsedSeconds = baseResumeTime + Math.floor((Date.now() - startTime) / 1000);
-      if (elapsedSeconds >= 8) {
+      if (elapsedSeconds >= 5) {
+        latestPlaybackTimeRef.current = elapsedSeconds;
         saveWatchProgress(request, elapsedSeconds, estDuration);
       }
     }, 5000);
@@ -416,6 +439,9 @@ export function VideoPlayerModal({ request, onClose }) {
   useEffect(() => {
     const handleIframeActivate = (e) => {
       const frame = e.detail?.target || iframeRef.current;
+      playerFocusTargetRef.current = 'iframe';
+      sizeFocusedRef.current = false;
+      setIsSizeFocusedVisual(false);
       if (frame && Capacitor.isNativePlatform()) {
         console.info('[Soulstash Player] OK/Enter on iframe boundary -> calling nativeTapCenter');
         nativeTapCenter(frame);
@@ -445,7 +471,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
     const mode = playerDisplayModeRef.current;
-    const isPlaybackFocused = document.activeElement === iframeRef.current ||
+    const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' ||
+      document.activeElement === iframeRef.current ||
       document.activeElement === directVideoRef.current ||
       document.activeElement?.tagName === 'IFRAME' ||
       document.activeElement?.tagName === 'VIDEO';
@@ -460,29 +487,44 @@ export function VideoPlayerModal({ request, onClose }) {
 
       updatePlayerDisplayMode(2);
       setSourcesExpanded(true);
+      playerFocusTargetRef.current = 'size';
+      sizeFocusedRef.current = true;
+      setIsSizeFocusedVisual(true);
       focusSizeControl();
       return;
     }
 
     if (mode === 2) {
       if (isPlaybackFocused) {
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
+        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
 
       setSourcesExpanded(false);
       updatePlayerDisplayMode(1);
+      playerFocusTargetRef.current = 'size';
+      sizeFocusedRef.current = true;
+      setIsSizeFocusedVisual(true);
       focusSizeControl();
       return;
     }
 
     if (sourcesExpanded) {
       setSourcesExpanded(false);
+      playerFocusTargetRef.current = 'size';
+      sizeFocusedRef.current = true;
+      setIsSizeFocusedVisual(true);
       focusSizeControl();
       return;
     }
 
     if (isPlaybackFocused) {
+      playerFocusTargetRef.current = 'size';
+      sizeFocusedRef.current = true;
+      setIsSizeFocusedVisual(true);
       focusSizeControl();
       return;
     }
@@ -1016,6 +1058,11 @@ export function VideoPlayerModal({ request, onClose }) {
     const handlePopState = () => {
       if (isClosingRef.current) return;
       const mode = playerDisplayModeRef.current;
+      const isPlaybackFocused = playerFocusTargetRef.current === 'iframe' ||
+        document.activeElement === iframeRef.current ||
+        document.activeElement === directVideoRef.current ||
+        document.activeElement?.tagName === 'IFRAME' ||
+        document.activeElement?.tagName === 'VIDEO';
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
@@ -1027,14 +1074,29 @@ export function VideoPlayerModal({ request, onClose }) {
         } catch (_) {}
         updatePlayerDisplayMode(2);
         setSourcesExpanded(true);
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
+        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
 
       if (mode === 2) {
+        if (isPlaybackFocused) {
+          try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
+          playerFocusTargetRef.current = 'size';
+          sizeFocusedRef.current = true;
+          setIsSizeFocusedVisual(true);
+          focusSizeControl();
+          return;
+        }
+
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
         updatePlayerDisplayMode(1);
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
+        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
@@ -1042,11 +1104,24 @@ export function VideoPlayerModal({ request, onClose }) {
       if (sourcesExpanded) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
+        setIsSizeFocusedVisual(true);
         focusSizeControl();
         return;
       }
 
-      // In Mode 1: browser Back closes player cleanly
+      // In Mode 1:
+      if (isPlaybackFocused) {
+        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
+        playerFocusTargetRef.current = 'size';
+        sizeFocusedRef.current = true;
+        setIsSizeFocusedVisual(true);
+        focusSizeControl();
+        return;
+      }
+
+      // Focus was already on Size button or player controls outside playback -> close player cleanly
       handleCloseClick();
     };
 
@@ -1735,8 +1810,12 @@ export function VideoPlayerModal({ request, onClose }) {
             }`}
             style={{ height: controlsHeight, touchAction: 'none', display: playerDisplayMode === 3 ? 'none' : undefined }}
             onPointerDown={handlePlayerPointerDown}
-            onFocusCapture={() => {
-              playerFocusTargetRef.current = 'controls';
+            onFocusCapture={(e) => {
+              if (e.target !== fullscreenButtonRef.current) {
+                playerFocusTargetRef.current = 'controls';
+                sizeFocusedRef.current = false;
+                setIsSizeFocusedVisual(false);
+              }
             }}
           >
             {/* Title & Episode info */}
@@ -1873,6 +1952,7 @@ export function VideoPlayerModal({ request, onClose }) {
             onPointerDown={() => {
               playerFocusTargetRef.current = 'iframe';
               sizeFocusedRef.current = false;
+              setIsSizeFocusedVisual(false);
             }}
           >
             {(isFetching || (isPureKartoons && !activeUrl && !kartoonResolveDone)) ? (
@@ -1894,6 +1974,11 @@ export function VideoPlayerModal({ request, onClose }) {
                   tabIndex={isTv ? 0 : -1}
                   autoPlay
                   playsInline
+                  onFocus={() => {
+                    playerFocusTargetRef.current = 'iframe';
+                    sizeFocusedRef.current = false;
+                    setIsSizeFocusedVisual(false);
+                  }}
                   onLoadedMetadata={(e) => {
                     if (initialResumeTime > 10) {
                       try { e.currentTarget.currentTime = initialResumeTime; } catch (_) {}
@@ -1902,6 +1987,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   onTimeUpdate={(e) => {
                     const v = e.currentTarget;
                     if (v.currentTime > 5) {
+                      latestPlaybackTimeRef.current = v.currentTime;
                       saveWatchProgress(request, v.currentTime, v.duration);
                     }
                   }}
@@ -1952,6 +2038,11 @@ export function VideoPlayerModal({ request, onClose }) {
                   tabIndex={0}
                   src={resolvedEmbedUrl}
                   scrolling={activeSource?.id?.includes('cinesu') ? 'no' : 'auto'}
+                  onFocus={() => {
+                    playerFocusTargetRef.current = 'iframe';
+                    sizeFocusedRef.current = false;
+                    setIsSizeFocusedVisual(false);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       if (Capacitor.isNativePlatform() && iframeRef.current) {

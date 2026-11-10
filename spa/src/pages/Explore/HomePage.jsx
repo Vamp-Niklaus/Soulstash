@@ -192,7 +192,12 @@ export function HomePage() {
 
   const visibleContinueWatching = useMemo(() => {
     return continueWatchingList.filter(
-      (entry) => (entry.poster_path || entry.image) && !failedCardIds.has(entry.id || entry.key)
+      (entry) => Boolean(
+        entry &&
+        entry.key &&
+        (entry.title || entry.name) &&
+        (entry.poster_path || entry.image || entry.backdrop_path || entry.backdrop)
+      ) && !failedCardIds.has(entry.id || entry.key)
     );
   }, [continueWatchingList, failedCardIds]);
 

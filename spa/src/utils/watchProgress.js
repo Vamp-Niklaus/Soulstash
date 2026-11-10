@@ -40,8 +40,15 @@ export function getContinueWatchingList() {
     return list
       .filter((entry) => {
         if (!entry || !entry.key) return false;
-        const poster = entry.poster_path || entry.image;
-        if (!poster || !String(poster).trim() || String(poster).startsWith('data:image/svg+xml')) return false;
+        const poster = entry.poster_path || entry.image || entry.backdrop_path || entry.backdrop || entry.coverImage;
+        const isBroken = !poster ||
+          typeof poster !== 'string' ||
+          !poster.trim() ||
+          poster === 'null' ||
+          poster === '/null' ||
+          poster === 'undefined' ||
+          poster === '/undefined';
+        if (isBroken) return false;
         const time = Number(entry.currentTime) || 0;
         const duration = Number(entry.duration) || 0;
         if (time < MIN_TIME_SECONDS) return false;
@@ -85,8 +92,11 @@ export function saveWatchProgress(item, currentTime, duration) {
     list = list.filter((x) => x.key !== key);
 
     if (!isCompleted) {
-      const poster = item.poster_path || item.image || item.coverImage || '';
-      const backdrop = item.backdrop_path || item.backdrop || item.coverImage || item.image || '';
+      const rawPoster = item.poster_path || item.image || item.coverImage || '';
+      const cleanPoster = (rawPoster && typeof rawPoster === 'string' && rawPoster !== 'null' && rawPoster !== '/null' && rawPoster !== 'undefined' && !rawPoster.startsWith('data:image/svg+xml')) ? rawPoster : '';
+      const rawBackdrop = item.backdrop_path || item.backdrop || item.coverImage || item.image || '';
+      const cleanBackdrop = (rawBackdrop && typeof rawBackdrop === 'string' && rawBackdrop !== 'null' && rawBackdrop !== '/null' && rawBackdrop !== 'undefined' && !rawBackdrop.startsWith('data:image/svg+xml')) ? rawBackdrop : cleanPoster;
+      const finalPoster = cleanPoster || cleanBackdrop;
       const title = item.title || item.name || item.seriesTitle || 'Unknown';
       const mediaType = (item.media_type || item.type || (item.seasonNumber || item.episodeNumber ? 'Series' : 'Movie'));
 
@@ -104,9 +114,9 @@ export function saveWatchProgress(item, currentTime, duration) {
         seriesTitle: item.seriesTitle || item.name || '',
         seasonNumber: item.seasonNumber ?? item.season ?? null,
         episodeNumber: item.episodeNumber ?? item.episode ?? null,
-        poster_path: poster,
-        image: poster,
-        backdrop_path: backdrop,
+        poster_path: finalPoster,
+        image: finalPoster,
+        backdrop_path: cleanBackdrop,
         media_type: mediaType,
         is_kartoons: !isTmdb && Boolean(item.is_kartoons || item.isKartoons || String(item.id || '').startsWith('kartoons-')),
         kartoons_slug: resolvedSlug,
@@ -177,7 +187,18 @@ export async function syncAccountWatchProgress() {
       }
     }
     const merged = Array.from(map.values())
-      .filter((entry) => (entry.poster_path || entry.image) && Number(entry.currentTime) >= MIN_TIME_SECONDS)
+      .filter((entry) => {
+        if (!entry || !entry.key) return false;
+        const poster = entry.poster_path || entry.image || entry.backdrop_path || entry.backdrop || entry.coverImage;
+        const isBroken = !poster ||
+          typeof poster !== 'string' ||
+          !poster.trim() ||
+          poster === 'null' ||
+          poster === '/null' ||
+          poster === 'undefined' ||
+          poster === '/undefined';
+        return !isBroken && Number(entry.currentTime) >= MIN_TIME_SECONDS;
+      })
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       .slice(0, 30);
 
