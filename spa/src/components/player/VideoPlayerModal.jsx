@@ -456,11 +456,6 @@ export function VideoPlayerModal({ request, onClose }) {
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
     const mode = playerDisplayModeRef.current;
-    const isSizeFocused = Boolean(
-      sizeFocusedRef.current ||
-      document.activeElement === fullscreenButtonRef.current ||
-      document.activeElement?.hasAttribute?.('data-player-size')
-    );
 
     if (mode === 3) {
       try {
@@ -481,15 +476,15 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    // In Mode 2: If focus was inside the playback/video (not on Size), focus the Size button (stay in Mode 2).
-    // If focus was ALREADY on Size button, step down to Mode 1 and focus Size.
+    // In Mode 2: If focus was inside the playback/video (was in iframe), focus the Size button (stay in Mode 2).
+    // If focus was ALREADY on Size button or player controls, step down to Mode 1 and focus Size.
     if (mode === 2) {
-      if (!isSizeFocused) {
+      if (playerFocusTargetRef.current === 'iframe') {
         playerFocusTargetRef.current = 'size';
         sizeFocusedRef.current = true;
         setTvControlsVisible(true);
         wakeTvControls();
-        console.info('[Soulstash Player Focus] Back in mode 2 (was in playback) -> focusing Size');
+        console.info('[Soulstash Player Focus] Back in mode 2 (was in iframe) -> focusing Size');
         focusSizeControl();
         return;
       }
@@ -500,7 +495,7 @@ export function VideoPlayerModal({ request, onClose }) {
       sizeFocusedRef.current = true;
       setTvControlsVisible(true);
       wakeTvControls();
-      console.info('[Soulstash Player Focus] Back on Size button in mode 2 -> switched to mode 1 and focusing Size');
+      console.info('[Soulstash Player Focus] Back on controls in mode 2 -> switched to mode 1 and focusing Size');
       focusSizeControl();
       return;
     }
@@ -517,20 +512,20 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    // In Mode 1 and sources closed: if focus is in iframe/playback (not already on Size button),
+    // In Mode 1 and sources closed: if focus was in iframe/playback (not on controls/Size),
     // DO NOT CLOSE! Shift focus to Size button and show visual focus.
-    if (!isSizeFocused) {
+    if (playerFocusTargetRef.current === 'iframe') {
       playerFocusTargetRef.current = 'size';
       sizeFocusedRef.current = true;
       setTvControlsVisible(true);
       wakeTvControls();
-      console.info('[Soulstash Player Focus] Back in mode 1 (was in playback) -> focusing Size');
+      console.info('[Soulstash Player Focus] Back in mode 1 (was in iframe) -> focusing Size');
       focusSizeControl();
       return;
     }
 
-    // Mode 1, sources closed, and focus is ALREADY on Size button: close player
-    console.info('[Soulstash Player Focus] Back on Size button in mode 1 -> closing player');
+    // Mode 1, sources closed, and focus is ALREADY on Size button or outside iframe: close player
+    console.info('[Soulstash Player Focus] Back on controls in mode 1 -> closing player');
     handleCloseClick();
   }, [focusSizeControl, handleCloseClick, sourcesExpanded, updatePlayerDisplayMode, wakeTvControls]);
 
@@ -1060,11 +1055,6 @@ export function VideoPlayerModal({ request, onClose }) {
     const handlePopState = () => {
       if (isClosingRef.current) return;
       const mode = playerDisplayModeRef.current;
-      const isSizeFocused = Boolean(
-        sizeFocusedRef.current ||
-        document.activeElement === fullscreenButtonRef.current ||
-        Boolean(document.activeElement?.hasAttribute?.('data-player-size'))
-      );
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
@@ -1085,16 +1075,18 @@ export function VideoPlayerModal({ request, onClose }) {
       }
 
       if (mode === 2) {
-        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-        if (!isSizeFocused) {
+        if (playerFocusTargetRef.current === 'iframe') {
+          try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
           playerFocusTargetRef.current = 'size';
           sizeFocusedRef.current = true;
           setTvControlsVisible(true);
           wakeTvControls();
-          console.info('[Soulstash Player Focus] PopState in mode 2 (was in playback) -> focusing Size');
+          console.info('[Soulstash Player Focus] PopState in mode 2 (was in iframe) -> focusing Size');
           focusSizeControl();
           return;
         }
+
+        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
         updatePlayerDisplayMode(1);
         playerFocusTargetRef.current = 'size';
@@ -1117,18 +1109,20 @@ export function VideoPlayerModal({ request, onClose }) {
         return;
       }
 
-      // In Mode 1: if focus is NOT on Size button, DO NOT CLOSE! Focus Size button and stay in Mode 1.
-      if (!isSizeFocused) {
+      // In Mode 1: if focus was in iframe, shift focus to Size button and keep player open!
+      if (playerFocusTargetRef.current === 'iframe') {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         playerFocusTargetRef.current = 'size';
         sizeFocusedRef.current = true;
         setTvControlsVisible(true);
         wakeTvControls();
-        console.info('[Soulstash Player Focus] PopState in mode 1 (was in playback) -> focusing Size');
+        console.info('[Soulstash Player Focus] PopState in mode 1 (was in iframe) -> focusing Size');
         focusSizeControl();
         return;
       }
 
+      // Focus was already on controls / Size button -> CLOSE player!
+      console.info('[Soulstash Player Focus] PopState on controls in mode 1 -> closing player');
       handleCloseClick();
     };
 
@@ -1817,6 +1811,9 @@ export function VideoPlayerModal({ request, onClose }) {
             }`}
             style={{ height: controlsHeight, touchAction: 'none', display: playerDisplayMode === 3 ? 'none' : undefined }}
             onPointerDown={handlePlayerPointerDown}
+            onFocusCapture={() => {
+              playerFocusTargetRef.current = 'controls';
+            }}
           >
             {/* Title & Episode info */}
             <div className="flex items-center gap-2 min-w-0">
