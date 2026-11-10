@@ -73,7 +73,7 @@ async function ensureHlsJs() {
 }
 
 export function VideoPlayerModal({ request, onClose }) {
-  if (!request?.tmdbId && !request?.kartoonsSlug && !request?.kartoonsEpisodeId) return null;
+  const isValidRequest = Boolean(request?.tmdbId || request?.kartoonsSlug || request?.kartoonsEpisodeId);
   const [selectedGroup, setSelectedGroup] = useState('hindi');
   const [hindiSources, setHindiSources] = useState([]);
   const [animeSources, setAnimeSources] = useState([]);
@@ -111,6 +111,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const hlsInstanceRef = useRef(null);
   const hlsErrorHandlerRef = useRef(null);
   const scrollContainerRef = useRef(null);
+  const lastTelemetryTimeRef = useRef(0);
+  const autoSwitchedToKartoonRef = useRef(false);
   
   const playerBoxRef = useRef(null);
   const dragStateRef = useRef(null);
@@ -156,6 +158,9 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const updatePlayerDisplayMode = useCallback((mode) => {
     playerDisplayModeRef.current = mode;
+    if (mode >= 2) {
+      setDragOffset({ x: 0, y: 0 });
+    }
     setPlayerDisplayMode(mode);
   }, []);
 
@@ -380,6 +385,7 @@ export function VideoPlayerModal({ request, onClose }) {
       }
 
       if (time != null && Number.isFinite(time) && time > 5) {
+        lastTelemetryTimeRef.current = Date.now();
         saveWatchProgress(request, time, duration);
       }
     };
@@ -387,6 +393,25 @@ export function VideoPlayerModal({ request, onClose }) {
     window.addEventListener('message', handlePlaybackTelemetry);
     return () => window.removeEventListener('message', handlePlaybackTelemetry);
   }, [request]);
+
+  // Reliable watch-progress heartbeat timer for players/iframes that don't emit postMessage telemetry
+  useEffect(() => {
+    if (!activeUrl || isStreamLoading) return undefined;
+    const startTime = Date.now();
+    const baseResumeTime = Number(initialResumeTime) || 0;
+    const estDuration = Number(request?.duration) || (Number(request?.runtime) ? request.runtime * 60 : (request?.mediaType === 'movie' ? 7200 : 1440));
+
+    const interval = setInterval(() => {
+      // If telemetry already gave us fresh updates within 10s, don't overwrite with elapsed
+      if (Date.now() - lastTelemetryTimeRef.current < 10000) return;
+      const elapsedSeconds = baseResumeTime + Math.floor((Date.now() - startTime) / 1000);
+      if (elapsedSeconds >= 8) {
+        saveWatchProgress(request, elapsedSeconds, estDuration);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [activeUrl, isStreamLoading, initialResumeTime, request]);
 
   useEffect(() => {
     const handleIframeActivate = (e) => {
@@ -620,6 +645,7 @@ export function VideoPlayerModal({ request, onClose }) {
     dragStateRef.current = null;
     setScale(1.0);
     setNativeScale(1.0);
+    autoSwitchedToKartoonRef.current = false;
   }, [request, updatePlayerDisplayMode]);
 
   // Anime / AniList / MultiNime Resolution with multi-step search fallback
@@ -1338,26 +1364,26 @@ export function VideoPlayerModal({ request, onClose }) {
   const playableKey = displayedSources.filter((s) => s.url && !failedUrls.has(s.url)).map((s) => s.url).join('|');
 
   useEffect(() => {
-    // If we already have an active playing URL and it hasn't failed, KEEP IT!
-    if (activeUrl && !failedUrls.has(activeUrl)) {
-      return undefined;
-    }
-
     const playable = displayedSources.filter((s) => s.url && !failedUrls.has(s.url));
     if (!playable.length) return undefined;
 
-    // Kartoon may resolve after the TMDB sources; switch to it unless the user chose another source.
+    // Kartoon streams (direct Cloudflare Worker HLS) take 1-2s to resolve after initial TMDB sources;
+    // auto-switch to Kartoon stream as soon as it resolves unless user manually chose another source
     const kartoonSource = playable.find(isKartoonSource);
-    if (kartoonSource && !hasManualSourceSelection) {
-      if (activeUrl !== kartoonSource.url) {
+    if (kartoonSource && !failedUrls.has(kartoonSource.url) && !hasManualSourceSelection) {
+      if (activeUrl !== kartoonSource.url && !autoSwitchedToKartoonRef.current) {
+        autoSwitchedToKartoonRef.current = true;
+        console.info('[Soulstash Player] Auto-selecting resolved Kartoon stream:', kartoonSource.label || kartoonSource.id);
         setActiveUrl(kartoonSource.url);
         setVerifiedUrls((prev) => new Set(prev).add(kartoonSource.url));
       }
       return undefined;
     }
 
-    // Preserve an already playing source after the one-time preferred-source decision.
-    if (activeUrl && !failedUrls.has(activeUrl)) return undefined;
+    // If we already have an active playing URL and it hasn't failed, KEEP IT!
+    if (activeUrl && !failedUrls.has(activeUrl)) {
+      return undefined;
+    }
 
     // Prioritize VidBolt as default player if available
     const vidboltSource = playable.find(isVidboltSource);
@@ -2256,5 +2282,6 @@ export function VideoPlayerModal({ request, onClose }) {
     </div>
   );
 
+  if (!isValidRequest) return null;
   return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { imageUrl, mediaRoute } from '../../../utils/formatters.js';
 
@@ -20,12 +20,16 @@ export const ContinueWatchingCard = React.forwardRef(function ContinueWatchingCa
   const navigate = useNavigate();
   const [imgFailed, setImgFailed] = useState(false);
 
-  if (!entry || imgFailed) return null;
+  const poster = entry?.poster_path || entry?.image || entry?.coverImage;
+  const isInvalid = !entry || imgFailed || !poster || !String(poster).trim() || String(poster).startsWith('data:image/svg+xml');
 
-  const poster = entry.poster_path || entry.image;
-  if (!poster || !String(poster).trim() || String(poster).startsWith('data:image/svg+xml')) {
-    return null;
-  }
+  useEffect(() => {
+    if (isInvalid) {
+      onImageError?.();
+    }
+  }, [isInvalid, onImageError]);
+
+  if (isInvalid) return null;
 
   const title = entry.title || entry.name || 'Unknown';
   const progressPercent = Math.min(100, Math.max(0, Math.round((entry.progress || 0) * 100)));

@@ -12,6 +12,7 @@ import { HOME_GRID_CLASS } from '../../utils/constants.js';
 export function ContinueWatchingPage() {
   const navigate = useNavigate();
   const [list, setList] = useState(() => getContinueWatchingList());
+  const [failedCardIds, setFailedCardIds] = useState(() => new Set());
 
   useEffect(() => {
     document.title = 'Continue Watching | Soulstash';
@@ -29,8 +30,8 @@ export function ContinueWatchingPage() {
   }, []);
 
   const visibleItems = useMemo(() => {
-    return list.filter((item) => item?.poster_path || item?.image);
-  }, [list]);
+    return list.filter((item) => (item?.poster_path || item?.image) && !failedCardIds.has(item.id || item.key));
+  }, [list, failedCardIds]);
 
   const handleClearAll = () => {
     if (window.confirm('Clear all items from your Continue Watching history?')) {
@@ -86,6 +87,7 @@ export function ContinueWatchingPage() {
                 removeWatchProgress(it);
                 setList(getContinueWatchingList());
               }}
+              onImageError={() => setFailedCardIds((prev) => new Set(prev).add(entry.id || entry.key))}
             />
           ))}
         </div>

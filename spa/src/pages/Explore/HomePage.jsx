@@ -235,6 +235,7 @@ export function HomePage() {
                   removeWatchProgress(it);
                   setContinueWatchingList(getContinueWatchingList());
                 }}
+                onImageError={() => handleCardImageError(entry.id || entry.key)}
               />
             ))}
           </div>

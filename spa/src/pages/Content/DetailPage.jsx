@@ -13,7 +13,7 @@
  *   3. Render subcomponents in order
  */
 
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { useDetailPage } from '../../hooks/useDetailPage.js';
@@ -85,16 +85,127 @@ export function DetailPage({ type }) {
   const page = useDetailPage(id, type, auth);
   const autoPlayHandledRef = useRef(false);
 
-  // ΓöÇΓöÇ Loading / error states ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-  if (page.loading || !page.content) {
+  const content = page.content;
+  const kartoonsSlug = location.state?.kartoonsSlug || content?.kartoons_slug || '';
+
+  const handlePlayClick = useCallback((customResumeTime = null, customSeason = null, customEpisode = null) => {
+    if (!content) return;
+    const tmdbId = content?.id || id;
+    const originalTitle = content?.original_title || content?.original_name || '';
+    const originalName = content?.original_name || content?.original_title || '';
+    const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
+    const posterVal = content?.poster_path || content?.image || '';
+    const backdropVal = content?.backdrop_path || content?.backdrop || '';
+    const titleVal = content?.title || content?.name || 'Unknown title';
+
+    if (type === 'movie') {
+      page.setPlayerRequest(
+        createPlayerRequest({
+          mediaType: 'movie',
+          tmdbId,
+          imdbId: content?.imdb_id,
+          title: titleVal,
+          originalTitle,
+          originalName,
+          seriesTitle: titleVal,
+          year: yearVal,
+          kartoonsSlug,
+          isKartoons: Boolean(kartoonsSlug),
+          poster_path: posterVal,
+          backdrop_path: backdropVal,
+          image: posterVal,
+          resumeTime: customResumeTime
+        })
+      );
+    } else {
+      const lastWatched = getLastWatchedForSeries(tmdbId);
+      const targetSeason = customSeason != null
+        ? Number(customSeason)
+        : (lastWatched?.seasonNumber != null ? Number(lastWatched.seasonNumber) : (page.selectedSeason || 1));
+      const targetEp = customEpisode != null
+        ? Number(customEpisode)
+        : (lastWatched?.episodeNumber != null ? Number(lastWatched.episodeNumber) : (page.seasonDetails?.episodes?.[0]?.episode_number || 1));
+      const resume = customResumeTime != null ? customResumeTime : (lastWatched?.currentTime || 0);
+
+      if (targetSeason !== page.selectedSeason) {
+        page.setSelectedSeason?.(targetSeason);
+      }
+
+      page.setPlayerRequest(
+        createPlayerRequest({
+          mediaType: 'series',
+          tmdbId,
+          seasonNumber: targetSeason,
+          episodeNumber: targetEp,
+          episodeTitle: lastWatched?.episodeTitle || '',
+          kartoonsEpisodeId: lastWatched?.kartoons_episode_id || '',
+          kartoonsSlug: lastWatched?.kartoons_slug || kartoonsSlug || '',
+          isKartoons: Boolean(lastWatched?.kartoons_slug || kartoonsSlug),
+          imdbId: content?.imdb_id,
+          title: `${titleVal} S${targetSeason}E${targetEp}`,
+          originalTitle,
+          originalName,
+          seriesTitle: titleVal,
+          year: yearVal,
+          poster_path: posterVal,
+          backdrop_path: backdropVal,
+          image: posterVal,
+          resumeTime: resume
+        })
+      );
+    }
+  }, [content, id, type, kartoonsSlug, page]);
+
+  useEffect(() => {
+    if (autoPlayHandledRef.current || !content) return;
+    if (location.state?.autoPlay || location.state?.resumeTime) {
+      autoPlayHandledRef.current = true;
+      handlePlayClick(
+        location.state.resumeTime,
+        location.state.seasonNumber,
+        location.state.episodeNumber
+      );
+    }
+  }, [content, location.state, handlePlayClick]);
+
+  const handlePlayEpisode = useCallback((episode) => {
+    if (!content) return;
+    const originalTitle = content?.original_title || content?.original_name || '';
+    const originalName = content?.original_name || content?.original_title || '';
+    const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
+    const posterVal = content?.poster_path || content?.image || '';
+    const backdropVal = content?.backdrop_path || content?.backdrop || '';
+    const titleVal = content?.title || content?.name || 'Unknown title';
+
+    page.setPlayerRequest(
+      createPlayerRequest({
+        mediaType: 'series',
+        tmdbId: content?.id || id,
+        seasonNumber: episode.season_number,
+        episodeNumber: episode.episode_number,
+        episodeTitle: episode.name || '',
+        kartoonsEpisodeId: episode.kartoons_episode_id || episode.kartoonsEpisodeId || '',
+        kartoonsSlug: episode.kartoons_slug || episode.kartoonsSlug || kartoonsSlug || '',
+        isKartoons: Boolean(episode.kartoons_slug || episode.kartoonsSlug || kartoonsSlug),
+        imdbId: content?.imdb_id,
+        title: `${titleVal} S${episode.season_number}E${episode.episode_number}`,
+        originalTitle,
+        originalName,
+        seriesTitle: titleVal,
+        year: yearVal,
+        poster_path: posterVal,
+        backdrop_path: backdropVal,
+        image: posterVal
+      })
+    );
+  }, [content, id, kartoonsSlug, page]);
+
+  // Loading / error states
+  if (page.loading || !content) {
     return <DetailPageSkeleton type={type} />;
   }
 
-  const { content } = page;
-
-  // ΓöÇΓöÇ Computed display values ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-  // These are pure derivations ΓÇö no side effects, no state.
-
+  // Computed display values
   const title = content.title || content.name || 'Unknown title';
   const languageName = getLanguageName(
     content.language || content.original_language,
@@ -125,8 +236,7 @@ export function DetailPage({ type }) {
     displayRating ? `${ratingSource} ${displayRating.toFixed(1)}` : 'No rating'
   ].filter(Boolean);
 
-  // Director / creator stat ΓÇö renders as a clickable people stat when possible,
-  // or falls back to a plain text stat
+  // Director / creator stat
   const directorPeople = getDirectorPeople(content, page.creditsCrew, type);
   const directorLabel = getDirectorLabel(content, page.creditsCrew, type);
   const directorStat = directorPeople.length ? (
@@ -139,112 +249,6 @@ export function DetailPage({ type }) {
     <DetailStat label={type === 'series' ? 'Creator' : 'Directed By'} value={directorLabel} />
   );
 
-  // ΓöÇΓöÇ Play button handler ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-
-  function handlePlayClick(customResumeTime = null, customSeason = null, customEpisode = null) {
-    const tmdbId = content?.id || id;
-    const originalTitle = content?.original_title || content?.original_name || '';
-    const originalName = content?.original_name || content?.original_title || '';
-    const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
-    const posterVal = content?.poster_path || content?.image || '';
-    const backdropVal = content?.backdrop_path || content?.backdrop || '';
-    if (type === 'movie') {
-      page.setPlayerRequest(
-        createPlayerRequest({
-          mediaType: 'movie',
-          tmdbId,
-          imdbId: content?.imdb_id,
-          title,
-          originalTitle,
-          originalName,
-          seriesTitle: title,
-          year: yearVal,
-          poster_path: posterVal,
-          backdrop_path: backdropVal,
-          image: posterVal,
-          resumeTime: customResumeTime
-        })
-      );
-    } else {
-      // For series: look up last-watched episode if user previously watched this series
-      const lastWatched = getLastWatchedForSeries(tmdbId);
-      const targetSeason = customSeason != null
-        ? Number(customSeason)
-        : (lastWatched?.seasonNumber != null ? Number(lastWatched.seasonNumber) : (page.selectedSeason || 1));
-      const targetEp = customEpisode != null
-        ? Number(customEpisode)
-        : (lastWatched?.episodeNumber != null ? Number(lastWatched.episodeNumber) : (page.seasonDetails?.episodes?.[0]?.episode_number || 1));
-      const resume = customResumeTime != null ? customResumeTime : (lastWatched?.currentTime || 0);
-
-      if (targetSeason !== page.selectedSeason) {
-        page.setSelectedSeason?.(targetSeason);
-      }
-
-      page.setPlayerRequest(
-        createPlayerRequest({
-          mediaType: 'series',
-          tmdbId,
-          seasonNumber: targetSeason,
-          episodeNumber: targetEp,
-          episodeTitle: lastWatched?.episodeTitle || '',
-          kartoonsEpisodeId: lastWatched?.kartoons_episode_id || '',
-          kartoonsSlug: lastWatched?.kartoons_slug || '',
-          imdbId: content?.imdb_id,
-          title: `${title} S${targetSeason}E${targetEp}`,
-          originalTitle,
-          originalName,
-          seriesTitle: title,
-          year: yearVal,
-          poster_path: posterVal,
-          backdrop_path: backdropVal,
-          image: posterVal,
-          resumeTime: resume
-        })
-      );
-    }
-  }
-
-  useEffect(() => {
-    if (autoPlayHandledRef.current || !content) return;
-    if (location.state?.autoPlay || location.state?.resumeTime) {
-      autoPlayHandledRef.current = true;
-      handlePlayClick(
-        location.state.resumeTime,
-        location.state.seasonNumber,
-        location.state.episodeNumber
-      );
-    }
-  }, [content, location.state]);
-
-  function handlePlayEpisode(episode) {
-    const originalTitle = content?.original_title || content?.original_name || '';
-    const originalName = content?.original_name || content?.original_title || '';
-    const yearVal = content?.release_date ? parseInt(content.release_date.slice(0, 4)) : (content?.first_air_date ? parseInt(content.first_air_date.slice(0, 4)) : null);
-    const posterVal = content?.poster_path || content?.image || '';
-    const backdropVal = content?.backdrop_path || content?.backdrop || '';
-    page.setPlayerRequest(
-      createPlayerRequest({
-        mediaType: 'series',
-        tmdbId: content?.id || id,
-        seasonNumber: episode.season_number,
-        episodeNumber: episode.episode_number,
-        episodeTitle: episode.name || '',
-        kartoonsEpisodeId: episode.kartoons_episode_id || episode.kartoonsEpisodeId || '',
-        kartoonsSlug: episode.kartoons_slug || episode.kartoonsSlug || '',
-        imdbId: content?.imdb_id,
-        title: `${title} S${episode.season_number}E${episode.episode_number}`,
-        originalTitle,
-        originalName,
-        seriesTitle: title,
-        year: yearVal,
-        poster_path: posterVal,
-        backdrop_path: backdropVal,
-        image: posterVal
-      })
-    );
-  }
-
-  // ΓöÇΓöÇ Render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   return (
     <div className="space-y-10">
 

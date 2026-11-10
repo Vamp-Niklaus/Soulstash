@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useSearchParams, Link, useLocation } from 'react-router-dom';
+import { useParams, useSearchParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { fetchKartoonsEpisodes, fetchKartoonsMovieDetail, fetchKartoonsShowDetail } from '../../api/kartoons.js';
 import { apiFetch } from '../../api/client.js';
 import { useMediaAction } from '../../hooks/useMediaAction.js';
@@ -40,6 +40,7 @@ function getTagGenreUrl(tag) {
 export function KartoonDetailPage() {
   const { slug = '' } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const contentKindHint = searchParams.get('type') === 'movie' ? 'movie' : 'series';
   const [show, setShow] = useState(null);
@@ -108,7 +109,7 @@ export function KartoonDetailPage() {
     return () => controller.abort();
   }, [slug, contentKindHint]);
 
-  // Background TMDB pairing match
+  // Background TMDB pairing match & seamless redirection
   useEffect(() => {
     if (!show?.title) return undefined;
     const cleanTitle = String(show.title)
@@ -129,21 +130,51 @@ export function KartoonDetailPage() {
             ? ['movie', 'film'].includes(resultType)
             : ['tv', 'series', 'show'].includes(resultType);
           if (!correctType) return false;
+
+          // Check 1: Poster filename match (highest accuracy)
+          const rPoster = String(r.poster_path || '').replace(/^\//, '').trim();
+          if (rPoster && (
+            (show.image && String(show.image).includes(rPoster)) ||
+            (show.coverImage && String(show.coverImage).includes(rPoster)) ||
+            (show.poster && String(show.poster).includes(rPoster))
+          )) {
+            return true;
+          }
+
+          // Check 2: Exact title match + year match
           const t1 = String(r.title || r.name || '').toLowerCase();
           const t2 = cleanTitle.toLowerCase();
-          if (t1 === t2) return true;
           const kYear = Number(show.startYear || show.releaseYear || 0);
           const rYear = Number(String(r.release_date || r.first_air_date || '').slice(0, 4) || 0);
-          return (t1.includes(t2) || t2.includes(t1)) && (!kYear || !rYear || Math.abs(kYear - rYear) <= 1);
+          if (t1 === t2) {
+            if (!kYear || !rYear || Math.abs(kYear - rYear) <= 1) return true;
+          }
+
+          // Check 3: Substring title match with strict year
+          return (t1.includes(t2) || t2.includes(t1)) && Boolean(kYear && rYear && Math.abs(kYear - rYear) <= 1);
         });
-        if (match) {
+
+        if (match && match.id) {
           setTmdbMatch(match);
+          const targetType = (match.media_type === 'tv' || match.media_type === 'series' || contentKind === 'series') ? 'series' : 'movie';
+          console.info('[Soulstash Kartoon Detail] Merging Kartoons title with TMDB content:', {
+            kartoonSlug: slug,
+            tmdbId: match.id,
+            targetType
+          });
+          navigate(`/${targetType}/${match.id}`, {
+            replace: true,
+            state: {
+              kartoonsSlug: slug,
+              ...location.state
+            }
+          });
         }
       })
       .catch(() => {});
 
     return () => controller.abort();
-  }, [show?.title, show?.startYear, contentKind]);
+  }, [show?.title, show?.startYear, show?.releaseYear, show?.image, show?.coverImage, contentKind, slug, navigate, location.state]);
 
   useEffect(() => {
     if (!show || contentKind !== 'series' || !seasonNumber) return undefined;
