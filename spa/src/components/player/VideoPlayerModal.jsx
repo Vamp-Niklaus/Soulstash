@@ -425,17 +425,6 @@ export function VideoPlayerModal({ request, onClose }) {
     return () => window.removeEventListener('soulstash:player-iframe-activate', handleIframeActivate);
   }, []);
 
-  useEffect(() => {
-    const handleWindowBlur = () => {
-      // When the user clicks or focuses into the cross-origin playback iframe, window blurs
-      playerFocusTargetRef.current = 'iframe';
-      sizeFocusedRef.current = false;
-      setIsSizeFocusedVisual(false);
-    };
-    window.addEventListener('blur', handleWindowBlur);
-    return () => window.removeEventListener('blur', handleWindowBlur);
-  }, []);
-
   const returnToDefaultPlayerMode = useCallback(() => {
     try {
       const exit = document.exitFullscreen || document.webkitExitFullscreen;
@@ -456,6 +445,10 @@ export function VideoPlayerModal({ request, onClose }) {
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
     const mode = playerDisplayModeRef.current;
+    const isPlaybackFocused = document.activeElement === iframeRef.current ||
+      document.activeElement === directVideoRef.current ||
+      document.activeElement?.tagName === 'IFRAME' ||
+      document.activeElement?.tagName === 'VIDEO';
 
     if (mode === 3) {
       try {
@@ -467,67 +460,35 @@ export function VideoPlayerModal({ request, onClose }) {
 
       updatePlayerDisplayMode(2);
       setSourcesExpanded(true);
-      playerFocusTargetRef.current = 'size';
-      sizeFocusedRef.current = true;
-      setTvControlsVisible(true);
-      wakeTvControls();
-      console.info('[Soulstash Player Focus] Back in mode 3 -> switched to mode 2 and focusing Size');
       focusSizeControl();
       return;
     }
 
-    // In Mode 2: If focus was inside the playback/video (was in iframe), focus the Size button (stay in Mode 2).
-    // If focus was ALREADY on Size button or player controls, step down to Mode 1 and focus Size.
     if (mode === 2) {
-      if (playerFocusTargetRef.current === 'iframe') {
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setTvControlsVisible(true);
-        wakeTvControls();
-        console.info('[Soulstash Player Focus] Back in mode 2 (was in iframe) -> focusing Size');
+      if (isPlaybackFocused) {
         focusSizeControl();
         return;
       }
 
       setSourcesExpanded(false);
       updatePlayerDisplayMode(1);
-      playerFocusTargetRef.current = 'size';
-      sizeFocusedRef.current = true;
-      setTvControlsVisible(true);
-      wakeTvControls();
-      console.info('[Soulstash Player Focus] Back on controls in mode 2 -> switched to mode 1 and focusing Size');
       focusSizeControl();
       return;
     }
 
-    // In Mode 1: if sources panel is open, close it and focus Size
     if (sourcesExpanded) {
       setSourcesExpanded(false);
-      playerFocusTargetRef.current = 'size';
-      sizeFocusedRef.current = true;
-      setTvControlsVisible(true);
-      wakeTvControls();
-      console.info('[Soulstash Player Focus] Back while sources expanded -> closing sources and focusing Size');
       focusSizeControl();
       return;
     }
 
-    // In Mode 1 and sources closed: if focus was in iframe/playback (not on controls/Size),
-    // DO NOT CLOSE! Shift focus to Size button and show visual focus.
-    if (playerFocusTargetRef.current === 'iframe') {
-      playerFocusTargetRef.current = 'size';
-      sizeFocusedRef.current = true;
-      setTvControlsVisible(true);
-      wakeTvControls();
-      console.info('[Soulstash Player Focus] Back in mode 1 (was in iframe) -> focusing Size');
+    if (isPlaybackFocused) {
       focusSizeControl();
       return;
     }
 
-    // Mode 1, sources closed, and focus is ALREADY on Size button or outside iframe: close player
-    console.info('[Soulstash Player Focus] Back on controls in mode 1 -> closing player');
     handleCloseClick();
-  }, [focusSizeControl, handleCloseClick, sourcesExpanded, updatePlayerDisplayMode, wakeTvControls]);
+  }, [focusSizeControl, handleCloseClick, sourcesExpanded, updatePlayerDisplayMode]);
 
   useEffect(() => {
     window.addEventListener('soulstash:player-back', handlePlayerBackEvent);
@@ -1066,34 +1027,14 @@ export function VideoPlayerModal({ request, onClose }) {
         } catch (_) {}
         updatePlayerDisplayMode(2);
         setSourcesExpanded(true);
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setTvControlsVisible(true);
-        wakeTvControls();
         focusSizeControl();
         return;
       }
 
       if (mode === 2) {
-        if (playerFocusTargetRef.current === 'iframe') {
-          try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-          playerFocusTargetRef.current = 'size';
-          sizeFocusedRef.current = true;
-          setTvControlsVisible(true);
-          wakeTvControls();
-          console.info('[Soulstash Player Focus] PopState in mode 2 (was in iframe) -> focusing Size');
-          focusSizeControl();
-          return;
-        }
-
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
         updatePlayerDisplayMode(1);
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setTvControlsVisible(true);
-        wakeTvControls();
-        console.info('[Soulstash Player Focus] PopState in mode 2 -> switched to mode 1 and focusing Size');
         focusSizeControl();
         return;
       }
@@ -1101,28 +1042,11 @@ export function VideoPlayerModal({ request, onClose }) {
       if (sourcesExpanded) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setTvControlsVisible(true);
-        wakeTvControls();
         focusSizeControl();
         return;
       }
 
-      // In Mode 1: if focus was in iframe, shift focus to Size button and keep player open!
-      if (playerFocusTargetRef.current === 'iframe') {
-        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-        playerFocusTargetRef.current = 'size';
-        sizeFocusedRef.current = true;
-        setTvControlsVisible(true);
-        wakeTvControls();
-        console.info('[Soulstash Player Focus] PopState in mode 1 (was in iframe) -> focusing Size');
-        focusSizeControl();
-        return;
-      }
-
-      // Focus was already on controls / Size button -> CLOSE player!
-      console.info('[Soulstash Player Focus] PopState on controls in mode 1 -> closing player');
+      // In Mode 1: browser Back closes player cleanly
       handleCloseClick();
     };
 
