@@ -4,8 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const backendPort = env.PORT || process.env.PORT || 3000;
-  const backendUrl = `http://localhost:${backendPort}`;
+  const backendUrl = env.VITE_API_BASE_URL || env.BACKEND_URL || process.env.BACKEND_URL || 'https://soulstash-backend.onrender.com';
 
   return {
     root: 'spa',

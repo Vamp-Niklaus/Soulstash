@@ -10,7 +10,7 @@
     "dev:server": "node server.js",
     "dev:client": "vite --configLoader native",
     "dev:full": "npm run dev",
-    "render-build": "npm install --include=dev && PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium && npm run build",
+    "render-build": "npm run build",
     "desktop": "tauri",
     "desktop:build": "tauri build --bundles nsis"
   },
