@@ -85,7 +85,7 @@ export function SettingsModal({
   // Resolve the latest Android APK and Windows EXE release assets.
   useEffect(() => {
     let cancelled = false;
-    if (isNative || isTauri) {
+    if (!open || isNative || isTauri) {
       return () => { cancelled = true; };
     }
     async function checkReleaseAssets() {
@@ -105,7 +105,7 @@ export function SettingsModal({
     }
     checkReleaseAssets();
     return () => { cancelled = true; };
-  }, [isNative, isTauri]);
+  }, [open, isNative, isTauri]);
 
   const compareVersions = (left, right) => {
     const parse = (value) => (value.match(/\d+(?:\.\d+)*/)?.[0] || '').split('.').map((part) => Number(part) || 0);
