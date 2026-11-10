@@ -15,6 +15,25 @@ export function getProgressItemKey(item) {
   return String(id);
 }
 
+// Episodes of the same series share a group; movies are their own group.
+export function getSeriesGroupKey(key) {
+  return String(key || '').replace(/_s[^_]*_e[^_]*$/, '');
+}
+
+// Keep only the most recently updated entry per series/movie.
+function dedupeBySeries(list) {
+  const seen = new Set();
+  return list
+    .filter((entry) => entry && entry.key)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .filter((entry) => {
+      const group = getSeriesGroupKey(entry.key);
+      if (seen.has(group)) return false;
+      seen.add(group);
+      return true;
+    });
+}
+
 export function getLastWatchedForSeries(seriesId) {
   if (!seriesId) return null;
   const list = getContinueWatchingList();
@@ -37,7 +56,7 @@ export function getContinueWatchingList() {
     if (!raw) return [];
     const list = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
-    return list
+    return dedupeBySeries(list)
       .filter((entry) => {
         if (!entry || !entry.key) return false;
         const poster = entry.poster_path || entry.image || entry.backdrop_path || entry.backdrop || entry.coverImage;
@@ -88,8 +107,9 @@ export function saveWatchProgress(item, currentTime, duration) {
     let list = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(list)) list = [];
 
-    // Remove any existing entry for this key
-    list = list.filter((x) => x.key !== key);
+    // Remove any existing entry for this series/movie (one card per title)
+    const groupKey = getSeriesGroupKey(key);
+    list = list.filter((x) => getSeriesGroupKey(x.key) !== groupKey);
 
     if (!isCompleted) {
       const rawPoster = item.poster_path || item.image || item.coverImage || '';
@@ -186,7 +206,7 @@ export async function syncAccountWatchProgress() {
         map.set(item.key, item);
       }
     }
-    const merged = Array.from(map.values())
+    const merged = dedupeBySeries(Array.from(map.values()))
       .filter((entry) => {
         if (!entry || !entry.key) return false;
         const poster = entry.poster_path || entry.image || entry.backdrop_path || entry.backdrop || entry.coverImage;

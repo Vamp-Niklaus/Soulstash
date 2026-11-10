@@ -79,6 +79,9 @@ export function VideoPlayerModal({ request, onClose }) {
   const [animeSources, setAnimeSources] = useState([]);
   const [kartoonSources, setKartoonSources] = useState([]);
   const [kartoonResolveDone, setKartoonResolveDone] = useState(false);
+  const [kartoonRetryKey, setKartoonRetryKey] = useState(0);
+  const kartoonAutoRetriedRef = useRef(false);
+  const resumeAfterRetryRef = useRef(0);
   const [anilistId, setAnilistId] = useState(null);
   const [activeUrl, setActiveUrl] = useState('');
   const [hasManualSourceSelection, setHasManualSourceSelection] = useState(false);
@@ -642,6 +645,8 @@ export function VideoPlayerModal({ request, onClose }) {
     setScale(1.0);
     setNativeScale(1.0);
     autoSwitchedToKartoonRef.current = false;
+    kartoonAutoRetriedRef.current = false;
+    resumeAfterRetryRef.current = 0;
   }, [request, updatePlayerDisplayMode]);
 
   // Anime / AniList / MultiNime Resolution with multi-step search fallback
@@ -961,7 +966,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
         if (cancelled || !streamId) return;
 
-        const streams = (await fetchKartoonsStremioStreams(streamType, streamId).catch(() => []))
+        const streams = (await fetchKartoonsStremioStreams(streamType, streamId, kartoonRetryKey > 0).catch(() => []))
           .filter((stream) => stream?.url && isDirectMediaUrl(stream.url));
         if (cancelled || !streams.length) return;
 
@@ -992,7 +997,7 @@ export function VideoPlayerModal({ request, onClose }) {
 
     resolveKartoons();
     return () => { cancelled = true; };
-  }, [request]);
+  }, [request, kartoonRetryKey]);
 
   useEffect(() => {
     return () => {
@@ -1427,6 +1432,26 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
 
+  // Recover a Kartoon stream that never starts (or errors): re-resolve once with a fresh URL,
+  // then fall back to the normal failed-source handling.
+  const handleDirectStuck = () => {
+    const stuckUrl = activeUrl;
+    if (!stuckUrl || !isKartoonSource(activeSource)) return;
+    if (!kartoonAutoRetriedRef.current) {
+      kartoonAutoRetriedRef.current = true;
+      resumeAfterRetryRef.current = latestPlaybackTimeRef.current || 0;
+      autoSwitchedToKartoonRef.current = false;
+      setActiveUrl('');
+      setKartoonSources([]);
+      setKartoonResolveDone(false);
+      setKartoonRetryKey((k) => k + 1);
+      return;
+    }
+    hlsErrorHandlerRef.current?.(stuckUrl);
+  };
+  const handleDirectStuckRef = useRef(handleDirectStuck);
+  handleDirectStuckRef.current = handleDirectStuck;
+
   useEffect(() => {
     if (activeUrl) {
       setIsStreamLoading(true);
@@ -1464,9 +1489,10 @@ export function VideoPlayerModal({ request, onClose }) {
           startFragPrefetch: true,
           lowLatencyMode: false,
           startLevel: -1,
-          backBufferLength: 30,
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
+          backBufferLength: isTv ? 15 : 30,
+          maxBufferLength: isTv ? 20 : 30,
+          maxMaxBufferLength: isTv ? 30 : 60,
+          maxBufferSize: isTv ? 30 * 1000 * 1000 : 60 * 1000 * 1000,
           manifestLoadingTimeOut: 15000,
           levelLoadingTimeOut: 15000,
           fragLoadingTimeOut: 30000,
@@ -1502,8 +1528,16 @@ export function VideoPlayerModal({ request, onClose }) {
       video.play().catch(() => {});
     }
 
+    // Watchdog: if nothing has loaded after 10s, re-resolve the stream once.
+    const stuckWatchdog = window.setTimeout(() => {
+      if (!disposed && video.readyState < 2 && video.currentTime === 0) {
+        handleDirectStuckRef.current?.();
+      }
+    }, 10000);
+
     return () => {
       disposed = true;
+      window.clearTimeout(stuckWatchdog);
       if (localHls) {
         try { localHls.destroy(); } catch {}
         if (hlsInstanceRef.current === localHls) hlsInstanceRef.current = null;
@@ -1974,9 +2008,11 @@ export function VideoPlayerModal({ request, onClose }) {
                   onPlay={() => {
                     focusZoneRef.current = 'playback';
                   }}
+                  onError={() => handleDirectStuckRef.current?.()}
                   onLoadedMetadata={(e) => {
-                    if (initialResumeTime > 10) {
-                      try { e.currentTarget.currentTime = initialResumeTime; } catch (_) {}
+                    const resumeAt = resumeAfterRetryRef.current > 10 ? resumeAfterRetryRef.current : initialResumeTime;
+                    if (resumeAt > 10) {
+                      try { e.currentTarget.currentTime = resumeAt; } catch (_) {}
                     }
                   }}
                   onTimeUpdate={(e) => {

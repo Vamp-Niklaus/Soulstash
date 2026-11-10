@@ -27,14 +27,18 @@ export async function fetchKartoonsStremioStreams(type, id, force = false) {
     if (cached && Date.now() - cached.at < 5 * 60 * 1000) return cached.streams;
   }
 
-  // 1. Try our backend stream resolver first (fetches and un-proxies worker m3u8 playlists)
-  try {
-    const backendData = await apiFetch(`/api/kartoons/resolve-stream?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`);
-    if (backendData?.success && Array.isArray(backendData.streams) && backendData.streams.length > 0) {
-      _streamCache[cacheKey] = { at: Date.now(), streams: backendData.streams };
-      return backendData.streams;
-    }
-  } catch (_) {}
+  // 1. Try our backend stream resolver first (fetches and un-proxies worker m3u8 playlists).
+  // Retry once: the backend can briefly return nothing when the upstream hiccups.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const backendData = await apiFetch(`/api/kartoons/resolve-stream?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`);
+      if (backendData?.success && Array.isArray(backendData.streams) && backendData.streams.length > 0) {
+        _streamCache[cacheKey] = { at: Date.now(), streams: backendData.streams };
+        return backendData.streams;
+      }
+    } catch (_) {}
+    if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 800));
+  }
 
   // 2. Direct client fallback
   const url = `${KARTOONS_STREMIO}/stream/${type}/${encodeURIComponent(id)}.json?token=${KARTOONS_TOKEN}`;
