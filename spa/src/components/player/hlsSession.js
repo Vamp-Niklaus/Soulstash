@@ -96,6 +96,56 @@ export async function safePlay(video) {
   }
 }
 
+/** True when `t` (seconds) lies inside a buffered range, so playback can continue there without a download. */
+export function isBuffered(video, t) {
+  try {
+    const b = video.buffered;
+    for (let i = 0; i < b.length; i += 1) {
+      if (t >= b.start(i) - 0.05 && t <= b.end(i) - 0.05) return true;
+    }
+  } catch (_) { /* ignore */ }
+  return false;
+}
+
+/**
+ * Real length of the media in seconds. HLS playlists without #EXT-X-ENDLIST (common for worker-served
+ * streams) report video.duration === Infinity, which used to clamp the seek bar to ~1s and block every
+ * forward seek. Falls back to the playlist's total duration, then the seekable range.
+ */
+export function getMediaDuration(video, hls) {
+  if (!video) return 0;
+  if (Number.isFinite(video.duration) && video.duration > 0) return video.duration;
+  const h = hls || video.__hls;
+  try {
+    const levels = h?.levels || [];
+    const idx = h && h.currentLevel >= 0 ? h.currentLevel : h?.loadLevel;
+    const details = h?.latestLevelDetails || levels[idx]?.details || levels.find((l) => l?.details)?.details;
+    if (details?.totalduration > 0) return details.totalduration;
+  } catch (_) { /* ignore */ }
+  try {
+    if (video.seekable && video.seekable.length) {
+      const end = video.seekable.end(video.seekable.length - 1);
+      if (Number.isFinite(end) && end > 0) return end;
+    }
+  } catch (_) { /* ignore */ }
+  return 0;
+}
+
+/** Seek to `time` seconds. Clamps to the real duration and logs whether the target needs a download. */
+export function seekTo(video, time, hls) {
+  if (!video) return;
+  const duration = getMediaDuration(video, hls);
+  let target = Math.max(0, Number(time) || 0);
+  if (duration > 0) target = Math.min(target, Math.max(0, duration - 0.25));
+  console.info('[Soulstash Player] seek', {
+    from: Math.round(video.currentTime),
+    to: Math.round(target),
+    duration: Math.round(duration),
+    buffered: isBuffered(video, target)
+  });
+  video.currentTime = target;
+}
+
 const TICK_MS = 500;
 const STARTUP_SOFT_MS = 4000;
 const STARTUP_HARD_MS = 15000;
@@ -123,7 +173,7 @@ function buildConfig({ position, lowQuality, isTv }) {
   return {
     enableWorker: true,
     lowLatencyMode: false,
-    startPosition: position > 10 ? position : -1,
+    startPosition: position > 1 ? position : -1,
     startLevel: -1,
     testBandwidth: false,
     abrEwmaDefaultEstimate: 1000000,
@@ -188,6 +238,11 @@ export function startHlsSession({
   let lastMediaFailAt = -Infinity;
   let attemptStart = now();
   const timers = new Set();
+  let seekGraceUntil = 0;
+  let seekStartedAt = 0;
+  let seekKickTimer = 0;
+  // Where recovery should load from: the last position we know was good (updated on every seek).
+  const resumePoint = () => (lastGoodTime > 1 ? lastGoodTime : -1);
 
   const later = (fn, ms) => {
     const id = window.setTimeout(() => {
@@ -212,6 +267,7 @@ export function startHlsSession({
       engine = null;
       try { old.destroy(); } catch (_) { /* ignore */ }
       if (hlsRef && hlsRef.current === old) hlsRef.current = null;
+      if (video.__hls === old) video.__hls = null;
     } else {
       try { video.removeAttribute('src'); video.load(); } catch (_) { /* ignore */ }
     }
@@ -225,6 +281,7 @@ export function startHlsSession({
       const hls = new Hls(buildConfig({ position, lowQuality, isTv }));
       engine = hls;
       if (hlsRef) hlsRef.current = hls;
+      video.__hls = hls; // lets seek helpers read the playlist duration without prop drilling
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (engine !== hls) return;
@@ -249,7 +306,7 @@ export function startHlsSession({
           if (netRetries <= 2) {
             later(() => {
               if (engine !== hls) return;
-              try { hls.startLoad(lastGoodTime > 10 ? lastGoodTime : -1); } catch (_) { /* ignore */ }
+              try { hls.startLoad(resumePoint()); } catch (_) { /* ignore */ }
             }, 400 * netRetries);
             return;
           }
@@ -286,7 +343,7 @@ export function startHlsSession({
       return;
     }
     restarts += 1;
-    const position = lastGoodTime > 10 ? lastGoodTime : (startAt > 10 ? startAt : 0);
+    const position = lastGoodTime > 1 ? lastGoodTime : (startAt > 10 ? startAt : 0);
     log(`restart #${restarts} (${reason}) at ${Math.round(position)}s`);
     if (resumeRef) resumeRef.current = position;
     started = false;
@@ -312,7 +369,7 @@ export function startHlsSession({
   }
 
   const nudge = () => {
-    try { engine?.startLoad(lastGoodTime > 10 ? lastGoodTime : -1); } catch (_) { /* ignore */ }
+    try { engine?.startLoad(resumePoint()); } catch (_) { /* ignore */ }
     try {
       const buf = video.buffered;
       const cur = video.currentTime;
@@ -334,6 +391,42 @@ export function startHlsSession({
   };
   video.addEventListener('error', onVideoError);
 
+  // Seeking: a seek to an unbuffered spot looks exactly like a stall (time frozen while the chunk
+  // downloads). Without this, recovery restarted loading from the position *before* the seek, which
+  // replayed the old chunks. Now every seek resets the stall clock, moves the recovery point to the
+  // target, and kicks the loader if the target chunk has not started downloading.
+  const onSeeking = () => {
+    if (destroyed) return;
+    const target = video.currentTime;
+    seekStartedAt = now();
+    seekGraceUntil = seekStartedAt + 4000;
+    stallSince = 0;
+    stage = 0;
+    lastTime = target;
+    if (target > 0.5) lastGoodTime = target;
+    const buffered = isBuffered(video, target);
+    log(`seeking to ${target.toFixed(1)}s`, buffered ? '(already buffered)' : '(needs download)');
+    window.clearTimeout(seekKickTimer);
+    if (!buffered) {
+      seekKickTimer = window.setTimeout(() => {
+        if (destroyed || !engine || !video.seeking || isBuffered(video, video.currentTime)) return;
+        log(`seek target still not loading, restarting load at ${video.currentTime.toFixed(1)}s`);
+        try { engine.startLoad(video.currentTime); } catch (_) { /* ignore */ }
+      }, 1500);
+    }
+  };
+  const onSeeked = () => {
+    if (destroyed) return;
+    window.clearTimeout(seekKickTimer);
+    stallSince = 0;
+    stage = 0;
+    lastTime = video.currentTime;
+    if (video.currentTime > 0.5) lastGoodTime = video.currentTime;
+    log(`seeked to ${video.currentTime.toFixed(1)}s in ${Math.round(now() - seekStartedAt)}ms`);
+  };
+  video.addEventListener('seeking', onSeeking);
+  video.addEventListener('seeked', onSeeked);
+
   const tick = () => {
     if (destroyed) return;
     const t = now();
@@ -349,6 +442,12 @@ export function startHlsSession({
       }
       // Never restart a load that is still progressing; only give up after a long wait.
       if (t - attemptStart >= STARTUP_HARD_MS) escalate('startup-timeout');
+      return;
+    }
+    // Still waiting for a seek target to download: give it time before any recovery step.
+    if (video.seeking && t < seekGraceUntil) {
+      stallSince = 0;
+      lastTime = cur;
       return;
     }
     // User paused or finished: nothing to recover.
@@ -407,6 +506,9 @@ export function startHlsSession({
       timers.forEach((id) => window.clearTimeout(id));
       timers.clear();
       video.removeEventListener('error', onVideoError);
+      video.removeEventListener('seeking', onSeeking);
+      video.removeEventListener('seeked', onSeeked);
+      window.clearTimeout(seekKickTimer);
       teardownEngine();
     }
   };

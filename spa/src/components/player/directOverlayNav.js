@@ -9,10 +9,12 @@
 // Up/Down move between rows (nearest button by horizontal position).
 // Down from the last row returns focus to the video. Inside an open menu, Up/Down move through its items.
 
+import { seekTo } from './hlsSession.js';
+
 export function seekVideo(video, delta) {
   if (!video) return;
-  const max = Number.isFinite(video.duration) ? video.duration : video.currentTime;
-  video.currentTime = Math.max(0, Math.min(max, video.currentTime + delta));
+  // seekTo clamps to the real duration (video.duration can be Infinity for HLS, which used to block forward seeks).
+  seekTo(video, video.currentTime + delta);
 }
 
 export function changeVideoVolume(video, delta) {

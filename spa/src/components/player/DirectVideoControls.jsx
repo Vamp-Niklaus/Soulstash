@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { handleDirectOverlayKey, seekVideo, changeVideoVolume } from './directOverlayNav.js';
+import { getMediaDuration, seekTo } from './hlsSession.js';
 
 // Control overlay for direct (non-iframe) streams. Layout follows the kartoons.to player.
 // Keys on the focused video: Left/Right seek 10s, Up/Down volume, Enter/Space play/pause (desktop; TV handled by useSpatialNav).
@@ -12,7 +13,7 @@ const ASPECTS = [
   { key: 'fill', label: 'Stretch' }
 ];
 const AUTONEXT_KEY = 'soulstash_autonext';
-const EVENTS = ['play', 'pause', 'timeupdate', 'durationchange', 'loadedmetadata', 'volumechange', 'ratechange', 'waiting', 'playing'];
+const EVENTS = ['play', 'pause', 'timeupdate', 'durationchange', 'loadedmetadata', 'volumechange', 'ratechange', 'waiting', 'playing', 'progress', 'seeking', 'seeked'];
 const ICON_BTN = 'flex h-9 w-9 items-center justify-center rounded-full text-white/95 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500';
 const TEXT_BTN = 'flex h-9 items-center justify-center rounded-full px-3 text-xs font-bold text-white/95 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500';
 
@@ -42,8 +43,22 @@ function togglePlayEl(el) {
   else el.pause();
 }
 
+function bufferedEndAt(el) {
+  try {
+    const b = el.buffered;
+    const t = el.currentTime || 0;
+    for (let i = 0; i < b.length; i += 1) {
+      if (t >= b.start(i) - 0.05 && t <= b.end(i) + 0.05) return b.end(i);
+    }
+  } catch (_) { /* ignore */ }
+  return 0;
+}
+
 export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFullscreen, onPrevEpisode, onNextEpisode }) {
-  const [snap, setSnap] = useState({ paused: true, time: 0, duration: 0, volume: 1, muted: false, rate: 1, loop: false });
+  const [snap, setSnap] = useState({ paused: true, time: 0, duration: 0, buffered: 0, seeking: false, volume: 1, muted: false, rate: 1, loop: false });
+  const [scrub, setScrub] = useState(null); // seconds while the user is dragging / has just clicked the seek line
+  const scrubRef = useRef(null);
+  const scrubTimer = useRef(0);
   const [menu, setMenu] = useState(null);
   const [wakeTick, setWakeTick] = useState(0);
   const [visible, setVisible] = useState(true);
@@ -64,7 +79,9 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
     const sync = () => setSnap({
       paused: el.paused,
       time: el.currentTime || 0,
-      duration: Number.isFinite(el.duration) ? el.duration : 0,
+      duration: getMediaDuration(el, hlsRef?.current),
+      buffered: bufferedEndAt(el),
+      seeking: el.seeking,
       volume: el.volume,
       muted: el.muted,
       rate: el.playbackRate,
@@ -73,7 +90,7 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
     EVENTS.forEach((ev) => el.addEventListener(ev, sync));
     sync();
     return () => EVENTS.forEach((ev) => el.removeEventListener(ev, sync));
-  }, [videoRef]);
+  }, [videoRef, hlsRef]);
 
   // Auto next: when the episode ends, move on if the option is on and a next episode exists.
   useEffect(() => {
@@ -141,7 +158,26 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
 
   const togglePlay = () => { const v = el(); if (v) togglePlayEl(v); };
   const skip = (delta) => { const v = el(); if (v) seekVideo(v, delta); };
-  const seek = (value) => { const v = el(); if (v) v.currentTime = Number(value) || 0; };
+  // Seek line: while the user drags we only move the thumb; the real seek happens once they pause or
+  // release. Seeking on every pixel made hls.js abort each chunk it had just started downloading,
+  // so nothing ever finished loading and playback fell back to the old chunks.
+  const commitSeek = () => {
+    window.clearTimeout(scrubTimer.current);
+    const target = scrubRef.current;
+    if (target === null) return;
+    scrubRef.current = null;
+    setScrub(null);
+    const v = el();
+    if (v) seekTo(v, target, hlsRef?.current);
+  };
+  const previewSeek = (value) => {
+    const n = Number(value) || 0;
+    scrubRef.current = n;
+    setScrub(n);
+    window.clearTimeout(scrubTimer.current);
+    scrubTimer.current = window.setTimeout(commitSeek, 250);
+  };
+  useEffect(() => () => window.clearTimeout(scrubTimer.current), []);
   const toggleMute = () => { const v = el(); if (v) v.muted = !v.muted; };
   const setVolume = (value) => {
     const v = el();
@@ -322,18 +358,38 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
 
       {/* Bottom: seek line and transport row */}
       <div className={`bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}>
-        <div data-direct-row="2" className="mb-1">
-          <input
-            type="range"
-            aria-label="Seek"
-            data-direct-slider="seek"
-            min={0}
-            max={snap.duration || 1}
-            step={0.1}
-            value={Math.min(snap.time, snap.duration || 1)}
-            onChange={(e) => seek(e.target.value)}
-            className="h-1 w-full cursor-pointer accent-red-600"
-          />
+        <div data-direct-row="2" className="group relative mb-1 flex h-5 items-center">
+          {(() => {
+            const dur = snap.duration || 0;
+            const shown = scrub !== null ? scrub : snap.time;
+            const pct = (x) => (dur > 0 ? Math.max(0, Math.min(100, (x / dur) * 100)) : 0);
+            return (
+              <>
+                <div className="pointer-events-none absolute inset-x-0 h-1 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-1.5 group-focus-within:h-1.5">
+                  <div className="absolute inset-y-0 left-0 bg-white/40" style={{ width: `${pct(snap.buffered)}%` }} />
+                  <div className="absolute inset-y-0 left-0 bg-red-600" style={{ width: `${pct(shown)}%` }} />
+                </div>
+                <div
+                  className={`pointer-events-none absolute h-3 w-3 -translate-x-1/2 rounded-full bg-red-600 transition-transform group-hover:scale-125 group-focus-within:scale-125 ${snap.seeking ? 'animate-pulse' : ''}`}
+                  style={{ left: `${pct(shown)}%` }}
+                />
+                <input
+                  type="range"
+                  aria-label="Seek"
+                  data-direct-slider="seek"
+                  min={0}
+                  max={dur || 1}
+                  step={0.1}
+                  value={Math.min(shown, dur || 1)}
+                  onChange={(e) => previewSeek(e.target.value)}
+                  onPointerUp={commitSeek}
+                  onBlur={commitSeek}
+                  disabled={!dur}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+              </>
+            );
+          })()}
         </div>
         <div data-direct-row="3" className="flex items-center gap-1">
           <button type="button" className={ICON_BTN} onClick={togglePlay} aria-label={snap.paused ? 'Play' : 'Pause'}>
