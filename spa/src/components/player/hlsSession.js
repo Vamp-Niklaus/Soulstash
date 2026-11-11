@@ -71,7 +71,7 @@ export function loadHlsJs() {
 
 const TICK_MS = 500;
 const STARTUP_SOFT_MS = 4000;
-const STARTUP_HARD_MS = 9000;
+const STARTUP_HARD_MS = 15000;
 const STALL_NUDGE_MS = 3000;
 const STALL_RECOVER_MS = 6000;
 const STALL_RESTART_MS = 10000;
@@ -97,7 +97,7 @@ function buildConfig({ position, lowQuality, isTv }) {
     enableWorker: true,
     lowLatencyMode: false,
     startPosition: position > 10 ? position : -1,
-    startLevel: lowQuality ? 0 : -1,
+    startLevel: -1,
     testBandwidth: false,
     abrEwmaDefaultEstimate: 1000000,
     startFragPrefetch: true,
@@ -316,16 +316,10 @@ export function startHlsSession({
         log(`first frame after ${Math.round(t - attemptStart)}ms`);
         return;
       }
-      const waited = t - attemptStart;
-      if (waited >= STARTUP_HARD_MS) {
-        escalate('startup-timeout');
-      } else if (!softRestartDone && waited >= STARTUP_SOFT_MS) {
-        softRestartDone = true;
-        restart('startup-slow', { lowQuality: true, keepAttemptClock: true });
-      }
+      // Never restart a load that is still progressing; only give up after a long wait.
+      if (t - attemptStart >= STARTUP_HARD_MS) escalate('startup-timeout');
       return;
     }
-
     // User paused or finished: nothing to recover.
     if (video.paused || video.ended) {
       stallSince = 0;
