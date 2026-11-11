@@ -90,6 +90,9 @@ export function VideoPlayerModal({ request, onClose }) {
   const sourceHideRef = useRef(null);
   const focusSourceAfterExpandRef = useRef(false);
   const playerDisplayModeRef = useRef(1);
+  // When the Back key was already handled by the key handler, the browser's history-back that
+  // follows must not run a second action (the iframe path only gets the history-back).
+  const lastBackHandledAtRef = useRef(0);
   const openerRef = useRef(typeof document !== 'undefined' ? document.activeElement : null);
   // Tracks active focus zone: 'playback' | 'controls'
   const focusZoneRef = useRef('playback');
@@ -464,8 +467,10 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
+    lastBackHandledAtRef.current = Date.now();
     const mode = playerDisplayModeRef.current;
-    const isPlaybackFocused = focusZoneRef.current === 'playback';
+    const onDirectOverlay = Boolean(document.activeElement?.closest?.('[data-direct-player]'));
+    const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || !document.activeElement || document.activeElement === document.body;
 
     if (mode === 3) {
       try {
@@ -1055,8 +1060,14 @@ export function VideoPlayerModal({ request, onClose }) {
 
     const handlePopState = () => {
       if (isClosingRef.current) return;
+      // The key handler already handled this Back press. Keep the player's history entry and stop here.
+      if (Date.now() - lastBackHandledAtRef.current < 400) {
+        try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
+        return;
+      }
       const mode = playerDisplayModeRef.current;
-      const isPlaybackFocused = focusZoneRef.current === 'playback';
+      const onDirectOverlay = Boolean(document.activeElement?.closest?.('[data-direct-player]'));
+      const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || !document.activeElement || document.activeElement === document.body;
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}

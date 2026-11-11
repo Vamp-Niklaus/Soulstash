@@ -4,12 +4,15 @@
 // Rows (top to bottom):
 //   0  CC / Audio / Quality / Settings
 //   1  -10s / Play-Pause / +10s
-//   2  seek line (Left/Right = -10s / +10s)
+//   2  seek line (Left/Right = -120s / +120s)
 //   3  Play-Pause / Prev / Next / Mute / volume (Left/Right = -/+ volume) / Fullscreen
 // Up/Down move between rows (nearest button by horizontal position).
 // Down from the last row returns focus to the video. Inside an open menu, Up/Down move through its items.
 
 import { seekTo } from './hlsSession.js';
+
+// Left/Right on the focused seek line jump this many seconds (the -10s / +10s buttons and the focused video keep 10s).
+export const SEEK_LINE_STEP = 120;
 
 export function seekVideo(video, delta) {
   if (!video) return;
@@ -58,7 +61,7 @@ export function handleDirectOverlayKey(key, active, overlay, video, focusEl) {
 
   if (key === 'ArrowLeft' || key === 'ArrowRight') {
     const dir = key === 'ArrowRight' ? 1 : -1;
-    if (slider === 'seek') { seekVideo(video, dir * 10); return true; }
+    if (slider === 'seek') { seekVideo(video, dir * SEEK_LINE_STEP); return true; }
     if (slider === 'volume') { changeVideoVolume(video, dir * 0.05); return true; }
     if (idx < 0 || rowItems.length === 0) return true;
     focusEl(rowItems[(idx + dir + rowItems.length) % rowItems.length]);

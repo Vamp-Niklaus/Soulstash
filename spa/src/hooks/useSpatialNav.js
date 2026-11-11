@@ -198,6 +198,46 @@ function handleKeyDown(e) {
       return;
     }
 
+    // Internal direct-video overlay (rows, seek line, volume). Handled before the generic
+    // modal Down rules so Up/Down/Left/Right stay inside its controls.
+    const directOverlayFirst = playerModal.querySelector('[data-direct-player]');
+    if (directOverlayFirst && NAV.has(key)) {
+      if (directOverlayFirst.contains(active)) {
+        if (NAV.has(key)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        const handled = handleDirectOverlayKey(
+          key, active, directOverlayFirst, playerModal.querySelector('video'),
+          (el) => { showRing(); applyFocus(el); }
+        );
+        if (handled) return;
+      } else if (key === 'ArrowDown' && active?.closest('[data-player-controls]')) {
+        // Down from the top bar goes to the nearest button in the transport row (Play/Pause, -10s, +10s),
+        // the same way spatial navigation picks the button directly below.
+        const row1 = directOverlayFirst.querySelector('[data-direct-row="1"]');
+        const targets = row1
+          ? Array.from(row1.querySelectorAll('button:not(:disabled)')).filter((el) => el.getClientRects().length > 0)
+          : [];
+        if (targets.length) {
+          const from = active.getBoundingClientRect();
+          const fromX = from.left + from.width / 2;
+          let best = targets[0];
+          let bestDist = Infinity;
+          for (const t of targets) {
+            const tr = t.getBoundingClientRect();
+            const dist = Math.abs(tr.left + tr.width / 2 - fromX);
+            if (dist < bestDist) { bestDist = dist; best = t; }
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          showRing();
+          applyFocus(best);
+          return;
+        }
+      }
+    }
+
     if (playerModal.getAttribute('data-player-mode') === '3' && key === 'ArrowDown') {
       e.preventDefault();
       e.stopPropagation();
@@ -215,6 +255,19 @@ function handleKeyDown(e) {
         active.currentTime = Math.max(0, Math.min(duration, active.currentTime + step));
         showRing();
         return;
+      }
+      // Down on the focused internal video moves focus onto the on-screen Play/Pause button.
+      if (key === 'ArrowDown') {
+        const playButton = playerModal.querySelector(
+          '[data-direct-row="1"] button[aria-label="Play"], [data-direct-row="1"] button[aria-label="Pause"]'
+        );
+        if (playButton && playButton.getClientRects().length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          showRing();
+          applyFocus(playButton);
+          return;
+        }
       }
       // Up/Down on the focused video change volume (in every player mode).
       if (key === 'ArrowUp' || key === 'ArrowDown') {
@@ -325,16 +378,6 @@ function handleKeyDown(e) {
         applyFocus(controls[nextIndex]);
       }
       return;
-    }
-
-    // Internal (direct video) player overlay: rows, seek line and volume, shared with the desktop handler.
-    const directOverlay = playerModal.querySelector('[data-direct-player]');
-    if (directOverlay && directOverlay.contains(active) && NAV.has(key)) {
-      const handled = handleDirectOverlayKey(key, active, directOverlay, playerModal.querySelector('video'), (el) => {
-        showRing();
-        applyFocus(el);
-      });
-      if (handled) return;
     }
 
     if (active.closest('[data-player-source]') && key === 'ArrowUp') {
