@@ -1,8 +1,9 @@
-import { apiFetch } from './client.js';
+import { apiFetch, API_BASE_URL } from './client.js';
 
-const KARTOONS_API = 'https://api.kartoons.me/api';
+// All Kartoons requests go through our backend, which adds the bearer/Stremio tokens.
+export const KARTOONS_PROXY = `${API_BASE_URL}/api/kartoons/proxy`;
+const KARTOONS_API = KARTOONS_PROXY;
 const KARTOONS_STREMIO = `${KARTOONS_API}/stremio`;
-const KARTOONS_TOKEN = 'OK_DGA031TQOAsyYaGa3LrOu9xdIjNCDRsxbos0-XCs';
 
 // Cache for Stremio streams (5 min — m3u8 hashes rotate)
 const _streamCache = {};
@@ -45,7 +46,7 @@ export async function fetchKartoonsStremioStreams(type, id, force = false) {
   }
 
   // 2. Direct client fallback
-  const url = `${KARTOONS_STREMIO}/stream/${type}/${encodeURIComponent(id)}.json?token=${KARTOONS_TOKEN}`;
+  const url = `${KARTOONS_STREMIO}/stream/${type}/${encodeURIComponent(id)}.json`;
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Kartoons Stremio ${res.status}`);
   const json = await res.json().catch(() => ({}));
@@ -69,7 +70,7 @@ export async function resolveKartoonsMovieId(slug) {
 
   // 1. Fast direct movie detail lookup (returns exact _id and preserves related metadata)
   try {
-    const res = await fetch(`https://api.kartoons.to/api/movies/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+    const res = await fetch(`${KARTOONS_API}/movies/${encodeURIComponent(slug)}`, { cache: 'no-store' });
     if (res.ok) {
       const json = await res.json();
       if (json?.data?._id) return json.data._id;
@@ -80,7 +81,7 @@ export async function resolveKartoonsMovieId(slug) {
   const hex = String((slug || '').split('-').pop() || '').toLowerCase();
   if (!hex) return null;
   if (!_movieCatalogCache.data || Date.now() - _movieCatalogCache.at > 6 * 3600 * 1000) {
-    const url = `${KARTOONS_STREMIO}/catalog/movie/kartoons_movies.json?token=${KARTOONS_TOKEN}`;
+    const url = `${KARTOONS_STREMIO}/catalog/movie/kartoons_movies.json`;
     const res = await fetch(url, { cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
     _movieCatalogCache.data = json.metas || [];

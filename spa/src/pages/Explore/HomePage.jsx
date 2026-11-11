@@ -307,6 +307,11 @@ export function HomePage() {
       ))}
 
       {publishedCollections.length ? (
+        <div className="content-section">
+          <HomeShelfHeader title="Posted Collections" onViewAll={() => navigate('/posted-collections')} />
+        </div>
+      ) : null}
+      {publishedCollections.length ? (
         <section className="content-section space-y-6">
           {publishedCollections.map((collection, colIdx) => {
             const items = Array.isArray(collection.movies) ? collection.movies.map(normalizeStoredCollectionItem) : [];

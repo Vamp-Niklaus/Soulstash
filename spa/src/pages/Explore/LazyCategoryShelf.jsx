@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
+import { KARTOONS_PROXY } from '../../api/kartoons.js';
 import { HOME_GRID_CLASS } from '../../utils/constants.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { HomeShelfHeader } from './HomeShelfHeader.jsx';
@@ -41,7 +42,7 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
       };
 
       if (gLower === 'anime' || gLower === 'kartoons-anime') {
-        const res = await fetch(`https://api.kartoons.me/api/shows?page=1&category=Anime`);
+        const res = await fetch(`${KARTOONS_PROXY}/shows?page=1&category=Anime`);
         const json = await res.json().catch(() => ({}));
         const raw = (Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []))
           .filter(isValidImage);
@@ -62,8 +63,8 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
       }
       if (gLower === 'cartoon' || gLower === 'kartoons-cartoon') {
         const [showsRes, moviesRes] = await Promise.all([
-          fetch(`https://api.kartoons.me/api/shows?page=1&category=Cartoon`).catch(() => null),
-          fetch(`https://api.kartoons.me/api/movies?page=1&category=Cartoon`).catch(() => null)
+          fetch(`${KARTOONS_PROXY}/shows?page=1&category=Cartoon`).catch(() => null),
+          fetch(`${KARTOONS_PROXY}/movies?page=1&category=Cartoon`).catch(() => null)
         ]);
         const sJson = showsRes?.ok ? await showsRes.json().catch(() => ({})) : {};
         const mJson = moviesRes?.ok ? await moviesRes.json().catch(() => ({})) : {};

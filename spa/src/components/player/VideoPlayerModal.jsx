@@ -1161,7 +1161,7 @@ export function VideoPlayerModal({ request, onClose }) {
             if (fsElement) {
               await ScreenOrientation.unlock();
             } else {
-              const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
+              const rot = localStorage.getItem('ss_rotation_mode') || 'landscape';
               if (rot === 'sensor') {
                 await ScreenOrientation.unlock();
               } else if (rot === 'portrait') {

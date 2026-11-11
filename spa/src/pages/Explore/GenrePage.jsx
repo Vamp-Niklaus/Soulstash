@@ -1,6 +1,7 @@
 import { apiFetch } from '../../api/client.js';
+import { KARTOONS_PROXY } from '../../api/kartoons.js';
 import React, { useRef, useEffect, useMemo } from 'react';
-import { Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useParams } from 'react-router-dom';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useAuthSession } from '../../hooks/index.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
@@ -23,6 +24,9 @@ const TMDB_GENRE_NAMES = {
   // 10763: 'News', 10764: 'Reality', 10766: 'Soap', 10767: 'Talk',
   10765: 'Sci-Fi & Fantasy', 10768: 'War & Politics'
 };
+
+// Quick-jump genres shown as chips at the top, so TV users can switch genre without scrolling back.
+const GENRE_CHIP_IDS = ['anime', 'cartoon', 28, 12, 16, 35, 80, 18, 10751, 14, 27, 10749, 878, 53, 10752, 10759, 10762];
 
 export function GenrePage() {
   const { id, name } = useParams();
@@ -69,7 +73,7 @@ export function GenrePage() {
       };
 
       if (gLower === 'anime' || gLower === 'kartoons-anime') {
-        const res = await fetch(`https://api.kartoons.me/api/shows?page=${pageParam}&category=Anime`);
+        const res = await fetch(`${KARTOONS_PROXY}/shows?page=${pageParam}&category=Anime`);
         const json = await res.json().catch(() => ({}));
         const raw = (Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []))
           .filter(isValidImage);
@@ -94,8 +98,8 @@ export function GenrePage() {
       }
       if (gLower === 'cartoon' || gLower === 'kartoons-cartoon') {
         const [showsRes, moviesRes] = await Promise.all([
-          fetch(`https://api.kartoons.me/api/shows?page=${pageParam}&category=Cartoon`).catch(() => null),
-          fetch(`https://api.kartoons.me/api/movies?page=${pageParam}&category=Cartoon`).catch(() => null)
+          fetch(`${KARTOONS_PROXY}/shows?page=${pageParam}&category=Cartoon`).catch(() => null),
+          fetch(`${KARTOONS_PROXY}/movies?page=${pageParam}&category=Cartoon`).catch(() => null)
         ]);
         const sJson = showsRes?.ok ? await showsRes.json().catch(() => ({})) : {};
         const mJson = moviesRes?.ok ? await moviesRes.json().catch(() => ({})) : {};
@@ -238,7 +242,27 @@ export function GenrePage() {
 
   return (
     <section className="content-section">
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-2 filter-scrollbar-hidden" aria-label="Genres">
+        {GENRE_CHIP_IDS.map((gid) => {
+          const label = TMDB_GENRE_NAMES[gid];
+          if (!label) return null;
+          const active = String(gid) === String(genreId);
+          return (
+            <Link
+              key={gid}
+              to={`/genre/${gid}/${encodeURIComponent(label)}`}
+              replace
+              className={`shrink-0 rounded-full border px-4 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-white ${
+                active ? 'border-white bg-white text-black' : 'border-white/15 bg-white/[0.06] text-white hover:bg-white/[0.14]'
+              }`}
+            >
+              {label}
+            </Link>
+          );
+        })}
+      </div>
       <SectionHeader title={displayGenreName} large />
+
       {isError ? (
         <div className="app-error">
           <p>{error?.message || `Unable to load ${genreName} titles.`}</p>

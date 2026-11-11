@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { TrafficPanel } from '../../components/admin/TrafficPanel.jsx';
 import { AdultFilterTreePanel } from '../../components/admin/AdultFilterTreePanel.jsx';
+import { KartoonsTokensPanel } from '../../components/admin/KartoonsTokensPanel.jsx';
 
 // Quick inline component if it was missing before, or just keep it as is if it was working
 function DetailStat({ label, value }) {
@@ -153,6 +154,14 @@ export function AdminPage() {
                 onClick={() => setActiveTab('adultFilter')}
               >
                 Adult Criteria
+              </button>
+              <button
+                className={`pb-3 text-2xl md:text-3xl font-semibold transition-colors ${
+                  activeTab === 'kartoons' ? 'text-white border-b-2 border-[#8f44f0]' : 'text-[#a6a6a6] hover:text-white'
+                }`}
+                onClick={() => setActiveTab('kartoons')}
+              >
+                Kartoons Tokens
               </button>
             </div>
             <p className="text-[#b7b7b7] mt-4 max-w-2xl">
@@ -318,6 +327,10 @@ export function AdminPage() {
 
       {activeTab === 'adultFilter' && (
         <AdultFilterTreePanel />
+      )}
+
+      {activeTab === 'kartoons' && (
+        <KartoonsTokensPanel />
       )}
     </div>
   );

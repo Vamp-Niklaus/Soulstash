@@ -67,6 +67,39 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
 
     const timeout = window.setTimeout(async () => {
       try {
+        if (searchTab === 'collections') {
+          const payload = await apiFetch(
+            `/api/collections/published?q=${encodeURIComponent(searchQuery.trim())}`,
+            { signal: controller.signal }
+          );
+          if (!ignore) {
+            const list = Array.isArray(payload) ? payload : [];
+            const safeResults = list.map((entry) => {
+              const col = entry.collection || {};
+              const name = col.name || 'Collection';
+              const username = entry.username || '';
+              const firstPoster = (Array.isArray(col.movies) ? col.movies : [])
+                .map((m) => m?.poster_path || m?.image || '')
+                .find((p) => p && p !== 'null');
+              return {
+                id: `collection-${username}-${name}`,
+                media_type: 'Collection',
+                title: name,
+                name,
+                username,
+                overview: col.description || '',
+                poster_path: firstPoster || '',
+                collectionPath: `/user/${encodeURIComponent(username)}/collection/${encodeURIComponent(name)}`
+              };
+            });
+            allResultsRef.current = safeResults;
+            searchCacheRef.current.set(cacheKey, { results: safeResults, hasMore: false, timestamp: Date.now() });
+            setSearchResults(safeResults);
+            setHasNextPage(false);
+          }
+          return;
+        }
+
         if (searchTab === 'users') {
           const payload = await apiFetch(
             `/api/search/users?q=${encodeURIComponent(searchQuery.trim())}`,

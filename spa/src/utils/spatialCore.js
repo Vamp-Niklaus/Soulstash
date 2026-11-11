@@ -70,7 +70,10 @@ export function score(fromR, toR, dir) {
   const aligned = overlap > 0;
   // Stay inside a 60deg cone unless nothing aligned exists
   if (!aligned && lat > pri * 1.8) return 1e6 + pri + lat;
-  return (aligned ? 0 : 5000) + gap * 2 + pri + lat * 2;
+  if (horiz) return (aligned ? 0 : 5000) + gap * 2 + pri + lat * 2;
+  // Vertical moves (grids): nearest row first, then keep the same column.
+  // Column offset is weighted heavily so Down/Up stay in the same column when one exists.
+  return (aligned ? 0 : 300) + gap * 3 + lat * 4;
 }
 
 export function applyFocus(el, scroll = true) {

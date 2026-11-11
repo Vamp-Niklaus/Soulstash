@@ -80,6 +80,7 @@ export function NavbarSearchOverlay({
       if (tab === 'content') return ['Movie', 'Series', 'tv', 'movie'].includes(item.media_type) || item.source === 'kartoons' || (!item.media_type && (item.title || item.originalTitle));
       if (tab === 'cast') return item.media_type === 'Person' || item.known_for_department || item.profile_path;
       if (tab === 'users') return item.media_type === 'User' || item.username;
+      if (tab === 'collections') return item.media_type === 'Collection';
       return true;
     });
   }, [historyItems, query, results, tab]);
@@ -89,6 +90,7 @@ export function NavbarSearchOverlay({
     onClose();
     if (item.media_type === 'Person') { navigate(`/person/${item.id}`); return; }
     if (item.media_type === 'User') { navigate(`/user/${encodeURIComponent(item.username || item.title || item.name)}`); return; }
+    if (item.media_type === 'Collection' && item.collectionPath) { navigate(item.collectionPath); return; }
     // Pure Kartoons-only result → go to Kartoons detail page
     if (item.source === 'kartoons' && item.kartoons?.slug) {
       const type = String(item.media_type || item.type || '').toLowerCase();
@@ -149,7 +151,7 @@ export function NavbarSearchOverlay({
             </div>
           </div>
           <div className="mb-6 mt-3 flex items-center space-x-8 border-b border-[#252833] pb-1">
-            {[['content','Content',-2],['cast','Cast & Crew',-3],['users','Users',-4]].map(([value, label, tabIdxVal], index) => (
+            {[['content','Content',-2],['cast','Cast & Crew',-3],['users','Users',-4],['collections','Collections',-5]].map(([value, label, tabIdxVal], index) => (
               <button key={value} ref={(el) => { tabButtonsRef.current[index] = el; }} type="button" tabIndex={0}
                 className={`relative text-sm font-medium outline-none tv-focus-pill ${tab === value ? 'text-white' : 'text-[#A0A0A0]'} ${focusedIndex === tabIdxVal ? 'is-focused' : ''}`}
                 onClick={() => setTab(value)} 

@@ -97,7 +97,7 @@ function RootApp() {
     // Hide splash screen only after the initial React tree has mounted
     if (Capacitor.isNativePlatform()) {
       SplashScreen.hide().catch(() => {});
-      const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
+      const rot = localStorage.getItem('ss_rotation_mode') || 'landscape';
       if (rot === 'portrait') {
         ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
       } else if (rot === 'landscape') {
