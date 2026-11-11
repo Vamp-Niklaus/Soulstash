@@ -5,8 +5,6 @@ import { SESSION_SCRAPED } from '../../utils/constants.js';
 import { isDirectMediaUrl } from '../../utils/formatters.js';
 import { DirectVideoControls } from './DirectVideoControls.jsx';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { ScreenOrientation } from '@capacitor/screen-orientation';
-import { getRotationMode } from '../../utils/rotation.js';
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from '../../utils/toast.js';
@@ -293,17 +291,6 @@ export function VideoPlayerModal({ request, onClose }) {
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
       }
     } catch (e) {}
-
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const rot = localStorage.getItem('ss_rotation_mode') || 'sensor';
-        if (rot === 'portrait') {
-          ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
-        } else if (rot === 'landscape') {
-          ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
-        }
-      } catch (e) {}
-    }
 
     if (window.history.state?.playerOpen) {
       try {
@@ -1182,25 +1169,6 @@ export function VideoPlayerModal({ request, onClose }) {
       try {
         const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
         
-        if (Capacitor.isNativePlatform()) {
-          try {
-            if (fsElement) {
-              await ScreenOrientation.unlock();
-            } else {
-              const rot = getRotationMode();
-              if (rot === 'sensor') {
-                await ScreenOrientation.unlock();
-              } else if (rot === 'portrait') {
-                await ScreenOrientation.lock({ orientation: 'portrait' });
-              } else if (rot === 'landscape') {
-                await ScreenOrientation.lock({ orientation: 'landscape' });
-              }
-            }
-          } catch (e) {
-            // Orientation ignore
-          }
-        }
-
         if (fsElement && fsElement === iframeRef.current) {
           fsElement.style.transform = scale !== 1.0 ? `scale(${scale})` : 'none';
           fsElement.style.transformOrigin = 'center center';

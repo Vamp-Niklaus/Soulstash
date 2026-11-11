@@ -9,8 +9,6 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { installExternalLinkBlocker } from './utils/externalLinkBlocker.js';
 
 installExternalLinkBlocker();
-import { applyRotationMode, getRotationMode } from './utils/rotation.js';
-import { RotateToggle } from './components/ui/RotateToggle.jsx';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AppShell } from './App.jsx';
 import './styles.css';
@@ -101,7 +99,6 @@ function RootApp() {
     // Hide splash screen only after the initial React tree has mounted
     if (Capacitor.isNativePlatform()) {
       SplashScreen.hide().catch(() => {});
-      applyRotationMode(getRotationMode());
     }
   }, []);
 
@@ -110,7 +107,6 @@ function RootApp() {
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AppShell />
       </BrowserRouter>
-      <RotateToggle />
       <ReactQueryDevtools initialIsOpen={false} position="bottom" />
     </QueryClientProvider>
   );
