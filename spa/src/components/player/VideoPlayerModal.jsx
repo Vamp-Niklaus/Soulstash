@@ -50,7 +50,7 @@ import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
 import { buildPlayerSourceSlots, firstPlayableUrl, sourceKeyText } from '../../utils/playerUtils.js';
 import { saveWatchProgress, removeWatchProgress, getSavedProgress } from '../../utils/watchProgress.js';
 
-import { loadHlsJs, startHlsSession } from './hlsSession.js';
+import { loadHlsJs, startHlsSession, safePlay } from './hlsSession.js';
 
 export function VideoPlayerModal({ request, onClose }) {
   const isValidRequest = Boolean(request?.tmdbId || request?.kartoonsSlug || request?.kartoonsEpisodeId);
@@ -59,6 +59,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const [animeSources, setAnimeSources] = useState([]);
   const [kartoonSources, setKartoonSources] = useState([]);
   const [kartoonResolveDone, setKartoonResolveDone] = useState(false);
+  // True once we've waited long enough for Kartoon to resolve; after that other sources may start.
+  const [kartoonGraceOver, setKartoonGraceOver] = useState(false);
   const [kartoonRetryKey, setKartoonRetryKey] = useState(0);
   const [hlsForcedUrl, setHlsForcedUrl] = useState('');
   const kartoonAutoRetriedRef = useRef(0); // number of fresh-URL re-resolves already tried
@@ -81,6 +83,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const [isSizeFocusedVisual, setIsSizeFocusedVisual] = useState(false);
   const iframeRef = useRef(null);
   const directVideoRef = useRef(null);
+  const playLogRef = useRef({ url: '', t: 0, logged: false }); // for "video started playing" debug log
   const mediaAreaRef = useRef(null);
   const fullscreenButtonRef = useRef(null);
   const sourceToggleRef = useRef(null);
@@ -577,7 +580,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const handleToggleDirectPlayback = useCallback(() => {
     const video = directVideoRef.current;
     if (!video) return;
-    if (video.paused) video.play().catch(() => {});
+    if (video.paused) safePlay(video);
     else video.pause();
   }, []);
 
@@ -612,6 +615,7 @@ export function VideoPlayerModal({ request, onClose }) {
     setAnimeSources([]);
     setKartoonSources([]);
     setKartoonResolveDone(false);
+    setKartoonGraceOver(false);
     setAnilistId(null);
     setActiveUrl('');
     setSourcesExpanded(false);
@@ -895,6 +899,15 @@ export function VideoPlayerModal({ request, onClose }) {
     fetchAnime();
   }, [request]);
 
+  // Give Kartoon a short head start. Starting another source meanwhile and then swapping to
+  // Kartoon is what interrupted playback, so the player waits (loading spinner) until Kartoon
+  // resolves, fails, or this window ends.
+  useEffect(() => {
+    if (kartoonResolveDone) return undefined;
+    const timer = window.setTimeout(() => setKartoonGraceOver(true), 6000);
+    return () => window.clearTimeout(timer);
+  }, [request, kartoonRetryKey, kartoonResolveDone]);
+
   // Resolve direct Kartoon streams so the shared player keeps the app controls without embedding the provider site.
   useEffect(() => {
     let cancelled = false;
@@ -949,8 +962,18 @@ export function VideoPlayerModal({ request, onClose }) {
 
         if (cancelled || !streamId) return;
 
-        const streams = (await fetchKartoonsStremioStreams(streamType, streamId, kartoonRetryKey > 0).catch(() => []))
-          .filter((stream) => stream?.url && isDirectMediaUrl(stream.url));
+        console.info('[Soulstash Player] Kartoon resolving streams', { streamType, streamId, forceFresh: kartoonRetryKey > 0 });
+        const t0 = performance.now();
+        const rawStreams = await fetchKartoonsStremioStreams(streamType, streamId, kartoonRetryKey > 0).catch((err) => {
+          console.warn('[Soulstash Player] Kartoon stream fetch failed:', err?.message || err);
+          return [];
+        });
+        const streams = rawStreams.filter((stream) => stream?.url && isDirectMediaUrl(stream.url));
+        console.info(`[Soulstash Player] Kartoon streams resolved in ${Math.round(performance.now() - t0)}ms: ${streams.length} usable of ${rawStreams.length}`);
+        if (rawStreams.length !== streams.length) {
+          console.warn('[Soulstash Player] Kartoon streams dropped (not recognised as direct media):',
+            rawStreams.filter((s) => !(s?.url && isDirectMediaUrl(s.url))).map((s) => s?.url));
+        }
         if (cancelled || !streams.length) return;
 
         const seenURLs = new Set();
@@ -1348,12 +1371,24 @@ export function VideoPlayerModal({ request, onClose }) {
     // auto-switch to Kartoon stream as soon as it resolves unless user manually chose another source
     const kartoonSource = playable.find(isKartoonSource);
     if (kartoonSource && !failedUrls.has(kartoonSource.url) && !hasManualSourceSelection) {
-      if (activeUrl !== kartoonSource.url && !autoSwitchedToKartoonRef.current) {
-        autoSwitchedToKartoonRef.current = true;
-        console.info('[Soulstash Player] Auto-selecting resolved Kartoon stream:', kartoonSource.label || kartoonSource.id);
-        setActiveUrl(kartoonSource.url);
-        setVerifiedUrls((prev) => new Set(prev).add(kartoonSource.url));
+      // Don't hijack a stream that is already playing once the grace window is over;
+      // it stays available in the source list for a manual switch.
+      const activeSrc = displayedSources.find((s) => s.url === activeUrl);
+      const otherIsPlaying = kartoonGraceOver && activeUrl && !failedUrls.has(activeUrl) && !isKartoonSource(activeSrc);
+      if (!otherIsPlaying) {
+        if (activeUrl !== kartoonSource.url && !autoSwitchedToKartoonRef.current) {
+          autoSwitchedToKartoonRef.current = true;
+          console.info('[Soulstash Player] Auto-selecting resolved Kartoon stream:', kartoonSource.label || kartoonSource.id);
+          setActiveUrl(kartoonSource.url);
+          setVerifiedUrls((prev) => new Set(prev).add(kartoonSource.url));
+        }
+        return undefined;
       }
+    }
+
+    // Kartoon is still resolving: wait for it instead of starting another source that would
+    // be interrupted a moment later.
+    if (!kartoonSource && !kartoonResolveDone && !kartoonGraceOver && !hasManualSourceSelection && !activeUrl) {
       return undefined;
     }
 
@@ -1403,7 +1438,7 @@ export function VideoPlayerModal({ request, onClose }) {
       window.clearTimeout(timer);
       controllers.forEach((c) => c.abort());
     };
-  }, [playableKey, activeUrl, failedUrls, displayedSources, hasManualSourceSelection]);
+  }, [playableKey, activeUrl, failedUrls, displayedSources, hasManualSourceSelection, kartoonResolveDone, kartoonGraceOver]);
 
   const defaultSource =
     displayedSources.find((s) => s.url && !s.failed && isKartoonSource(s)) ||
@@ -1442,6 +1477,7 @@ export function VideoPlayerModal({ request, onClose }) {
       setActiveUrl('');
       setKartoonSources([]);
       setKartoonResolveDone(false);
+      setKartoonGraceOver(false);
       setKartoonRetryKey((k) => k + 1);
       return;
     }
@@ -1483,6 +1519,12 @@ export function VideoPlayerModal({ request, onClose }) {
     const isHls = /\.m3u8(\?|$)/i.test(url) || url.includes('/playlist/') || url.includes('workers.dev') || hlsForcedUrl === url;
 
     setIsStreamLoading(true);
+    playLogRef.current = { url, t: performance.now(), logged: false };
+    console.info('[Soulstash Player] Loading direct stream', {
+      url,
+      kind: isHls ? 'hls' : 'file',
+      source: activeSource?.label || activeSource?.id || 'unknown'
+    });
 
     if (hlsInstanceRef.current) {
       try { hlsInstanceRef.current.destroy(); } catch {}
@@ -1493,7 +1535,7 @@ export function VideoPlayerModal({ request, onClose }) {
     if (!isHls) {
       video.src = url;
       video.load();
-      video.play().catch(() => {});
+      safePlay(video);
       // Plain file that never loads: hand over to the stuck handler.
       const plainWatchdog = window.setTimeout(() => {
         if (video.readyState < 2 && video.currentTime === 0) handleDirectStuckRef.current?.();
@@ -1966,7 +2008,10 @@ export function VideoPlayerModal({ request, onClose }) {
               setIsSizeFocusedVisual(false);
             }}
           >
-            {(isFetching || (isPureKartoons && !activeUrl && !kartoonResolveDone)) ? (
+            {/* Only show the spinner while there is nothing to play. A background refetch of the source
+                list (isFetching) must never unmount a <video> that is already playing, because the
+                playback effect does not re-run on remount and the new element would stay empty. */}
+            {(!activeUrl && (isFetching || (!kartoonResolveDone && (isPureKartoons || !kartoonGraceOver)))) ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-6">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
                 <div className="animate-pulse text-sm font-medium tracking-widest text-white/40 uppercase">
@@ -2017,9 +2062,23 @@ export function VideoPlayerModal({ request, onClose }) {
                     setIsStreamLoading(true);
                     setIsDirectVideoPlaying(false);
                   }}
-                  onPlaying={() => {
+                  onPlaying={(e) => {
                     setIsStreamLoading(false);
                     setIsDirectVideoPlaying(true);
+                    const log = playLogRef.current;
+                    if (log && !log.logged) {
+                      log.logged = true;
+                      const v = e.currentTarget;
+                      const hls = hlsInstanceRef.current;
+                      console.info(`[Soulstash Player] ▶ Playing after ${Math.round(performance.now() - log.t)}ms`, {
+                        url: log.url,
+                        muted: v.muted,
+                        position: Math.round(v.currentTime),
+                        resolution: `${v.videoWidth}x${v.videoHeight}`,
+                        hlsLevel: hls?.currentLevel,
+                        bandwidthKbps: hls?.bandwidthEstimate ? Math.round(hls.bandwidthEstimate / 1000) : undefined
+                      });
+                    }
                   }}
                   onPause={() => setIsDirectVideoPlaying(false)}
                   onLoadedData={() => setIsStreamLoading(false)}

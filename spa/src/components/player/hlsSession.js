@@ -69,6 +69,33 @@ export function loadHlsJs() {
   return hlsPromise;
 }
 
+/**
+ * play() that never fails silently. Autoplay with sound is blocked on many browsers/WebViews
+ * (NotAllowedError); muted autoplay is allowed almost everywhere, so fall back to that.
+ * AbortError just means a newer load interrupted this call, which is normal.
+ */
+export async function safePlay(video) {
+  if (!video) return false;
+  try {
+    await video.play();
+    return true;
+  } catch (err) {
+    if (err?.name === 'NotAllowedError') {
+      console.info('[Soulstash Player] autoplay blocked, retrying muted');
+      video.muted = true;
+      try {
+        await video.play();
+        return true;
+      } catch (err2) {
+        console.warn('[Soulstash Player] play() still blocked:', err2?.name);
+      }
+    } else if (err?.name !== 'AbortError') {
+      console.warn('[Soulstash Player] play() rejected:', err?.name, err?.message);
+    }
+    return false;
+  }
+}
+
 const TICK_MS = 500;
 const STARTUP_SOFT_MS = 4000;
 const STARTUP_HARD_MS = 15000;
@@ -202,7 +229,7 @@ export function startHlsSession({
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (engine !== hls) return;
         onManifest?.();
-        video.play().catch(() => {});
+        safePlay(video);
       });
       hls.on(Hls.Events.FRAG_BUFFERED, () => {
         if (engine !== hls) return;
@@ -240,11 +267,15 @@ export function startHlsSession({
 
       hls.loadSource(url);
       hls.attachMedia(video);
+      // MANIFEST_PARSED can fire before the media is ready; retry once when it can actually play.
+      video.addEventListener('canplay', () => {
+        if (engine === hls && video.paused && !video.ended) safePlay(video);
+      }, { once: true });
     } else {
       // Native HLS (iPhone Safari etc.) or no hls.js available.
       video.src = url;
       video.load();
-      video.play().catch(() => {});
+      safePlay(video);
     }
   };
 
@@ -293,7 +324,7 @@ export function startHlsSession({
         }
       }
     } catch (_) { /* ignore */ }
-    video.play().catch(() => {});
+    safePlay(video);
   };
 
   const onVideoError = () => {
