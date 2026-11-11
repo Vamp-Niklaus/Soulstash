@@ -6,6 +6,9 @@ import { persistQueryClient } from '@tanstack/react-query-persist-client';
 import { get, set, del } from 'idb-keyval';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { installExternalLinkBlocker } from './utils/externalLinkBlocker.js';
+
+installExternalLinkBlocker();
 import { applyRotationMode, getRotationMode } from './utils/rotation.js';
 import { RotateToggle } from './components/ui/RotateToggle.jsx';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
