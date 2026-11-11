@@ -42,7 +42,7 @@ export function SettingsModal({
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [windowsExeInfo, setWindowsExeInfo] = useState(null);
-  const currentVersion = 'v4.1.0';
+  const currentVersion = 'v4.2.0';
   const [installing, setInstalling] = useState(false);
   const [installProgress, setInstallProgress] = useState(null);
   const tauriUpdateRef = useRef(null);

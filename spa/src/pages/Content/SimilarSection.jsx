@@ -139,7 +139,7 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
       const data = await apiFetch(endpoint, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
-      if (data && data.results) {
+      if (data && Array.isArray(data.results) && data.results.length > 0) {
         const currentIdNum = Number(id);
         const newItems = data.results.filter(newItem => {
           if (!newItem || !newItem.id) return false;
@@ -156,6 +156,7 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
           return [...prev, ...uniqueNew];
         });
         setPage(nextPage);
+        if (Number(data.total_pages) && nextPage >= Number(data.total_pages)) setHasMore(false);
       } else {
         setHasMore(false);
       }

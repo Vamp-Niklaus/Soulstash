@@ -50,29 +50,7 @@ import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
 import { buildPlayerSourceSlots, firstPlayableUrl, sourceKeyText } from '../../utils/playerUtils.js';
 import { saveWatchProgress, removeWatchProgress, getSavedProgress } from '../../utils/watchProgress.js';
 
-function getHls() {
-  return window.Hls ?? null;
-}
-
-async function ensureHlsJs() {
-  if (getHls()) return getHls();
-  await new Promise((resolve) => {
-    const existing = document.getElementById('__hls_script__');
-    if (existing) {
-      if (window.Hls) { resolve(window.Hls); return; }
-      existing.addEventListener('load', () => resolve(window.Hls));
-      setTimeout(() => resolve(window.Hls), 1500);
-      return;
-    }
-    const s = document.createElement('script');
-    s.id = '__hls_script__';
-    s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
-    s.onload = () => resolve(window.Hls);
-    s.onerror = () => resolve(null);
-    document.head.appendChild(s);
-  });
-  return getHls();
-}
+import { loadHlsJs, startHlsSession } from './hlsSession.js';
 
 export function VideoPlayerModal({ request, onClose }) {
   const isValidRequest = Boolean(request?.tmdbId || request?.kartoonsSlug || request?.kartoonsEpisodeId);
@@ -83,7 +61,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const [kartoonResolveDone, setKartoonResolveDone] = useState(false);
   const [kartoonRetryKey, setKartoonRetryKey] = useState(0);
   const [hlsForcedUrl, setHlsForcedUrl] = useState('');
-  const kartoonAutoRetriedRef = useRef(false);
+  const kartoonAutoRetriedRef = useRef(0); // number of fresh-URL re-resolves already tried
+  const hlsSessionActiveRef = useRef(false);
   const resumeAfterRetryRef = useRef(0);
   const [anilistId, setAnilistId] = useState(null);
   const [activeUrl, setActiveUrl] = useState('');
@@ -648,7 +627,7 @@ export function VideoPlayerModal({ request, onClose }) {
     setScale(1.0);
     setNativeScale(1.0);
     autoSwitchedToKartoonRef.current = false;
-    kartoonAutoRetriedRef.current = false;
+    kartoonAutoRetriedRef.current = 0;
     resumeAfterRetryRef.current = 0;
     setHlsForcedUrl('');
   }, [request, updatePlayerDisplayMode]);
@@ -1436,22 +1415,30 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const canUseVideoJs = isDirectMediaUrl(activeUrl);
 
-  // Recover a Kartoon stream that never starts (or errors): re-resolve once with a fresh URL,
-  // then fall back to the normal failed-source handling.
+  // Recover a direct stream that never starts, stalls for good, or errors out:
+  // 1) retry via hls.js if it was being played natively, 2) re-resolve a fresh URL (up to 3 times,
+  // since worker URLs/tokens can expire), 3) fall back to the normal failed-source handling.
   const handleDirectStuck = () => {
     const stuckUrl = activeUrl;
-    if (!stuckUrl || !isKartoonSource(activeSource)) return;
+    if (!stuckUrl) return;
+    if (!isKartoonSource(activeSource)) {
+      hlsErrorHandlerRef.current?.(stuckUrl);
+      return;
+    }
     // Step 1: the worker URL may be an HLS playlist without ".m3u8" in the path,
     // which native <video> can't play in most browsers. Retry the same URL via hls.js.
-    if (hlsForcedUrl !== stuckUrl && !/\.m3u8(\?|$)/i.test(stuckUrl)) {
+    const alreadyHls = /\.m3u8(\?|$)/i.test(stuckUrl) || stuckUrl.includes('/playlist/') || stuckUrl.includes('workers.dev');
+    if (hlsForcedUrl !== stuckUrl && !alreadyHls) {
       setHlsForcedUrl(stuckUrl);
       return;
     }
-    // Step 2: re-resolve a fresh URL once.
-    if (!kartoonAutoRetriedRef.current) {
-      kartoonAutoRetriedRef.current = true;
+    // Step 2: re-resolve a fresh URL (bypasses the stream cache).
+    if (kartoonAutoRetriedRef.current < 3) {
+      kartoonAutoRetriedRef.current += 1;
+      console.info(`[Soulstash Player] Re-resolving Kartoon stream (attempt ${kartoonAutoRetriedRef.current}/3)`);
       resumeAfterRetryRef.current = latestPlaybackTimeRef.current || 0;
       autoSwitchedToKartoonRef.current = false;
+      setHasManualSourceSelection(false); // let the resolved Kartoon stream take over again
       setActiveUrl('');
       setKartoonSources([]);
       setKartoonResolveDone(false);
@@ -1483,14 +1470,17 @@ export function VideoPlayerModal({ request, onClose }) {
     }
   }, [activeUrl, iframeReloadKey]);
 
-  // HLS stream playback handler for .m3u8 direct streams
+  // Warm hls.js (bundled copy, CDN fallback) as soon as the player opens so the first stream starts fast.
+  useEffect(() => { loadHlsJs(); }, []);
+
+  // Direct stream playback. HLS streams run inside a self-healing session (see hlsSession.js):
+  // fast start, stall detection, staged recovery, and escalation to a fresh URL / other source.
   useEffect(() => {
-    if (!canUseVideoJs || !activeUrl) return;
-    let disposed = false;
-    let localHls = null;
-    const isHls = /\.m3u8(\?|$)/i.test(activeUrl) || activeUrl.includes('/playlist/') || activeUrl.includes('workers.dev') || hlsForcedUrl === activeUrl;
+    if (!canUseVideoJs || !activeUrl) return undefined;
     const video = directVideoRef.current;
-    if (!video) return;
+    if (!video) return undefined;
+    const url = activeUrl;
+    const isHls = /\.m3u8(\?|$)/i.test(url) || url.includes('/playlist/') || url.includes('workers.dev') || hlsForcedUrl === url;
 
     setIsStreamLoading(true);
 
@@ -1500,74 +1490,44 @@ export function VideoPlayerModal({ request, onClose }) {
     }
     video.removeAttribute('src');
 
-    if (isHls) {
-      ensureHlsJs().then((Hls) => {
-        if (disposed || directVideoRef.current !== video) return;
-        if (!Hls || !Hls.isSupported()) {
-          video.src = activeUrl;
-          video.load();
-          video.play().catch(() => {});
-          return;
-        }
-        const hls = new Hls({
-          enableWorker: true,
-          startFragPrefetch: true,
-          lowLatencyMode: false,
-          startLevel: -1,
-          backBufferLength: isTv ? 15 : 30,
-          maxBufferLength: isTv ? 20 : 30,
-          maxMaxBufferLength: isTv ? 30 : 60,
-          maxBufferSize: isTv ? 30 * 1000 * 1000 : 60 * 1000 * 1000,
-          manifestLoadingTimeOut: 15000,
-          levelLoadingTimeOut: 15000,
-          fragLoadingTimeOut: 30000,
-          manifestLoadingMaxRetry: 3,
-          levelLoadingMaxRetry: 4,
-          fragLoadingMaxRetry: 4,
-          fragLoadingRetryDelay: 400,
-          nudgeMaxRetry: 8,
-          maxBufferHole: 0.5,
-          nudgeOffset: 0.2
-        });
-        localHls = hls;
-        hlsInstanceRef.current = hls;
-        hls.loadSource(activeUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setVerifiedUrls((prev) => prev.has(activeUrl) ? prev : new Set(prev).add(activeUrl));
-          video.play().catch(() => {});
-        });
-        hls.on(Hls.Events.FRAG_BUFFERED, () => {
-          setIsStreamLoading(false);
-        });
-        hls.on(Hls.Events.ERROR, (_e, data) => {
-          if (!data?.fatal) return;
-          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); return; }
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { try { hls.startLoad(); } catch {} return; }
-          if (hlsForcedUrl === activeUrl) handleDirectStuckRef.current?.();
-          else hlsErrorHandlerRef.current?.(activeUrl);
-        });
-      });
-    } else {
-      video.src = activeUrl;
+    if (!isHls) {
+      video.src = url;
       video.load();
       video.play().catch(() => {});
+      // Plain file that never loads: hand over to the stuck handler.
+      const plainWatchdog = window.setTimeout(() => {
+        if (video.readyState < 2 && video.currentTime === 0) handleDirectStuckRef.current?.();
+      }, 8000);
+      return () => window.clearTimeout(plainWatchdog);
     }
 
-    // Watchdog: if nothing has loaded after 10s, re-resolve the stream once.
-    const stuckWatchdog = window.setTimeout(() => {
-      if (!disposed && video.readyState < 2 && video.currentTime === 0) {
-        handleDirectStuckRef.current?.();
-      }
-    }, 10000);
+    let disposed = false;
+    let session = null;
+    hlsSessionActiveRef.current = true;
+
+    loadHlsJs().then((Hls) => {
+      if (disposed || directVideoRef.current !== video) return;
+      const startAt = resumeAfterRetryRef.current > 10 ? resumeAfterRetryRef.current : initialResumeTime;
+      session = startHlsSession({
+        Hls,
+        video,
+        url,
+        startAt: startAt > 10 ? startAt : 0,
+        isTv,
+        resumeRef: resumeAfterRetryRef,
+        hlsRef: hlsInstanceRef,
+        onManifest: () => setVerifiedUrls((prev) => (prev.has(url) ? prev : new Set(prev).add(url))),
+        onBuffered: () => setIsStreamLoading(false),
+        onEscalate: () => {
+          if (!disposed) handleDirectStuckRef.current?.();
+        }
+      });
+    });
 
     return () => {
       disposed = true;
-      window.clearTimeout(stuckWatchdog);
-      if (localHls) {
-        try { localHls.destroy(); } catch {}
-        if (hlsInstanceRef.current === localHls) hlsInstanceRef.current = null;
-      }
+      hlsSessionActiveRef.current = false;
+      if (session) session.destroy();
     };
   }, [activeUrl, canUseVideoJs, hlsForcedUrl]);
 
@@ -2034,7 +1994,11 @@ export function VideoPlayerModal({ request, onClose }) {
                   onPlay={() => {
                     focusZoneRef.current = 'playback';
                   }}
-                  onError={() => handleDirectStuckRef.current?.()}
+                  onError={() => {
+                    // HLS sessions recover from element errors themselves (see hlsSession.js).
+                    if (hlsSessionActiveRef.current) return;
+                    handleDirectStuckRef.current?.();
+                  }}
                   onLoadedMetadata={(e) => {
                     const resumeAt = resumeAfterRetryRef.current > 10 ? resumeAfterRetryRef.current : initialResumeTime;
                     if (resumeAt > 10) {

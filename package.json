@@ -1,6 +1,6 @@
 {
   "name": "soulstash-movie-app",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Movie streaming app with collections",
   "main": "server.js",
   "scripts": {
