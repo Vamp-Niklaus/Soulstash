@@ -169,6 +169,8 @@ export function AdminPage() {
                 ? 'Admin-only dashboard. Password hashes are still hidden.'
                 : activeTab === 'traffic'
                 ? 'Real-time API traffic and usage analytics.'
+                : activeTab === 'kartoons'
+                ? 'Kartoons account tokens used by the backend proxy. Tokens are masked after saving.'
                 : 'Customizable decision tree rule engine for classifying adult and low-vote spam content.'}
             </p>
           </div>

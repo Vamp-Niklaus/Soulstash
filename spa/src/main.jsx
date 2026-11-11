@@ -6,7 +6,8 @@ import { persistQueryClient } from '@tanstack/react-query-persist-client';
 import { get, set, del } from 'idb-keyval';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen } from '@capacitor/splash-screen';
-import { ScreenOrientation } from '@capacitor/screen-orientation';
+import { applyRotationMode, getRotationMode } from './utils/rotation.js';
+import { RotateToggle } from './components/ui/RotateToggle.jsx';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { AppShell } from './App.jsx';
 import './styles.css';
@@ -97,14 +98,7 @@ function RootApp() {
     // Hide splash screen only after the initial React tree has mounted
     if (Capacitor.isNativePlatform()) {
       SplashScreen.hide().catch(() => {});
-      const rot = localStorage.getItem('ss_rotation_mode') || 'landscape';
-      if (rot === 'portrait') {
-        ScreenOrientation.lock({ orientation: 'portrait' }).catch(() => {});
-      } else if (rot === 'landscape') {
-        ScreenOrientation.lock({ orientation: 'landscape' }).catch(() => {});
-      } else {
-        ScreenOrientation.unlock().catch(() => {});
-      }
+      applyRotationMode(getRotationMode());
     }
   }, []);
 
@@ -113,6 +107,7 @@ function RootApp() {
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AppShell />
       </BrowserRouter>
+      <RotateToggle />
       <ReactQueryDevtools initialIsOpen={false} position="bottom" />
     </QueryClientProvider>
   );

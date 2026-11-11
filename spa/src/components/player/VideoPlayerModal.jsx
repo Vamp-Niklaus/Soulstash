@@ -6,6 +6,7 @@ import { isDirectMediaUrl } from '../../utils/formatters.js';
 import { DirectVideoControls } from './DirectVideoControls.jsx';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { ScreenOrientation } from '@capacitor/screen-orientation';
+import { getRotationMode } from '../../utils/rotation.js';
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from '../../utils/toast.js';
@@ -1161,7 +1162,7 @@ export function VideoPlayerModal({ request, onClose }) {
             if (fsElement) {
               await ScreenOrientation.unlock();
             } else {
-              const rot = localStorage.getItem('ss_rotation_mode') || 'landscape';
+              const rot = getRotationMode();
               if (rot === 'sensor') {
                 await ScreenOrientation.unlock();
               } else if (rot === 'portrait') {
