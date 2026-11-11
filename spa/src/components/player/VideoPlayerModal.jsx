@@ -468,9 +468,15 @@ export function VideoPlayerModal({ request, onClose }) {
   const handlePlayerBackEvent = useCallback((event) => {
     event?.preventDefault?.();
     lastBackHandledAtRef.current = Date.now();
+    console.info('[Soulstash Player Focus] back key', {
+      mode,
+      zone: focusZoneRef.current,
+      active: document.activeElement?.tagName || null,
+      activeLabel: document.activeElement?.getAttribute?.('aria-label') || null
+    });
     const mode = playerDisplayModeRef.current;
     const onDirectOverlay = Boolean(document.activeElement?.closest?.('[data-direct-player]'));
-    const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || !document.activeElement || document.activeElement === document.body;
+    const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || (mode !== 2 && (!document.activeElement || document.activeElement === document.body));
 
     if (mode === 3) {
       try {
@@ -1065,9 +1071,15 @@ export function VideoPlayerModal({ request, onClose }) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         return;
       }
+      console.info('[Soulstash Player Focus] back history', {
+        mode: playerDisplayModeRef.current,
+        zone: focusZoneRef.current,
+        active: document.activeElement?.tagName || null,
+        activeLabel: document.activeElement?.getAttribute?.('aria-label') || null
+      });
       const mode = playerDisplayModeRef.current;
       const onDirectOverlay = Boolean(document.activeElement?.closest?.('[data-direct-player]'));
-      const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || !document.activeElement || document.activeElement === document.body;
+      const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || (mode !== 2 && (!document.activeElement || document.activeElement === document.body));
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}

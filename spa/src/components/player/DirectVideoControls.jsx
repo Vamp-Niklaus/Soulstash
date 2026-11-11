@@ -72,6 +72,30 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
 
   const wake = () => setWakeTick((t) => t + 1);
 
+  // Menus: when one opens, focus moves onto its current option. When it closes, focus returns to the button that opened it.
+  const menuOpenerRef = useRef(null);
+  const prevMenuRef = useRef(null);
+  useEffect(() => {
+    const wasOpen = prevMenuRef.current !== null;
+    prevMenuRef.current = menu;
+    if (!menu) {
+      const opener = menuOpenerRef.current;
+      menuOpenerRef.current = null;
+      if (wasOpen && opener?.isConnected) {
+        window.requestAnimationFrame(() => opener.focus({ preventScroll: true }));
+      }
+      return undefined;
+    }
+    if (!wasOpen) menuOpenerRef.current = document.activeElement;
+    const frame = window.requestAnimationFrame(() => {
+      const list = overlayRef.current?.querySelector('[data-direct-menu]');
+      const items = list ? Array.from(list.querySelectorAll('button:not(:disabled)')) : [];
+      const target = items.find((b) => b.getAttribute('data-active') === 'true') || items[0];
+      if (target) target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [menu]);
+
   // Mirror the video element's state into React state.
   useEffect(() => {
     const el = videoRef.current;
@@ -322,6 +346,7 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
           ) : openMenu.items.map((item) => (
             <button
               key={item.label}
+              data-active={item.active ? 'true' : undefined}
               type="button"
               onClick={() => {
                 item.onSelect();
