@@ -4,20 +4,37 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 
-const POSTER_FALLBACK = '';
+const TMDB_BASE = 'https://image.tmdb.org/t/p';
+
+// Resolves a TMDB path ("/abc.jpg") or a full URL to an image URL. Returns '' when missing.
+function imageUrl(path, size) {
+  const p = typeof path === 'string' ? path.trim() : '';
+  if (!p || p === 'null' || p === 'undefined') return '';
+  if (p.startsWith('http')) return p;
+  if (p.startsWith('/')) return `${TMDB_BASE}/${size}${p}`;
+  return '';
+}
 
 function posterOf(item) {
-  const p = item?.poster_path || item?.image || item?.coverImage || '';
-  if (!p || p === 'null' || p === 'undefined') return POSTER_FALLBACK;
-  return p.startsWith('http') || p.startsWith('/') ? p : `https://image.tmdb.org/t/p/w342${p}`;
+  return imageUrl(item?.poster_path || item?.image || item?.coverImage, 'w342');
+}
+
+function backdropOf(item) {
+  return imageUrl(item?.backdrop_path || item?.backdrop, 'w780');
 }
 
 function CollectionTile({ entry, onOpen }) {
   const col = entry.collection || {};
   const movies = Array.isArray(col.movies) ? col.movies : [];
-  const posters = movies.map(posterOf).filter(Boolean).slice(0, 4);
   const name = col.name || 'Collection';
   const publisher = entry.username || '';
+
+  // One title: show that title's backdrop as the collection image.
+  // Several titles: show up to four posters in a grid.
+  const single = movies.length === 1 ? movies[0] : null;
+  const banner = imageUrl(col.banner, 'w780');
+  const singleBackdrop = banner || (single ? backdropOf(single) || posterOf(single) : '');
+  const posters = movies.map(posterOf).filter(Boolean).slice(0, 4);
 
   return (
     <button
@@ -25,11 +42,17 @@ function CollectionTile({ entry, onOpen }) {
       onClick={onOpen}
       className="group flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-left transition-colors hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-white"
     >
-      <div className="grid grid-cols-2 gap-1 overflow-hidden rounded-xl aspect-video bg-white/[0.04]">
-        {posters.length ? posters.map((src, i) => (
-          <img key={i} src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
-        )) : (
-          <div className="col-span-2 row-span-2 flex items-center justify-center text-white/30">
+      <div className="overflow-hidden rounded-xl bg-white/[0.04]" style={{ aspectRatio: '16 / 9' }}>
+        {singleBackdrop ? (
+          <img src={singleBackdrop} alt="" loading="lazy" className="h-full w-full object-cover" />
+        ) : posters.length ? (
+          <div className="grid h-full w-full grid-cols-2 grid-rows-2 gap-1">
+            {posters.map((src, i) => (
+              <img key={i} src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
+            ))}
+          </div>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-white/30">
             <i className="fas fa-film text-3xl"></i>
           </div>
         )}
