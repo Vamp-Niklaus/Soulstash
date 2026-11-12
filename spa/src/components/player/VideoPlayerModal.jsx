@@ -81,6 +81,8 @@ export function VideoPlayerModal({ request, onClose }) {
   const [isSizeFocusedVisual, setIsSizeFocusedVisual] = useState(false);
   const iframeRef = useRef(null);
   const directVideoRef = useRef(null);
+  // Wraps the direct <video> and its on-screen controls. Fullscreen targets this, so the controls stay visible.
+  const directWrapRef = useRef(null);
   const playLogRef = useRef({ url: '', t: 0, logged: false }); // for "video started playing" debug log
   const mediaAreaRef = useRef(null);
   const fullscreenButtonRef = useRef(null);
@@ -551,11 +553,15 @@ export function VideoPlayerModal({ request, onClose }) {
         return;
       }
       try {
-        const request = target.requestFullscreen || target.webkitRequestFullscreen;
+        // Direct streams go fullscreen through the wrapper that holds the controls; iframes go fullscreen as before.
+        const fsTarget = (target === directVideoRef.current && directWrapRef.current?.isConnected) ? directWrapRef.current : target;
+        const request = (Capacitor.isNativePlatform() && target === directVideoRef.current)
+          ? null // Android WebView would swap in its own native video controls; use the in-app full layout instead.
+          : (fsTarget.requestFullscreen || fsTarget.webkitRequestFullscreen);
         if (request) {
-          await Promise.resolve(request.call(target));
+          await Promise.resolve(request.call(fsTarget));
           console.info('[Soulstash Player Focus] fullscreen request resolved', {
-            target: target.tagName,
+            target: fsTarget.tagName,
             fullscreenElement: (document.fullscreenElement || document.webkitFullscreenElement)?.tagName || null
           });
         } else {
@@ -585,10 +591,10 @@ export function VideoPlayerModal({ request, onClose }) {
   useEffect(() => {
     const handleFs = () => {
       const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
-      if (fullscreenElement && (fullscreenElement === iframeRef.current || fullscreenElement === directVideoRef.current)) {
+      if (fullscreenElement && (fullscreenElement === iframeRef.current || fullscreenElement === directVideoRef.current || fullscreenElement === directWrapRef.current)) {
         setSourcesExpanded(false);
         updatePlayerDisplayMode(3);
-        focusPlaybackContext('fullscreen-change', fullscreenElement);
+        focusPlaybackContext('fullscreen-change', fullscreenElement === directWrapRef.current ? directVideoRef.current : fullscreenElement);
       } else if (fullscreenElement && fullscreenElement === playerBoxRef.current) {
         updatePlayerDisplayMode(2);
       } else if (!fullscreenElement && playerDisplayModeRef.current === 3) {
@@ -1066,7 +1072,11 @@ export function VideoPlayerModal({ request, onClose }) {
       });
       const mode = playerDisplayModeRef.current;
       const onDirectOverlay = Boolean(document.activeElement?.closest?.('[data-direct-player]'));
-      const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || (mode !== 2 && (!document.activeElement || document.activeElement === document.body));
+      // Phone (Android app, no remote) with the internal player: there is no visible focus, so Back steps the mode down directly.
+      const phoneDirectBack = Capacitor.isNativePlatform()
+        && !document.documentElement.classList.contains('layout-tv-mode')
+        && Boolean(document.querySelector('[data-direct-player]'));
+      const isPlaybackFocused = !phoneDirectBack && (focusZoneRef.current === 'playback' || onDirectOverlay || (mode !== 2 && (!document.activeElement || document.activeElement === document.body)));
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
@@ -1607,11 +1617,6 @@ export function VideoPlayerModal({ request, onClose }) {
     flex: '1 1 0%',
     minHeight: 0,
     backgroundColor: 'black'
-  } : (isAndroidViewport && isDirectMediaUrl(activeUrl)) ? {
-    width: '100%',
-    height: '64vw',
-    maxHeight: mediaMaxH,
-    backgroundColor: 'black'
   } : {
     width: '100%',
     aspectRatio: '16 / 9',
@@ -2019,7 +2024,11 @@ export function VideoPlayerModal({ request, onClose }) {
                 {errorDisplay || `No playable source is available in the ${selectedGroup === 'hindi' ? 'Hindi' : selectedGroup === 'dubbed' ? 'Dubbed' : 'Subbed / Original'} group.`}
               </div>
             ) : canUseVideoJs ? (
-              <div className="relative flex h-full w-full items-center justify-center bg-black">
+              <div ref={directWrapRef} className="relative flex h-full w-full items-center justify-center bg-black">
+                <div
+                  className="relative w-full"
+                  style={isAndroidViewport ? { aspectRatio: '16 / 9', maxHeight: '100%' } : { height: '100%' }}
+                >
                 <video
                   ref={directVideoRef}
                   controls={false}
@@ -2093,6 +2102,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   title={request?.seriesTitle || request?.title || ''}
                   onToggleFullscreen={handleToggleFullscreen}
                 />
+                </div>
               </div>
             ) : !canEmbedSource ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center">

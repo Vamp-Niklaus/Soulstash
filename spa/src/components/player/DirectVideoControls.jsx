@@ -3,8 +3,9 @@ import { handleDirectOverlayKey, seekVideo, changeVideoVolume } from './directOv
 import { getMediaDuration, seekTo } from './hlsSession.js';
 import { Capacitor } from '@capacitor/core';
 
-// On the Android app the seek line is hidden until its control has focus; the seek still works with Left/Right.
-const hideSeekLine = Capacitor.isNativePlatform();
+// On the Android app the controls use compact spacing and a taller seek touch area. The seek line is always visible.
+const isNative = Capacitor.isNativePlatform();
+const compact = isNative;
 
 // Control overlay for direct (non-iframe) streams. Layout follows the kartoons.to player.
 // Keys on the focused video: Left/Right seek 10s, Up/Down volume, Enter/Space play/pause (desktop; TV handled by useSpatialNav).
@@ -342,7 +343,7 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
       {/* Row 0: title and CC / audio / quality / settings. Opacity only, so the bar still takes mouse input while faded. */}
       <div
         data-direct-row="0"
-        className={`flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-4 ${hideSeekLine ? 'pb-4' : 'pb-8'} pt-3 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        className={`flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-4 ${compact ? 'pb-4' : 'pb-8'} pt-3 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
       >
         <div className="min-w-0 truncate text-sm font-semibold text-white/95">{title}</div>
         <div className="flex shrink-0 items-center gap-1">
@@ -392,12 +393,12 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
       {/* Row 1: -10s / play-pause / +10s */}
       <div
         data-direct-row="1"
-        className={`flex items-center justify-center ${hideSeekLine ? 'gap-6' : 'gap-10'} transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        className={`flex items-center justify-center ${compact ? 'gap-6' : 'gap-10'} transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
       >
         <button type="button" className={ICON_BTN} onClick={() => skip(-10)} aria-label="Back 10 seconds">
           <i className="fas fa-undo text-xl" />
         </button>
-        <button type="button" className={`${ICON_BTN} ${hideSeekLine ? 'h-12 w-12' : 'h-16 w-16'} bg-black/30`} onClick={togglePlay} aria-label={snap.paused ? 'Play' : 'Pause'}>
+        <button type="button" className={`${ICON_BTN} ${compact ? 'h-12 w-12' : 'h-16 w-16'} bg-black/30`} onClick={togglePlay} aria-label={snap.paused ? 'Play' : 'Pause'}>
           <i className={`fas ${snap.paused ? 'fa-play' : 'fa-pause'} text-2xl`} />
         </button>
         <button type="button" className={ICON_BTN} onClick={() => skip(10)} aria-label="Forward 10 seconds">
@@ -406,20 +407,20 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
       </div>
 
       {/* Bottom: seek line and transport row */}
-      <div style={{ paddingBottom: hideSeekLine ? 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' : 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)' }} className={`bg-gradient-to-t from-black/80 to-transparent px-3 ${hideSeekLine ? 'pt-4' : 'pt-8'} transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}>
-        <div data-direct-row="2" className="group relative mb-1 flex h-5 items-center">
+      <div style={{ paddingBottom: compact ? 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)' : 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)' }} className={`bg-gradient-to-t from-black/80 to-transparent px-3 ${compact ? 'pt-2' : 'pt-8'} transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}>
+        <div data-direct-row="2" className={`group relative mb-1 flex items-center ${isNative ? 'h-8' : 'h-5'}`}>
           {(() => {
             const dur = snap.duration || 0;
             const shown = scrub !== null ? scrub : snap.time;
             const pct = (x) => (dur > 0 ? Math.max(0, Math.min(100, (x / dur) * 100)) : 0);
             return (
               <>
-                <div className={`pointer-events-none absolute inset-x-0 h-1 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-1.5 group-focus-within:h-1.5${hideSeekLine ? ' opacity-0 group-focus-within:opacity-100' : ''}`}>
+                <div className={`pointer-events-none absolute inset-x-0 h-1 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-1.5 group-focus-within:h-1.5`}>
                   <div className="absolute inset-y-0 left-0 bg-white/40" style={{ width: `${pct(snap.buffered)}%` }} />
                   <div className="absolute inset-y-0 left-0 bg-red-600" style={{ width: `${pct(shown)}%` }} />
                 </div>
                 <div
-                  className={`pointer-events-none absolute h-3 w-3 -translate-x-1/2 rounded-full bg-red-600 transition-transform group-hover:scale-125 group-focus-within:scale-125 ${snap.seeking ? 'animate-pulse' : ''}${hideSeekLine ? ' opacity-0 group-focus-within:opacity-100' : ''}`}
+                  className={`pointer-events-none absolute h-3 w-3 -translate-x-1/2 rounded-full bg-red-600 transition-transform group-hover:scale-125 group-focus-within:scale-125 ${snap.seeking ? 'animate-pulse' : ''}`}
                   style={{ left: `${pct(shown)}%` }}
                 />
                 <input
@@ -469,7 +470,7 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
             step={0.05}
             value={snap.muted ? 0 : snap.volume}
             onChange={(e) => setVolume(e.target.value)}
-            className="w-20 accent-red-600"
+            className="w-20 accent-white"
           />
           <span className="ml-2 font-mono text-xs text-white/85">
             {formatTime(snap.time)} / {formatTime(snap.duration)}
