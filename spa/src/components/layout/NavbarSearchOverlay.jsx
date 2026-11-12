@@ -5,6 +5,7 @@ import { getSearchHistory, saveSearchHistoryItem } from '../../utils/formatters.
 import { imageUrl, yearFrom, mediaRoute } from '../../utils/formatters.js';
 import { FALLBACK_AVATAR, FALLBACK_POSTER } from '../../utils/constants.js';
 import { useOverlaySearchKeyboardNav } from '../../hooks/useOverlaySearchKeyboardNav.js';
+import { apiFetch } from '../../api/client.js';
 
 export function NavbarSearchOverlay({
   open,
@@ -79,7 +80,7 @@ export function NavbarSearchOverlay({
       if (!item) return false;
       if (tab === 'content') return ['Movie', 'Series', 'tv', 'movie'].includes(item.media_type) || item.source === 'kartoons' || (!item.media_type && (item.title || item.originalTitle));
       if (tab === 'cast') return item.media_type === 'Person' || item.known_for_department || item.profile_path;
-      if (tab === 'users') return item.media_type === 'User' || item.username;
+      if (tab === 'users') return item.media_type === 'User' || (!item.media_type && item.username);
       if (tab === 'collections') return item.media_type === 'Collection';
       return true;
     });
@@ -90,6 +91,17 @@ export function NavbarSearchOverlay({
     onClose();
     if (item.media_type === 'Person') { navigate(`/person/${item.id}`); return; }
     if (item.media_type === 'User') { navigate(`/user/${encodeURIComponent(item.username || item.title || item.name)}`); return; }
+    if (item.media_type === 'Collection' && item.source === 'tmdb' && item.tmdbId) {
+      apiFetch(`/api/tmdb-collection/${item.tmdbId}`)
+        .then((data) => {
+          const parts = (Array.isArray(data?.parts) ? data.parts : [])
+            .slice()
+            .sort((a, b) => String(a?.release_date || '9999').localeCompare(String(b?.release_date || '9999')));
+          if (parts[0]?.id) navigate(`/movie/${parts[0].id}`);
+        })
+        .catch(() => {});
+      return;
+    }
     if (item.media_type === 'Collection' && item.collectionPath) { navigate(item.collectionPath); return; }
     // Pure Kartoons-only result → go to Kartoons detail page
     if (item.source === 'kartoons' && item.kartoons?.slug) {
@@ -141,8 +153,8 @@ export function NavbarSearchOverlay({
                 ref={clearBtnRef}
                 type="button" 
                 onClick={() => { setQuery(''); overlayInputRef.current?.focus(); }}
-                onFocus={() => setFocusedIndex(-5)}
-                className={`absolute inset-y-0 right-4 my-auto h-8 w-8 flex items-center justify-center outline-none text-[#a0a0a0] hover:text-white tv-focus-icon ${focusedIndex === -5 ? 'is-focused' : ''}`} 
+                onFocus={() => setFocusedIndex(-7)}
+                className={`absolute inset-y-0 right-4 my-auto h-8 w-8 flex items-center justify-center outline-none text-[#a0a0a0] hover:text-white tv-focus-icon ${focusedIndex === -7 ? 'is-focused' : ''}`} 
                 aria-label="Clear search">
                 <svg xmlns="http://www.w3.org/2000/svg" height="20" viewBox="0 -960 960 960" fill="currentColor">
                   <path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/>
@@ -178,7 +190,9 @@ export function NavbarSearchOverlay({
                     : (item.poster_path || item.posterUrl || item.image || item.kartoons?.image || item.profile_path);
                   const meta = item.media_type === 'User'
                     ? (item.fullName || item.bio || 'Soulstash user')
-                    : item.media_type === 'Person'
+                    : item.media_type === 'Collection'
+                      ? `Collection | ${item.publisher || item.username || 'Soulstash'}`
+                      : item.media_type === 'Person'
                       ? 'Cast & Crew'
                       : `${item.media_type === 'Series' || item.media_type === 'tv' ? 'Series' : 'Movie'}${yearFrom(item) ? ` | ${yearFrom(item)}` : ''}`;
                   return (

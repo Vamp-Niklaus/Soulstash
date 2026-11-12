@@ -68,13 +68,15 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
     const timeout = window.setTimeout(async () => {
       try {
         if (searchTab === 'collections') {
-          const payload = await apiFetch(
-            `/api/collections/published?q=${encodeURIComponent(searchQuery.trim())}`,
-            { signal: controller.signal }
-          );
+          const encodedQuery = encodeURIComponent(searchQuery.trim());
+          const [publishedRes, tmdbRes] = await Promise.allSettled([
+            apiFetch(`/api/collections/published?q=${encodedQuery}`, { signal: controller.signal }),
+            apiFetch(`/api/search/collections?q=${encodedQuery}`, { signal: controller.signal })
+          ]);
           if (!ignore) {
+            const payload = publishedRes.status === 'fulfilled' ? publishedRes.value : [];
             const list = Array.isArray(payload) ? payload : [];
-            const safeResults = list.map((entry) => {
+            const publishedResults = list.map((entry) => {
               const col = entry.collection || {};
               const name = col.name || 'Collection';
               const username = entry.username || '';
@@ -84,14 +86,32 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
               return {
                 id: `collection-${username}-${name}`,
                 media_type: 'Collection',
+                source: 'user',
                 title: name,
                 name,
                 username,
+                publisher: username,
                 overview: col.description || '',
                 poster_path: firstPoster || '',
                 collectionPath: `/user/${encodeURIComponent(username)}/collection/${encodeURIComponent(name)}`
               };
             });
+            const tmdbList = tmdbRes.status === 'fulfilled' && Array.isArray(tmdbRes.value?.results)
+              ? tmdbRes.value.results
+              : [];
+            // TMDB franchises: publisher is the plain label "TMDB" (no user profile link/avatar).
+            const tmdbResults = tmdbList.map((c) => ({
+              id: `tmdb-collection-${c.id}`,
+              tmdbId: c.id,
+              media_type: 'Collection',
+              source: 'tmdb',
+              title: c.name || 'Collection',
+              name: c.name || 'Collection',
+              publisher: 'TMDB',
+              overview: c.overview || '',
+              poster_path: c.poster_path || c.backdrop_path || ''
+            }));
+            const safeResults = [...publishedResults, ...tmdbResults];
             allResultsRef.current = safeResults;
             searchCacheRef.current.set(cacheKey, { results: safeResults, hasMore: false, timestamp: Date.now() });
             setSearchResults(safeResults);
@@ -99,6 +119,7 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
           }
           return;
         }
+
 
         if (searchTab === 'users') {
           const payload = await apiFetch(

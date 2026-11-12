@@ -5,11 +5,12 @@ import { FALLBACK_AVATAR, FALLBACK_LOGO } from '../../utils/constants.js';
 import { useAuthSession } from '../../hooks/index.js';
 import { clearAuthSession } from '../../api/client.js';
 import { toast } from '../../utils/toast.js';
+import { applyFocus } from '../../utils/spatialCore.js';
 import { NavbarSearchOverlay } from './NavbarSearchOverlay.jsx';
 import { useSearchAutocomplete } from '../../hooks/useSearchAutocomplete.js';
 import { useAppLayoutMode } from '../../hooks/useAppLayoutMode.js';
 import { SettingsModal } from '../ui/Modals/SettingsModal.jsx';
-import { WatchedIcon, WatchlistIcon, CollectionIcon, HomeIcon, ProfileIcon, SearchIcon, CloseIcon } from './NavIcons.jsx';
+import { ListsIcon, UpcomingIcon, CollectionIcon, HomeIcon, ProfileIcon, SearchIcon, CloseIcon } from './NavIcons.jsx';
 
 export function ReactNavbar() {
   const navigate = useNavigate();
@@ -101,31 +102,27 @@ export function ReactNavbar() {
     const isWatchlist = !!matchPath("/user/:user/collection/Watchlist", currentPath);
     const isCollections = !!matchPath("/user/:user/collections", currentPath) || currentPath === '/collections';
     const isCustomCollection = !!matchPath("/user/:user/collection/:id", currentPath) && !isWatched && !isWatchlist;
+    const isLists = currentPath === '/posted-collections';
+    const isUpcoming = currentPath === '/upcoming';
 
     return [
       {
-        label: 'Watched',
-        active: isWatched,
-        onClick: () => {
-          if (!isLoggedIn || !username) return navigate('/login');
-          navigate(`/user/${username}/collection/Watched`);
-        },
-        icon: <WatchedIcon />
+        label: 'Lists',
+        active: isLists,
+        onClick: () => navigate('/posted-collections'),
+        icon: <ListsIcon />
       },
       {
-        label: 'Watchlist',
-        active: isWatchlist,
-        onClick: () => {
-          if (!isLoggedIn || !username) return navigate('/login');
-          navigate(`/user/${username}/collection/Watchlist`);
-        },
-        icon: <WatchlistIcon />
+        label: 'Upcoming',
+        active: isUpcoming,
+        onClick: () => navigate('/upcoming'),
+        icon: <UpcomingIcon />
       },
       {
         label: 'Collection',
         active: isCollections || isCustomCollection,
         onClick: () => {
-          if (!isLoggedIn || !username) return navigate('/login');
+          if (!isLoggedIn || !username) { toast('Please login first', 'info'); return; }
           navigate(`/user/${username}/collections`);
         },
         icon: <CollectionIcon />
@@ -183,6 +180,13 @@ export function ReactNavbar() {
       window.requestAnimationFrame(() => {
         profileMenuRef.current?.querySelector('[data-profile-menu-item]')?.focus();
       });
+    } else if (event.key === 'ArrowLeft') {
+      // Profile/settings button is data-tv-ignore (spatial nav skips it), so hand focus
+      // back to the Search button; from there spatial nav reaches Collection/Upcoming/Lists.
+      event.preventDefault();
+      event.stopPropagation();
+      const searchBtn = profileMenuRef.current?.querySelector('button[aria-label="Search"], button[aria-label="Close search"]');
+      if (searchBtn) applyFocus(searchBtn, false);
     } else if (event.key === 'Escape' && profileDropdownOpen) {
       event.preventDefault();
       event.stopPropagation();

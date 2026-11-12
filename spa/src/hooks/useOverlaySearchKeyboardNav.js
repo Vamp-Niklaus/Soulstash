@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getOverlayColumnCount } from '../utils/formatters.js';
 
-export const TAB_VALUES = ['content', 'cast', 'users'];
+export const TAB_VALUES = ['content', 'cast', 'users', 'collections'];
 
 export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab, activeResults, openItem, overlayInputRef, clearBtnRef }) {
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -54,7 +54,7 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
 
       if (index === -1) {
         handleFromSearchInput(event);
-      } else if (index === -5) {
+      } else if (index === -7) {
         handleFromClearButton(event);
       } else if (index < -1) {
         handleFromTabs(event, index);
@@ -116,7 +116,7 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
         }
         const currentTabIdx = -index - 2;
         if (event.key === 'ArrowRight') {
-          if (currentTabIdx < 2) {
+          if (currentTabIdx < TAB_VALUES.length - 1) {
             tabButtonsRef.current[currentTabIdx + 1]?.focus();
           }
         } else if (event.key === 'ArrowLeft') {

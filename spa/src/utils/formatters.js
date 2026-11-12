@@ -522,6 +522,9 @@ export function saveSearchHistoryItem(item) {
         release_date: item.release_date || item.first_air_date || '',
         fullName: item.fullName || '',
         source: item.source || '',
+        publisher: item.publisher || '',
+        tmdbId: item.tmdbId || null,
+        collectionPath: item.collectionPath || '',
         kartoons: item.kartoons || null
       },
       ...getSearchHistory().filter(

@@ -5,6 +5,7 @@ import { apiFetch } from '../../api/client.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 
 const TMDB_BASE = 'https://image.tmdb.org/t/p';
+const PAGE_SIZE = 10; // cards shown before "View more" (and added per click)
 
 // Resolves a TMDB path ("/abc.jpg") or a full URL to an image URL. Returns '' when missing.
 function imageUrl(path, size) {
@@ -72,6 +73,7 @@ export function PostedCollectionsPage() {
   const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Small debounce so typing does not fire a request per keystroke (matters on TV remotes too).
   useEffect(() => {
@@ -90,6 +92,12 @@ export function PostedCollectionsPage() {
   });
 
   const entries = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+
+  // Search shows every match (as before); browse mode shows a shelf-style preview with "View more".
+  const visibleEntries = useMemo(
+    () => (query ? entries : entries.slice(0, visibleCount)),
+    [entries, query, visibleCount]
+  );
 
   return (
     <section className="content-section space-y-6">
@@ -113,15 +121,30 @@ export function PostedCollectionsPage() {
           </button>
         </div>
       ) : entries.length ? (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {entries.map((entry, index) => (
-            <CollectionTile
-              key={`${entry.username}-${entry.collection?.name}-${index}`}
-              entry={entry}
-              onOpen={() => navigate(`/user/${encodeURIComponent(entry.username)}/collection/${encodeURIComponent(entry.collection?.name || '')}`)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {visibleEntries.map((entry, index) => (
+              <CollectionTile
+                key={`${entry.username}-${entry.collection?.name}-${index}`}
+                entry={entry}
+                onOpen={() => navigate(`/user/${encodeURIComponent(entry.username)}/collection/${encodeURIComponent(entry.collection?.name || '')}`)}
+              />
+            ))}
+          </div>
+          {/* Browse mode (no search): a few cards like a genre shelf, then a View more button. */}
+          {!query && entries.length > visibleCount ? (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                className="shelf-action focus:outline-none focus:ring-2 focus:ring-[var(--cinema-accent)]"
+                onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+              >
+                <span>View more</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          ) : null}
+        </>
       ) : (
         <div className="app-empty">
           <p>{query ? `No posted collections match "${query}".` : 'No collections have been posted yet.'}</p>

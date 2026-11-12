@@ -464,8 +464,11 @@ export function VideoPlayerModal({ request, onClose }) {
       activeLabel: document.activeElement?.getAttribute?.('aria-label') || null
     });
     const mode = playerDisplayModeRef.current;
-    const onDirectOverlay = Boolean(document.activeElement?.closest?.('[data-direct-player]'));
-    const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || (mode !== 2 && (!document.activeElement || document.activeElement === document.body));
+    // Only the internal (kartoon) player gets the extra focus rules; iframe streams keep the original zone-only rule.
+    const isDirectUi = Boolean(document.querySelector('[data-direct-player]'));
+    const onDirectOverlay = isDirectUi && Boolean(document.activeElement?.closest?.('[data-direct-player]'));
+    const emptyFocus = isDirectUi && mode !== 2 && (!document.activeElement || document.activeElement === document.body);
+    const isPlaybackFocused = focusZoneRef.current === 'playback' || onDirectOverlay || emptyFocus;
 
     if (mode === 3) {
       try {
@@ -1059,8 +1062,10 @@ export function VideoPlayerModal({ request, onClose }) {
 
     const handlePopState = () => {
       if (isClosingRef.current) return;
-      // The key handler already handled this Back press. Keep the player's history entry and stop here.
-      if (Date.now() - lastBackHandledAtRef.current < 400) {
+      const isDirectUi = Boolean(document.querySelector('[data-direct-player]'));
+      // Internal player only: the key handler already handled this Back press, so skip the history-back that follows.
+      // iframe streams keep the original behaviour (no guard).
+      if (isDirectUi && Date.now() - lastBackHandledAtRef.current < 400) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         return;
       }
@@ -1071,12 +1076,13 @@ export function VideoPlayerModal({ request, onClose }) {
         activeLabel: document.activeElement?.getAttribute?.('aria-label') || null
       });
       const mode = playerDisplayModeRef.current;
-      const onDirectOverlay = Boolean(document.activeElement?.closest?.('[data-direct-player]'));
+      const onDirectOverlay = isDirectUi && Boolean(document.activeElement?.closest?.('[data-direct-player]'));
+      const emptyFocus = isDirectUi && mode !== 2 && (!document.activeElement || document.activeElement === document.body);
       // Phone (Android app, no remote) with the internal player: there is no visible focus, so Back steps the mode down directly.
-      const phoneDirectBack = Capacitor.isNativePlatform()
-        && !document.documentElement.classList.contains('layout-tv-mode')
-        && Boolean(document.querySelector('[data-direct-player]'));
-      const isPlaybackFocused = !phoneDirectBack && (focusZoneRef.current === 'playback' || onDirectOverlay || (mode !== 2 && (!document.activeElement || document.activeElement === document.body)));
+      const phoneDirectBack = isDirectUi
+        && Capacitor.isNativePlatform()
+        && !document.documentElement.classList.contains('layout-tv-mode');
+      const isPlaybackFocused = !phoneDirectBack && (focusZoneRef.current === 'playback' || onDirectOverlay || emptyFocus);
 
       if (mode === 3) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}

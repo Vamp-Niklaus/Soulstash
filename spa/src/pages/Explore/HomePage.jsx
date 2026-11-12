@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, getToken } from '../../api/client.js';
-import { normalizeStoredCollectionItem } from '../../utils/formatters.js';
 import { broadcastCollections, getCachedUserCollections, normalizeCollections } from '../../utils/collectionsCache.js';
 import { loadUserCollections } from '../../utils/collectionsApi.js';
 import { homeTrendingCache } from '../../utils/trendingCache.js';
@@ -21,9 +20,8 @@ export function HomePage() {
   const { data, isLoading: loading, error: queryError, refetch } = useQuery({
     queryKey: ['homePageData'],
     queryFn: async () => {
-      const [homeData, publishedData, genresData] = await Promise.all([
+      const [homeData, genresData] = await Promise.all([
         apiFetch('/api/home').catch(() => ({ trending: [], genres: [], categories: {} })),
-        apiFetch('/api/collections/published').catch(() => []),
         apiFetch('/api/genres').catch(() => ({ genres: [] }))
       ]);
 
@@ -51,22 +49,6 @@ export function HomePage() {
         homeTrendingCache.data = trending;
         homeTrendingCache.expiresAt = Date.now() + HOME_TRENDING_TTL;
       }
-
-      const publishedList = Array.isArray(publishedData)
-        ? publishedData
-        : (Array.isArray(publishedData?.collections) ? publishedData.collections : []);
-      const rawPublished = publishedList.map((entry) => {
-        const col = entry?.collection || entry || {};
-        return {
-          ...col,
-          _id: col._id || entry?._id,
-          id: col._id || entry?._id || col.id,
-          name: col.name || entry?.name || '',
-          username: entry?.username || col.username || '',
-          avatar: entry?.avatar || col.avatar || '',
-          movies: Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : [])
-        };
-      });
 
       const baseGenres = Array.isArray(genresData?.genres) && genresData.genres.length
         ? genresData.genres
@@ -142,7 +124,6 @@ export function HomePage() {
         popular,
         genres: rawGenres,
         categoryData: cleanCategoryData,
-        publishedCollections: rawPublished
       };
     }
   });
@@ -151,7 +132,6 @@ export function HomePage() {
   const popular = data?.popular || [];
   const genres = data?.genres || [];
   const categoryData = data?.categoryData || {};
-  const publishedCollections = data?.publishedCollections || [];
   const error = queryError?.message || '';
 
   const homeShelfLimit = useHomeTwoRowLimit();
@@ -306,44 +286,6 @@ export function HomePage() {
         <LazyCategoryShelf key={genre.id || genre} genre={genre} limit={homeShelfLimit} preloadedMovies={categoryData[String(genre.id)]} />
       ))}
 
-      {publishedCollections.length ? (
-        <div className="content-section">
-          <HomeShelfHeader title="Posted Collections" onViewAll={() => navigate('/posted-collections')} />
-        </div>
-      ) : null}
-      {publishedCollections.length ? (
-        <section className="content-section space-y-6">
-          {publishedCollections.map((collection, colIdx) => {
-            const items = Array.isArray(collection.movies) ? collection.movies.map(normalizeStoredCollectionItem) : [];
-            const colTitle = collection.name || 'Collection';
-            const colPublisher = collection.username || '';
-            return (
-              <div key={`${colPublisher}-${colTitle}-${collection._id || colIdx}`} className="space-y-4">
-                <HomeShelfHeader
-                  title={colTitle}
-                  publisher={colPublisher}
-                  onPublisherClick={() => colPublisher && navigate(`/user/${colPublisher}`)}
-                  onViewAll={() => colPublisher && navigate(`/user/${colPublisher}/collection/${encodeURIComponent(colTitle)}`)}
-                />
-                {items.length ? (
-                  <div className={HOME_GRID_CLASS}>
-                    {items.filter(it => !failedCardIds.has(it.id || it.title)).slice(0, homeShelfLimit).map((item, index) => (
-                      <ContentCard
-                        key={`${colPublisher}-${colTitle}-${item.id || index}-${item.media_type}`}
-                        item={item}
-                        data-card
-                        onImageError={() => handleCardImageError(item.id || item.title)}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-[#9a9a9a]">No titles available.</div>
-                )}
-              </div>
-            );
-          })}
-        </section>
-      ) : null}
     </div>
   );
 }
