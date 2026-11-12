@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import { moveFocus, getOpenModal, getPreferredModalFocus, getPlayerModal, tryClose, focusFirstPlayerControl, restorePlayerStreamFocus } from '../utils/tvNavMappings.js';
 import { getFocusableIn, isVisible, applyFocus, FOCUSED, FOCUSABLE_SEL, getFocusable, lastFocused, setLastFocused } from '../utils/spatialCore.js';
 import { handleDirectOverlayKey } from '../components/player/directOverlayNav.js';
@@ -480,7 +482,16 @@ function handleKeyDown(e) {
   if (BACK.has(key)) {
     if (key === 'Backspace' && active?.isContentEditable) return;
     e.preventDefault();
-    if (!tryClose()) window.history.back();
+    if (!tryClose()) {
+      const currentPath = window.location.pathname;
+      if (currentPath === '/' || currentPath === '') {
+        if (Capacitor.isNativePlatform()) {
+          CapApp.exitApp();
+          return;
+        }
+      }
+      window.history.back();
+    }
     return;
   }
 

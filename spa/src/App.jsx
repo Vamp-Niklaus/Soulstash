@@ -1,6 +1,8 @@
 // 1. The Core Engines (React & Router)
 import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Outlet, useParams, useLocation, useNavigate, matchPath } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 
 // 2. The Layout & Global UI
 import { ReactNavbar } from './components/layout/Navbar.jsx';
@@ -58,6 +60,54 @@ export function AppShell() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
+
+  // Handle hardware / gesture back button on Android devices
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let subHandle = null;
+
+    const setupBackListener = async () => {
+      subHandle = await CapApp.addListener('backButton', ({ canGoBack }) => {
+        // 1. If player modal is open, let player modal handle or dispatch player-back
+        const playerModal = document.querySelector('[data-player-modal]');
+        if (playerModal) {
+          const backEvt = new CustomEvent('soulstash:player-back', { cancelable: true });
+          window.dispatchEvent(backEvt);
+          return;
+        }
+
+        // 2. If any other modal, dialog, or search overlay is open, dismiss it
+        const openModal = document.querySelector('[data-open-modal], [data-search-overlay], dialog[open]');
+        if (openModal) {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          return;
+        }
+
+        // 3. If on Home page ('/' or ''), exit the app!
+        const path = window.location.pathname;
+        if (path === '/' || path === '') {
+          CapApp.exitApp();
+          return;
+        }
+
+        // 4. Otherwise navigate back in history
+        if (canGoBack) {
+          navigate(-1);
+        } else {
+          navigate('/', { replace: true });
+        }
+      });
+    };
+
+    setupBackListener();
+
+    return () => {
+      if (subHandle && typeof subHandle.remove === 'function') {
+        subHandle.remove();
+      }
+    };
+  }, [navigate]);
 
 
 

@@ -8,6 +8,8 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from '../../../utils/toast.js';
 import { useAuthSession } from '../../../hooks/useAuthSession.js';
 import { clearAuthSession } from '../../../api/client.js';
+import { clearAllWatchProgress } from '../../../utils/watchProgress.js';
+import { useQueryClient } from '@tanstack/react-query';
 
 // Native Android plugin (ApkUpdaterPlugin.java): downloads the APK and opens the installer.
 const ApkUpdater = registerPlugin('ApkUpdater');
@@ -37,15 +39,28 @@ export function SettingsModal({
   isLandscape = true
 }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const auth = useAuthSession();
   const [apkDownloadInfo, setApkDownloadInfo] = useState(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [windowsExeInfo, setWindowsExeInfo] = useState(null);
-  const currentVersion = 'v4.2.0';
+  const currentVersion = 'v4.2.2';
   const [installing, setInstalling] = useState(false);
   const [installProgress, setInstallProgress] = useState(null);
+  const [cacheCleared, setCacheCleared] = useState(false);
   const tauriUpdateRef = useRef(null);
+
+  const handleClearCache = () => {
+    clearAllWatchProgress();
+    try {
+      sessionStorage.clear();
+      queryClient.clear();
+    } catch (_) {}
+    setCacheCleared(true);
+    toast('Continue Watching and app cache cleared successfully', 'success');
+    setTimeout(() => setCacheCleared(false), 3000);
+  };
 
   const isNative = Capacitor.isNativePlatform();
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -547,6 +562,30 @@ export function SettingsModal({
             </div>
           </div>
         )}
+
+        {/* Section: Storage & Cache */}
+        <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
+              Storage & Cache
+            </span>
+            <span className="text-[10px] text-white/40">Continue Watching & Temp Data</span>
+          </div>
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.02] border border-white/5">
+            <div className="flex flex-col pr-2">
+              <span className="text-xs font-medium text-white/80">Clear Continue Watching</span>
+              <span className="text-[10px] text-white/40 leading-tight">Remove all saved continue movies and reset memory cache</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearCache}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 active:scale-95 px-3 py-1.5 text-xs font-semibold text-red-300 transition-all cursor-pointer whitespace-nowrap"
+            >
+              <i className={`fas ${cacheCleared ? 'fa-check text-emerald-400' : 'fa-trash-alt'} text-xs`}></i>
+              <span>{cacheCleared ? 'Cleared!' : 'Clear Cache'}</span>
+            </button>
+          </div>
+        </div>
 
         {/* Section 4: Account Actions */}
         <div className="flex flex-col gap-2 pt-2 border-t border-white/10">

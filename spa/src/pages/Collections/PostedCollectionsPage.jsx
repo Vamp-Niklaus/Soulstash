@@ -7,10 +7,13 @@ import { HomeShelfHeader } from '../Explore/HomeShelfHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 import { normalizeStoredCollectionItem } from '../../utils/formatters.js';
+import { HOME_GRID_CLASS } from '../../utils/constants.js';
+import { useHomeTwoRowLimit } from '../../hooks/index.js';
 
 export function PostedCollectionsPage() {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(8);
+  const homeShelfLimit = useHomeTwoRowLimit();
 
   useEffect(() => {
     document.title = 'Lists | Soulstash';
@@ -71,10 +74,10 @@ export function PostedCollectionsPage() {
               const colTitle = col.name;
               const colPublisher = col.username;
               const items = col.movies || [];
-              const previewItems = items.slice(0, 7);
+              const previewItems = items.slice(0, homeShelfLimit);
 
               return (
-                <div key={col._id} className="space-y-3">
+                <section key={col._id} className="content-section">
                   <HomeShelfHeader
                     title={colTitle}
                     publisher={colPublisher}
@@ -82,18 +85,19 @@ export function PostedCollectionsPage() {
                     onViewAll={() => colPublisher && navigate(`/user/${encodeURIComponent(colPublisher)}/collection/${encodeURIComponent(colTitle)}`)}
                   />
                   {previewItems.length ? (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
+                    <div className={HOME_GRID_CLASS}>
                       {previewItems.map((item, index) => (
                         <ContentCard
                           key={`${col._id}-${item.id || item._id || index}`}
                           item={item}
+                          data-card
                         />
                       ))}
                     </div>
                   ) : (
                     <p className="text-sm text-white/40 pl-3">No titles in this list yet.</p>
                   )}
-                </div>
+                </section>
               );
             })}
           </div>

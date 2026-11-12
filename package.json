@@ -1,6 +1,6 @@
 {
   "name": "soulstash-movie-app",
-  "version": "4.2.1",
+  "version": "4.2.2",
   "description": "Movie streaming app with collections",
   "main": "server.js",
   "scripts": {
@@ -12,7 +12,8 @@
     "dev:full": "npm run dev",
     "render-build": "npm run build",
     "desktop": "tauri",
-    "desktop:build": "tauri build --bundles nsis"
+    "desktop:build": "tauri build --bundles nsis",
+    "import:letterboxd": "node scripts/import_letterboxd.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",

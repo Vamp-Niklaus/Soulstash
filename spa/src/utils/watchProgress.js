@@ -187,6 +187,16 @@ export function removeWatchProgress(item) {
   } catch (_) {}
 }
 
+export function clearAllWatchProgress() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('soulstash_watch_progress');
+    window.dispatchEvent(new CustomEvent('soulstash:continue-watching-updated'));
+    window.dispatchEvent(new Event('soulstash:continue-watching-updated'));
+    window.dispatchEvent(new Event('watch-progress-updated'));
+  } catch (_) {}
+}
+
 export async function syncAccountWatchProgress() {
   if (!getToken()) return;
   try {
