@@ -48,8 +48,6 @@ export function PostedCollectionsPage() {
 
   return (
     <section className="content-section space-y-8">
-      <SectionHeader title="Lists" large />
-
       {isPending ? (
         <div className="space-y-8">
           <GridSkeleton count={7} />

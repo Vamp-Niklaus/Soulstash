@@ -242,8 +242,9 @@ export function CollectionDetailPane({
                 ) : (
                   <button type="button"
                     className="flex h-10 flex-shrink-0 items-center justify-center gap-2 rounded-[14px] bg-white/[0.1] px-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.16] focus:outline-none focus:ring-2 focus:ring-white"
-                    onClick={() => navigate(`/user/${username}`)}>
-                    <i className="fas fa-user"></i><span>Profile</span>
+                    onClick={() => navigate(`/user/${username}`)}
+                    aria-label={`View ${username}'s profile`}>
+                    <i className="fas fa-user"></i><span>{username}</span>
                   </button>
                 )}
               </div>
@@ -331,8 +332,9 @@ export function CollectionDetailPane({
             ) : (
               <button type="button"
                 className="flex items-center gap-1.5 bg-white/[0.12] hover:bg-white/[0.18] text-white transition-colors text-xs h-9 px-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-white"
-                onClick={() => navigate(`/user/${username}`)}>
-                <i className="fas fa-user"></i><span>Profile</span>
+                onClick={() => navigate(`/user/${username}`)}
+                aria-label={`View ${username}'s profile`}>
+                <i className="fas fa-user"></i><span>{username}</span>
               </button>
             )}
           </div>
@@ -411,8 +413,9 @@ export function CollectionDetailPane({
                   ) : (
                     <button type="button"
                       className="mt-2 inline-flex h-9 items-center justify-center gap-2 rounded-full bg-white/10 px-4 text-sm font-medium text-white transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
-                      onClick={() => navigate(`/user/${username}`)}>
-                      <i className="fas fa-user"></i><span>View {username}'s profile</span>
+                      onClick={() => navigate(`/user/${username}`)}
+                      aria-label={`View ${username}'s profile`}>
+                      <i className="fas fa-user"></i><span>{username}</span>
                     </button>
                   )}
                 </div>

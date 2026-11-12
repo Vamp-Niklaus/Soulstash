@@ -191,7 +191,7 @@ export function NavbarSearchOverlay({
                   const meta = item.media_type === 'User'
                     ? (item.fullName || item.bio || 'Soulstash user')
                     : item.media_type === 'Collection'
-                      ? `Collection | ${item.publisher || item.username || 'Soulstash'}`
+                      ? `${item.publisher || item.username || 'Soulstash'}${typeof item.itemCount === 'number' ? ` · ${item.itemCount} ${item.itemCount === 1 ? 'title' : 'titles'}` : ''}`
                       : item.media_type === 'Person'
                       ? 'Cast & Crew'
                       : `${item.media_type === 'Series' || item.media_type === 'tv' ? 'Series' : 'Movie'}${yearFrom(item) ? ` | ${yearFrom(item)}` : ''}`;

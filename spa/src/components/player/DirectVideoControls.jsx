@@ -19,8 +19,8 @@ const ASPECTS = [
 ];
 const AUTONEXT_KEY = 'soulstash_autonext';
 const EVENTS = ['play', 'pause', 'timeupdate', 'durationchange', 'loadedmetadata', 'volumechange', 'ratechange', 'waiting', 'playing', 'progress', 'seeking', 'seeked'];
-const ICON_BTN = 'flex h-9 w-9 items-center justify-center rounded-full text-white/95 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500';
-const TEXT_BTN = 'flex h-9 items-center justify-center rounded-full px-3 text-xs font-bold text-white/95 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500';
+const ICON_BTN = 'flex h-9 w-9 items-center justify-center rounded-full text-white/95 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-red-500 focus-visible:ring-2 focus-visible:ring-red-500';
+const TEXT_BTN = 'flex h-9 items-center justify-center rounded-full px-3 text-xs font-bold text-white/95 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-red-500 focus-visible:ring-2 focus-visible:ring-red-500';
 
 const pad = (n) => String(n).padStart(2, '0');
 

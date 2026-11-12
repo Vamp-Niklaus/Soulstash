@@ -89,9 +89,6 @@ export function UpcomingPage() {
   if (status === 'pending') {
     return (
       <section className="content-section">
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <div className="h-8 w-40 rounded bg-white/[0.08] animate-pulse"></div>
-        </div>
         <GridSkeleton count={14} />
       </section>
     );
@@ -99,7 +96,6 @@ export function UpcomingPage() {
 
   return (
     <section className="content-section">
-      <SectionHeader title="Upcoming" large />
       {status === 'error' ? (
         <div className="app-error">
           <p>{error?.message || 'Unable to load upcoming titles.'}</p>

@@ -80,7 +80,11 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
               const col = entry.collection || {};
               const name = col.name || 'Collection';
               const username = entry.username || '';
-              const firstPoster = (Array.isArray(col.movies) ? col.movies : [])
+              const isAdmin = entry.admin === true || username.toLowerCase() === 'admin';
+              const publisher = isAdmin ? 'Admin' : (username || 'Soulstash');
+              const movies = Array.isArray(col.movies) ? col.movies : [];
+              const itemCount = movies.length;
+              const firstPoster = movies
                 .map((m) => m?.poster_path || m?.image || '')
                 .find((p) => p && p !== 'null');
               return {
@@ -90,7 +94,9 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
                 title: name,
                 name,
                 username,
-                publisher: username,
+                isAdmin,
+                publisher,
+                itemCount,
                 overview: col.description || '',
                 poster_path: firstPoster || '',
                 collectionPath: `/user/${encodeURIComponent(username)}/collection/${encodeURIComponent(name)}`
@@ -108,6 +114,7 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
               title: c.name || 'Collection',
               name: c.name || 'Collection',
               publisher: 'TMDB',
+              itemCount: typeof c.item_count === 'number' ? c.item_count : 0,
               overview: c.overview || '',
               poster_path: c.poster_path || c.backdrop_path || ''
             }));

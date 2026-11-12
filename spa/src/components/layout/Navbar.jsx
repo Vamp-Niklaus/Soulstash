@@ -100,9 +100,11 @@ export function ReactNavbar() {
   const navItems = useMemo(() => {
     const isWatched = !!matchPath("/user/:user/collection/Watched", currentPath);
     const isWatchlist = !!matchPath("/user/:user/collection/Watchlist", currentPath);
-    const isCollections = !!matchPath("/user/:user/collections", currentPath) || currentPath === '/collections';
-    const isCustomCollection = !!matchPath("/user/:user/collection/:id", currentPath) && !isWatched && !isWatchlist;
-    const isLists = currentPath === '/posted-collections';
+    const collectionMatch = matchPath("/user/:user/collection/:id", currentPath);
+    const isOwnCollection = collectionMatch && username && collectionMatch.params.user?.toLowerCase() === username.toLowerCase();
+    const isOtherUserCollection = collectionMatch && (!username || collectionMatch.params.user?.toLowerCase() !== username.toLowerCase()) && !isWatched && !isWatchlist;
+    const isCollections = !!matchPath("/user/:user/collections", currentPath) || currentPath === '/collections' || isOwnCollection;
+    const isLists = currentPath === '/posted-collections' || isOtherUserCollection;
     const isUpcoming = currentPath === '/upcoming';
 
     return [
@@ -120,7 +122,7 @@ export function ReactNavbar() {
       },
       {
         label: 'Collection',
-        active: isCollections || isCustomCollection,
+        active: isCollections,
         onClick: () => {
           if (!isLoggedIn || !username) { toast('Please login first', 'info'); return; }
           navigate(`/user/${username}/collections`);

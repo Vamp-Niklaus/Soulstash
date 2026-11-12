@@ -34,6 +34,15 @@ function handleTvLinkClick(event) {
 }
 
 function focusPlaybackSurface(playerModal, reason = 'dpad-navigation') {
+  const directPlayBtn = playerModal.querySelector(
+    '[data-direct-row="1"] button[aria-label="Play"], [data-direct-row="1"] button[aria-label="Pause"]'
+  ) || playerModal.querySelector('[data-direct-player] button:not(:disabled)');
+  if (directPlayBtn && directPlayBtn.getClientRects().length > 0) {
+    showRing();
+    applyFocus(directPlayBtn, true);
+    return true;
+  }
+
   const playback = playerModal.querySelector('iframe[tabindex="0"], video[tabindex="0"]') || playerModal.querySelector('video, iframe');
   // Size check only: the internal player's overlay fades out (opacity 0), which isVisible() would reject.
   if (!playback?.isConnected || playback.getClientRects().length === 0) {
@@ -246,7 +255,17 @@ function handleKeyDown(e) {
       return;
     }
 
-    if (active?.tagName === 'VIDEO' && document.documentElement.classList.contains('layout-tv-mode')) {
+    if (active?.tagName === 'VIDEO') {
+      const playButton = playerModal.querySelector(
+        '[data-direct-row="1"] button[aria-label="Play"], [data-direct-row="1"] button[aria-label="Pause"]'
+      ) || playerModal.querySelector('[data-direct-player] button:not(:disabled)');
+      if (playButton && playButton.getClientRects().length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        showRing();
+        applyFocus(playButton);
+        return;
+      }
       if (key === 'ArrowLeft' || key === 'ArrowRight') {
         e.preventDefault();
         e.stopPropagation();
@@ -255,19 +274,6 @@ function handleKeyDown(e) {
         active.currentTime = Math.max(0, Math.min(duration, active.currentTime + step));
         showRing();
         return;
-      }
-      // Down on the focused internal video moves focus onto the on-screen Play/Pause button.
-      if (key === 'ArrowDown') {
-        const playButton = playerModal.querySelector(
-          '[data-direct-row="1"] button[aria-label="Play"], [data-direct-row="1"] button[aria-label="Pause"]'
-        );
-        if (playButton && playButton.getClientRects().length > 0) {
-          e.preventDefault();
-          e.stopPropagation();
-          showRing();
-          applyFocus(playButton);
-          return;
-        }
       }
       // Up/Down on the focused video change volume (in every player mode).
       if (key === 'ArrowUp' || key === 'ArrowDown') {
