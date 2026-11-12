@@ -129,6 +129,31 @@ export function yearFrom(item) {
 }
 
 /**
+ * Formats an anticipated release date for upcoming media items.
+ * e.g., '2026-12-16' -> 'Dec 16, 2026' or '2028-02-00' -> 'Feb 2028', or 'TBA' if undecided.
+ */
+export function formatAnticipatedReleaseDate(item) {
+  const dateValue = item?.release_date || item?.first_air_date;
+  if (!dateValue || typeof dateValue !== 'string' || !dateValue.trim()) {
+    return 'TBA';
+  }
+  const parts = dateValue.trim().split('-');
+  if (parts.length >= 2) {
+    const year = parts[0];
+    const monthIdx = parseInt(parts[1], 10) - 1;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (monthIdx >= 0 && monthIdx < 12) {
+      if (parts.length >= 3 && parseInt(parts[2], 10) > 0) {
+        return `${months[monthIdx]} ${parseInt(parts[2], 10)}, ${year}`;
+      }
+      return `${months[monthIdx]} ${year}`;
+    }
+    return year;
+  }
+  return dateValue;
+}
+
+/**
  * Gets the primary country of origin for a media item.
  */
 export function getPrimaryCountry(content) {

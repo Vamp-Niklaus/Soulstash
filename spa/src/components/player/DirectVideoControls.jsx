@@ -408,19 +408,19 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
 
       {/* Bottom: seek line and transport row */}
       <div style={{ paddingBottom: compact ? 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)' : 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)' }} className={`bg-gradient-to-t from-black/80 to-transparent px-3 ${compact ? 'pt-2' : 'pt-8'} transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}>
-        <div data-direct-row="2" className={`group relative mb-1 flex items-center ${isNative ? 'h-8' : 'h-5'}`}>
+        <div data-direct-row="2" className="group relative mb-2 flex items-center h-8 cursor-pointer">
           {(() => {
             const dur = snap.duration || 0;
             const shown = scrub !== null ? scrub : snap.time;
             const pct = (x) => (dur > 0 ? Math.max(0, Math.min(100, (x / dur) * 100)) : 0);
             return (
               <>
-                <div className={`pointer-events-none absolute inset-x-0 h-1 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-1.5 group-focus-within:h-1.5`}>
+                <div className="pointer-events-none absolute inset-x-0 h-2 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-3 group-focus-within:h-3">
                   <div className="absolute inset-y-0 left-0 bg-white/40" style={{ width: `${pct(snap.buffered)}%` }} />
                   <div className="absolute inset-y-0 left-0 bg-red-600" style={{ width: `${pct(shown)}%` }} />
                 </div>
                 <div
-                  className={`pointer-events-none absolute h-3 w-3 -translate-x-1/2 rounded-full bg-red-600 transition-transform group-hover:scale-125 group-focus-within:scale-125 ${snap.seeking ? 'animate-pulse' : ''}`}
+                  className={`pointer-events-none absolute h-4 w-4 -translate-x-1/2 rounded-full border-2 border-white bg-red-600 shadow-[0_0_8px_rgba(220,38,38,0.9)] transition-all group-hover:h-5 group-hover:w-5 group-focus-within:h-5 group-focus-within:w-5 ${snap.seeking ? 'animate-pulse' : ''}`}
                   style={{ left: `${pct(shown)}%` }}
                 />
                 <input

@@ -111,7 +111,7 @@ export function UpcomingPage() {
         <>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
             {items.map((item, index) => (
-              <ContentCard key={`${item.id}-${index}`} item={item} />
+              <ContentCard key={`${item.id}-${index}`} item={item} isUpcoming={true} />
             ))}
           </div>
 
