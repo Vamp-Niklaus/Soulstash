@@ -382,7 +382,7 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
       </div>
 
       {/* Bottom: seek line and transport row */}
-      <div className={`bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}>
+      <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)' }} className={`bg-gradient-to-t from-black/80 to-transparent px-3 pt-8 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}>
         <div data-direct-row="2" className="group relative mb-1 flex h-5 items-center">
           {(() => {
             const dur = snap.duration || 0;
