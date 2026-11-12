@@ -343,7 +343,14 @@ export function normalizeStoredCollectionItem(item) {
     imdb_rating: item?.imdb_rating,
     imdb_id: item?.imdb_id || '',
     rating_lookup_attempted: item?.rating_lookup_attempted === true,
-    media_type: isSeries ? 'Series' : 'Movie'
+    media_type: isSeries ? 'Series' : 'Movie',
+    isAnime: Boolean(
+      item?.isAnime ||
+      item?.is_anime ||
+      ((item?.original_language === 'ja' || item?.originalLanguage === 'ja') &&
+       (item?.genre_ids?.includes(16) || item?.genres?.some(g => g.id === 16 || g.name === 'Animation')))
+    ),
+    genre_ids: Array.isArray(item?.genre_ids) ? item.genre_ids : []
   };
 }
 

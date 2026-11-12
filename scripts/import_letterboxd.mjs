@@ -188,7 +188,8 @@ async function run() {
     console.log(`\n\x1b[33m📖 Scraping Page ${pageNum}: ${currentUrl}\x1b[0m`);
     try {
       await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(1500);
+      await page.waitForSelector('.film-poster, .poster-container, li.grid-item, div.poster', { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(2000);
     } catch (err) {
       console.warn(`Could not load page ${pageNum}:`, err.message);
       break;
@@ -238,6 +239,17 @@ async function run() {
           const poster = tmdbData.poster_path ? (tmdbData.poster_path.startsWith('http') ? tmdbData.poster_path : `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}`) : '';
           const backdrop = tmdbData.backdrop_path ? (tmdbData.backdrop_path.startsWith('http') ? tmdbData.backdrop_path : `https://image.tmdb.org/t/p/w1280${tmdbData.backdrop_path}`) : '';
           const voteAvg = Number(tmdbData.vote_average ?? tmdbData.voteAverage) || 0;
+          const lang = tmdbData.originalLanguage || tmdbData.original_language || '';
+          const genreIds = Array.isArray(tmdbData.genre_ids) ? tmdbData.genre_ids : (Array.isArray(tmdbData.genres) ? tmdbData.genres.map(g => g.id) : []);
+          
+          // Detect Anime: Japanese language + Animation genre (16), or explicit anime flags
+          const isAnime = Boolean(
+            tmdbData.isAnime ||
+            tmdbData.is_anime ||
+            ((lang === 'ja' || tmdbData.originCountry === 'JP' || tmdbData.origin_country?.includes('JP')) &&
+             (genreIds.includes(16) || tmdbData.type === 'anime' || /anime/i.test(film.slug || '')))
+          );
+
           return {
             id: tmdbData.id,
             title: tmdbData.title || film.title,
@@ -248,6 +260,9 @@ async function run() {
             vote_average: voteAvg,
             overview: tmdbData.overview || '',
             media_type: 'Movie',
+            isAnime,
+            original_language: lang,
+            genre_ids: genreIds,
             letterboxd_slug: film.slug || ''
           };
         }
@@ -261,6 +276,9 @@ async function run() {
           vote_average: 0,
           overview: '',
           media_type: 'Movie',
+          isAnime: false,
+          original_language: '',
+          genre_ids: [],
           letterboxd_slug: film.slug || ''
         };
       })
