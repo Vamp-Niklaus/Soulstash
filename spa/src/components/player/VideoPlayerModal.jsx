@@ -485,11 +485,6 @@ export function VideoPlayerModal({ request, onClose }) {
     }
 
     if (mode === 2) {
-      if (isPlaybackFocused) {
-        focusSizeControl();
-        return;
-      }
-
       setSourcesExpanded(false);
       updatePlayerDisplayMode(1);
       focusSizeControl();
@@ -502,7 +497,15 @@ export function VideoPlayerModal({ request, onClose }) {
       return;
     }
 
-    if (isPlaybackFocused) {
+    const sizeBtn = fullscreenButtonRef.current || playerBoxRef.current?.querySelector('button[data-player-size="true"]');
+    const isSizeFocused = Boolean(
+      document.activeElement === sizeBtn ||
+      sizeBtn?.classList.contains('tv-focused') ||
+      sizeFocusedRef.current ||
+      (Date.now() - sizeFocusLastAtRef.current < 500)
+    );
+
+    if (isPlaybackFocused && !isSizeFocused) {
       focusSizeControl();
       return;
     }
@@ -1099,12 +1102,6 @@ export function VideoPlayerModal({ request, onClose }) {
       }
 
       if (mode === 2) {
-        if (isPlaybackFocused) {
-          try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
-          focusSizeControl();
-          return;
-        }
-
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         setSourcesExpanded(false);
         updatePlayerDisplayMode(1);
@@ -1120,7 +1117,15 @@ export function VideoPlayerModal({ request, onClose }) {
       }
 
       // In Mode 1:
-      if (isPlaybackFocused) {
+      const sizeBtn = fullscreenButtonRef.current || playerBoxRef.current?.querySelector('button[data-player-size="true"]');
+      const isSizeFocused = Boolean(
+        document.activeElement === sizeBtn ||
+        sizeBtn?.classList.contains('tv-focused') ||
+        sizeFocusedRef.current ||
+        (Date.now() - sizeFocusLastAtRef.current < 500)
+      );
+
+      if (isPlaybackFocused && !isSizeFocused) {
         try { window.history.pushState({ playerOpen: true }, ''); } catch (e) {}
         focusSizeControl();
         return;
@@ -1144,6 +1149,15 @@ export function VideoPlayerModal({ request, onClose }) {
       }
     };
 
+    const handleWindowBlur = () => {
+      if (playerDisplayModeRef.current >= 1) {
+        focusZoneRef.current = 'playback';
+        playerFocusTargetRef.current = 'iframe';
+        sizeFocusedRef.current = false;
+        setIsSizeFocusedVisual(false);
+      }
+    };
+
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         const backEvent = new CustomEvent('soulstash:player-back', { cancelable: true });
@@ -1157,11 +1171,13 @@ export function VideoPlayerModal({ request, onClose }) {
 
     window.addEventListener('popstate', handlePopState);
     document.addEventListener('focusin', handleFocusIn, true);
+    window.addEventListener('blur', handleWindowBlur);
     window.addEventListener('keydown', handleKeyDown);
     
     return () => {
       window.removeEventListener('popstate', handlePopState);
       document.removeEventListener('focusin', handleFocusIn, true);
+      window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [handleCloseClick, handleToggleFullscreen, returnToDefaultPlayerMode]);

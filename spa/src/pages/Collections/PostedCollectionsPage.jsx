@@ -1,145 +1,113 @@
-import { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
-
-const TMDB_BASE = 'https://image.tmdb.org/t/p';
-const PAGE_SIZE = 10; // cards shown before "View more" (and added per click)
-
-// Resolves a TMDB path ("/abc.jpg") or a full URL to an image URL. Returns '' when missing.
-function imageUrl(path, size) {
-  const p = typeof path === 'string' ? path.trim() : '';
-  if (!p || p === 'null' || p === 'undefined') return '';
-  if (p.startsWith('http')) return p;
-  if (p.startsWith('/')) return `${TMDB_BASE}/${size}${p}`;
-  return '';
-}
-
-function posterOf(item) {
-  return imageUrl(item?.poster_path || item?.image || item?.coverImage, 'w342');
-}
-
-function backdropOf(item) {
-  return imageUrl(item?.backdrop_path || item?.backdrop, 'w780');
-}
-
-function CollectionTile({ entry, onOpen }) {
-  const col = entry.collection || {};
-  const movies = Array.isArray(col.movies) ? col.movies : [];
-  const name = col.name || 'Collection';
-  const publisher = entry.username || '';
-
-  // One title: show that title's backdrop as the collection image.
-  // Several titles: show up to four posters in a grid.
-  const single = movies.length === 1 ? movies[0] : null;
-  const banner = imageUrl(col.banner, 'w780');
-  const singleBackdrop = banner || (single ? backdropOf(single) || posterOf(single) : '');
-  const posters = movies.map(posterOf).filter(Boolean).slice(0, 4);
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 text-left transition-colors hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-white"
-    >
-      <div className="overflow-hidden rounded-xl bg-white/[0.04]" style={{ aspectRatio: '16 / 9' }}>
-        {singleBackdrop ? (
-          <img src={singleBackdrop} alt="" loading="lazy" className="h-full w-full object-cover" />
-        ) : posters.length ? (
-          <div className="grid h-full w-full grid-cols-2 grid-rows-2 gap-1">
-            {posters.map((src, i) => (
-              <img key={i} src={src} alt="" loading="lazy" className="h-full w-full object-cover" />
-            ))}
-          </div>
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-white/30">
-            <i className="fas fa-film text-3xl"></i>
-          </div>
-        )}
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-base font-semibold text-white">{name}</p>
-        <p className="truncate text-xs text-white/50">
-          {publisher ? `by ${publisher}` : 'Published collection'} · {movies.length} titles
-        </p>
-        {col.description ? <p className="mt-1 line-clamp-2 text-xs text-white/40">{col.description}</p> : null}
-      </div>
-    </button>
-  );
-}
+import { HomeShelfHeader } from '../Explore/HomeShelfHeader.jsx';
+import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
+import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
+import { normalizeStoredCollectionItem } from '../../utils/formatters.js';
 
 export function PostedCollectionsPage() {
   const navigate = useNavigate();
-  const [input, setInput] = useState('');
-  const [query, setQuery] = useState('');
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-
-  // Small debounce so typing does not fire a request per keystroke (matters on TV remotes too).
-  useEffect(() => {
-    const t = setTimeout(() => setQuery(input.trim()), 250);
-    return () => clearTimeout(t);
-  }, [input]);
+  const [visibleCount, setVisibleCount] = useState(8);
 
   useEffect(() => {
-    document.title = 'Posted Collections | Soulstash';
+    document.title = 'Lists | Soulstash';
   }, []);
 
   const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: ['postedCollections', query],
-    queryFn: () => apiFetch(`/api/collections/published${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+    queryKey: ['postedCollections'],
+    queryFn: () => apiFetch('/api/collections/published'),
     staleTime: 2 * 60 * 1000,
   });
 
-  const entries = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+  const rawEntries = useMemo(() => {
+    const list = Array.isArray(data)
+      ? data
+      : (Array.isArray(data?.collections) ? data.collections : []);
+    return list.map((entry) => {
+      const col = entry?.collection || entry || {};
+      const username = entry?.username || col.username || '';
+      const name = col.name || entry?.name || 'Collection';
+      const movies = Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : []);
+      return {
+        _id: col._id || entry?._id || `${username}-${name}`,
+        name,
+        username,
+        description: col.description || '',
+        movies: movies.map(normalizeStoredCollectionItem)
+      };
+    });
+  }, [data]);
 
-  // Search shows every match (as before); browse mode shows a shelf-style preview with "View more".
   const visibleEntries = useMemo(
-    () => (query ? entries : entries.slice(0, visibleCount)),
-    [entries, query, visibleCount]
+    () => rawEntries.slice(0, visibleCount),
+    [rawEntries, visibleCount]
   );
 
   return (
-    <section className="content-section space-y-6">
-      <SectionHeader title="Posted Collections" large />
-
-      <input
-        type="search"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Search collections, publishers or descriptions..."
-        className="w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white md:max-w-xl"
-      />
+    <section className="content-section space-y-8">
+      <SectionHeader title="Lists" large />
 
       {isPending ? (
-        <div className="app-loading">Loading collections...</div>
+        <div className="space-y-8">
+          <GridSkeleton count={7} />
+          <GridSkeleton count={7} />
+        </div>
       ) : isError ? (
         <div className="app-error">
-          <p>{error?.message || 'Could not load posted collections.'}</p>
-          <button type="button" className="mt-4 rounded-full bg-white/10 px-5 py-2 text-white hover:bg-white/20" onClick={() => refetch()}>
+          <p>{error?.message || 'Could not load posted lists.'}</p>
+          <button
+            type="button"
+            className="mt-4 rounded-full bg-white/10 px-5 py-2 text-white hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
+            onClick={() => refetch()}
+          >
             Try again
           </button>
         </div>
-      ) : entries.length ? (
+      ) : rawEntries.length ? (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {visibleEntries.map((entry, index) => (
-              <CollectionTile
-                key={`${entry.username}-${entry.collection?.name}-${index}`}
-                entry={entry}
-                onOpen={() => navigate(`/user/${encodeURIComponent(entry.username)}/collection/${encodeURIComponent(entry.collection?.name || '')}`)}
-              />
-            ))}
+          <div className="space-y-8">
+            {visibleEntries.map((col) => {
+              const colTitle = col.name;
+              const colPublisher = col.username;
+              const items = col.movies || [];
+              const previewItems = items.slice(0, 7);
+
+              return (
+                <div key={col._id} className="space-y-3">
+                  <HomeShelfHeader
+                    title={colTitle}
+                    publisher={colPublisher}
+                    onPublisherClick={() => colPublisher && navigate(`/user/${encodeURIComponent(colPublisher)}`)}
+                    onViewAll={() => colPublisher && navigate(`/user/${encodeURIComponent(colPublisher)}/collection/${encodeURIComponent(colTitle)}`)}
+                  />
+                  {previewItems.length ? (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
+                      {previewItems.map((item, index) => (
+                        <ContentCard
+                          key={`${col._id}-${item.id || item._id || index}`}
+                          item={item}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-white/40 pl-3">No titles in this list yet.</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {/* Browse mode (no search): a few cards like a genre shelf, then a View more button. */}
-          {!query && entries.length > visibleCount ? (
-            <div className="flex justify-center">
+
+          {rawEntries.length > visibleCount ? (
+            <div className="flex justify-center pt-4">
               <button
                 type="button"
                 className="shelf-action focus:outline-none focus:ring-2 focus:ring-[var(--cinema-accent)]"
-                onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+                onClick={() => setVisibleCount((c) => c + 8)}
               >
-                <span>View more</span>
+                <span>View more lists</span>
                 <span aria-hidden="true">→</span>
               </button>
             </div>
@@ -147,7 +115,7 @@ export function PostedCollectionsPage() {
         </>
       ) : (
         <div className="app-empty">
-          <p>{query ? `No posted collections match "${query}".` : 'No collections have been posted yet.'}</p>
+          <p>No lists have been published yet.</p>
         </div>
       )}
     </section>

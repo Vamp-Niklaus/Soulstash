@@ -22,7 +22,11 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
   const openItemRef = useRef(openItem);
   openItemRef.current = openItem;
 
-  useEffect(() => { resultButtonsRef.current = []; }, [activeResults]);
+  useEffect(() => {
+    if (resultButtonsRef.current.length > activeResults.length) {
+      resultButtonsRef.current = resultButtonsRef.current.slice(0, activeResults.length);
+    }
+  }, [activeResults]);
   
   useEffect(() => { setFocusedIndex(-1); }, [query]);
 
@@ -126,9 +130,10 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
         } else if (event.key === 'ArrowUp') {
           overlayInputRef?.current?.focus();
         } else if (event.key === 'ArrowDown') {
-          if (resultsList.length > 0) {
-            resultButtonsRef.current[0]?.focus();
-            resultButtonsRef.current[0]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          const firstCard = resultButtonsRef.current[0] || document.querySelector('.tv-focus-card');
+          if (firstCard) {
+            firstCard.focus();
+            firstCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
           }
         }
       }
@@ -139,33 +144,44 @@ export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab,
           event.stopPropagation();
         }
 
+        const getCard = (i) => resultButtonsRef.current[i] || document.querySelectorAll('.tv-focus-card')?.[i];
+
         if (event.key === 'ArrowDown') {
           const nextIndex = index + cols;
           if (nextIndex < resultsList.length) {
-            resultButtonsRef.current[nextIndex]?.focus();
-            resultButtonsRef.current[nextIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            const card = getCard(nextIndex);
+            card?.focus();
+            card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
           } else if (index < resultsList.length - 1) {
             const lastIdx = resultsList.length - 1;
-            resultButtonsRef.current[lastIdx]?.focus();
+            const card = getCard(lastIdx);
+            card?.focus();
+            card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
           }
         } else if (event.key === 'ArrowUp') {
           const prevIndex = index - cols;
           if (prevIndex < 0) {
             tabButtonsRef.current[activeTabIdx]?.focus();
           } else {
-            resultButtonsRef.current[prevIndex]?.focus();
-            resultButtonsRef.current[prevIndex]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            const card = getCard(prevIndex);
+            card?.focus();
+            card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
           }
         } else if (event.key === 'ArrowRight') {
           if (index < resultsList.length - 1) {
-            resultButtonsRef.current[index + 1]?.focus();
+            const card = getCard(index + 1);
+            card?.focus();
           }
         } else if (event.key === 'ArrowLeft') {
           if (index > 0) {
-            resultButtonsRef.current[index - 1]?.focus();
+            const card = getCard(index - 1);
+            card?.focus();
           }
         } else if (event.key === 'Enter') {
-          openItemRef.current(resultsList[index]);
+          const item = resultsList[index];
+          if (item) {
+            openItemRef.current(item);
+          }
         }
       }
     }

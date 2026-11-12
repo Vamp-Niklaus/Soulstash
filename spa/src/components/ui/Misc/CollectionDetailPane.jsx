@@ -187,8 +187,9 @@ export function CollectionDetailPane({
                   ) : (
                     <button type="button"
                       className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] bg-white/[0.1] px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/[0.16] focus:outline-none focus:ring-2 focus:ring-white"
-                      onClick={() => navigate(`/user/${username}`)}>
-                      <i className="fas fa-user"></i><span>View Profile</span>
+                      onClick={() => navigate(`/user/${username}`)}
+                      aria-label={`View ${username}'s profile`}>
+                      <i className="fas fa-user"></i><span>{username}</span>
                     </button>
                   )}
                 </div>
@@ -362,8 +363,9 @@ export function CollectionDetailPane({
             ) : (
               <button type="button"
                 className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] bg-white/[0.14] hover:bg-white/[0.22] px-4 text-[13px] font-medium text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
-                onClick={() => navigate(`/user/${username}`)}>
-                <i className="fas fa-user"></i><span>View Profile</span>
+                onClick={() => navigate(`/user/${username}`)}
+                aria-label={`View ${username}'s profile`}>
+                <i className="fas fa-user"></i><span>{username}</span>
               </button>
             )}
           </div>
