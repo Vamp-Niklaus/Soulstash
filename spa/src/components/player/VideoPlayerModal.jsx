@@ -1607,6 +1607,11 @@ export function VideoPlayerModal({ request, onClose }) {
     flex: '1 1 0%',
     minHeight: 0,
     backgroundColor: 'black'
+  } : (isAndroidViewport && isDirectMediaUrl(activeUrl)) ? {
+    width: '100%',
+    height: '64vw',
+    maxHeight: mediaMaxH,
+    backgroundColor: 'black'
   } : {
     width: '100%',
     aspectRatio: '16 / 9',

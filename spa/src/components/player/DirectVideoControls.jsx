@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { handleDirectOverlayKey, seekVideo, changeVideoVolume } from './directOverlayNav.js';
 import { getMediaDuration, seekTo } from './hlsSession.js';
+import { Capacitor } from '@capacitor/core';
+
+// On the Android app the seek line is hidden until its control has focus; the seek still works with Left/Right.
+const hideSeekLine = Capacitor.isNativePlatform();
 
 // Control overlay for direct (non-iframe) streams. Layout follows the kartoons.to player.
 // Keys on the focused video: Left/Right seek 10s, Up/Down volume, Enter/Space play/pause (desktop; TV handled by useSpatialNav).
@@ -202,6 +206,26 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
     scrubTimer.current = window.setTimeout(commitSeek, 250);
   };
   useEffect(() => () => window.clearTimeout(scrubTimer.current), []);
+  // A press on the seek bar starts a drag: moving only previews, release seeks. A plain click (no drag)
+  // seeks straight away from the change itself.
+  const draggingSeekRef = useRef(false);
+  const handleSeekChange = (value) => {
+    const n = Number(value) || 0;
+    if (draggingSeekRef.current) {
+      previewSeek(n);
+      return;
+    }
+    const v = el();
+    if (v) seekTo(v, n, hlsRef?.current);
+    scrubRef.current = null;
+    setScrub(n);
+    window.clearTimeout(scrubTimer.current);
+    scrubTimer.current = window.setTimeout(() => setScrub(null), 600);
+  };
+  const endSeekDrag = () => {
+    draggingSeekRef.current = false;
+    commitSeek();
+  };
   const toggleMute = () => { const v = el(); if (v) v.muted = !v.muted; };
   const setVolume = (value) => {
     const v = el();
@@ -318,7 +342,7 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
       {/* Row 0: title and CC / audio / quality / settings. Opacity only, so the bar still takes mouse input while faded. */}
       <div
         data-direct-row="0"
-        className={`flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-4 pb-8 pt-3 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        className={`flex items-start justify-between gap-2 bg-gradient-to-b from-black/70 to-transparent px-4 ${hideSeekLine ? 'pb-4' : 'pb-8'} pt-3 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
       >
         <div className="min-w-0 truncate text-sm font-semibold text-white/95">{title}</div>
         <div className="flex shrink-0 items-center gap-1">
@@ -339,7 +363,7 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
 
       {/* Popup menu for the open option */}
       {openMenu && (
-        <div data-direct-menu="true" className="absolute right-3 top-14 max-h-[60%] w-60 overflow-y-auto rounded-xl border border-white/10 bg-black/90 p-2 text-sm text-white shadow-xl">
+        <div data-direct-menu="true" className="absolute right-3 top-14 z-30 max-h-[60%] w-60 overflow-y-auto rounded-xl border border-white/10 bg-black/90 p-2 text-sm text-white shadow-xl">
           <div className="px-2 pb-1 text-xs font-bold uppercase tracking-wider text-white/60">{openMenu.title}</div>
           {openMenu.items.length === 0 ? (
             <div className="px-2 py-2 text-white/60">Not available for this stream</div>
@@ -368,12 +392,12 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
       {/* Row 1: -10s / play-pause / +10s */}
       <div
         data-direct-row="1"
-        className={`flex items-center justify-center gap-10 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        className={`flex items-center justify-center ${hideSeekLine ? 'gap-6' : 'gap-10'} transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
       >
         <button type="button" className={ICON_BTN} onClick={() => skip(-10)} aria-label="Back 10 seconds">
           <i className="fas fa-undo text-xl" />
         </button>
-        <button type="button" className={`${ICON_BTN} h-16 w-16 bg-black/30`} onClick={togglePlay} aria-label={snap.paused ? 'Play' : 'Pause'}>
+        <button type="button" className={`${ICON_BTN} ${hideSeekLine ? 'h-12 w-12' : 'h-16 w-16'} bg-black/30`} onClick={togglePlay} aria-label={snap.paused ? 'Play' : 'Pause'}>
           <i className={`fas ${snap.paused ? 'fa-play' : 'fa-pause'} text-2xl`} />
         </button>
         <button type="button" className={ICON_BTN} onClick={() => skip(10)} aria-label="Forward 10 seconds">
@@ -382,7 +406,7 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
       </div>
 
       {/* Bottom: seek line and transport row */}
-      <div style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)' }} className={`bg-gradient-to-t from-black/80 to-transparent px-3 pt-8 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}>
+      <div style={{ paddingBottom: hideSeekLine ? 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' : 'calc(env(safe-area-inset-bottom, 0px) + 1.25rem)' }} className={`bg-gradient-to-t from-black/80 to-transparent px-3 ${hideSeekLine ? 'pt-4' : 'pt-8'} transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}>
         <div data-direct-row="2" className="group relative mb-1 flex h-5 items-center">
           {(() => {
             const dur = snap.duration || 0;
@@ -390,12 +414,12 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
             const pct = (x) => (dur > 0 ? Math.max(0, Math.min(100, (x / dur) * 100)) : 0);
             return (
               <>
-                <div className="pointer-events-none absolute inset-x-0 h-1 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-1.5 group-focus-within:h-1.5">
+                <div className={`pointer-events-none absolute inset-x-0 h-1 overflow-hidden rounded-full bg-white/25 transition-all group-hover:h-1.5 group-focus-within:h-1.5${hideSeekLine ? ' opacity-0 group-focus-within:opacity-100' : ''}`}>
                   <div className="absolute inset-y-0 left-0 bg-white/40" style={{ width: `${pct(snap.buffered)}%` }} />
                   <div className="absolute inset-y-0 left-0 bg-red-600" style={{ width: `${pct(shown)}%` }} />
                 </div>
                 <div
-                  className={`pointer-events-none absolute h-3 w-3 -translate-x-1/2 rounded-full bg-red-600 transition-transform group-hover:scale-125 group-focus-within:scale-125 ${snap.seeking ? 'animate-pulse' : ''}`}
+                  className={`pointer-events-none absolute h-3 w-3 -translate-x-1/2 rounded-full bg-red-600 transition-transform group-hover:scale-125 group-focus-within:scale-125 ${snap.seeking ? 'animate-pulse' : ''}${hideSeekLine ? ' opacity-0 group-focus-within:opacity-100' : ''}`}
                   style={{ left: `${pct(shown)}%` }}
                 />
                 <input
@@ -406,8 +430,11 @@ export function DirectVideoControls({ videoRef, hlsRef, isTv, title, onToggleFul
                   max={dur || 1}
                   step={0.1}
                   value={Math.min(shown, dur || 1)}
-                  onChange={(e) => previewSeek(e.target.value)}
-                  onPointerUp={commitSeek}
+                  onChange={(e) => handleSeekChange(e.target.value)}
+                  onPointerDown={() => { draggingSeekRef.current = true; }}
+                  onPointerUp={endSeekDrag}
+                  onPointerCancel={endSeekDrag}
+                  onMouseUp={() => { draggingSeekRef.current = false; }}
                   onBlur={commitSeek}
                   disabled={!dur}
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
