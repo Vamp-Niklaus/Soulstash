@@ -3,21 +3,24 @@
  * Soulstash - Letterboxd List Importer & Automation
  * 
  * Scrapes movie lists from any Letterboxd URL using browser automation (Playwright),
- * enriches them with TMDB metadata (posters, backdrops, ratings, IDs),
- * and saves them into ready-to-use Soulstash collection JSON files.
+ * enriches them with TMDB metadata (posters, backdrops, ratings, IDs, IMDb ID, IMDb rating),
+ * formats them in the EXACT Soulstash MongoDB collection document schema,
+ * and saves them into ready-to-use JSON files or directly into MongoDB!
  * 
  * Usage:
  *   node scripts/import_letterboxd.mjs <letterboxd-url> [options]
  * 
  * Options:
- *   --browser          Open a visible browser window (Edge/Chrome) so you can watch the automation
- *   --pages=<n>        Number of pages to scrape (default: 1)
- *   --out=<filepath>   Custom output path (default: collections/<slug>.json)
- *   --tmdb-key=<key>   Override TMDB API Key
+ *   --browser                  Open a visible browser window (Edge/Chrome) to watch automation live
+ *   --pages=<n>                Number of pages to scrape (default: 1)
+ *   --out=<filepath>           Custom output JSON path (default: collections/<slug>.json)
+ *   --username=<user>          Directly import into this user's account in MongoDB
+ *   --collection=<name>        Target collection name in MongoDB
  * 
  * Examples:
  *   node scripts/import_letterboxd.mjs https://letterboxd.com/films/popular/ --browser
  *   node scripts/import_letterboxd.mjs https://letterboxd.com/jack/list/official-top-250-films-with-the-most/ --pages=2
+ *   node scripts/import_letterboxd.mjs https://letterboxd.com/films/popular/ --username=admin --collection="Popular Films"
  */
 
 import fs from 'node:fs';
@@ -56,6 +59,8 @@ let targetUrl = '';
 let visibleBrowser = false;
 let maxPages = 1;
 let customOutPath = '';
+let targetUsername = '';
+let targetCollectionName = '';
 
 for (const arg of args) {
   if (arg === '--browser' || arg === '--visible') {
@@ -64,6 +69,10 @@ for (const arg of args) {
     maxPages = Math.max(1, parseInt(arg.split('=')[1], 10) || 1);
   } else if (arg.startsWith('--out=')) {
     customOutPath = arg.split('=')[1];
+  } else if (arg.startsWith('--username=')) {
+    targetUsername = arg.split('=')[1].trim();
+  } else if (arg.startsWith('--collection=')) {
+    targetCollectionName = arg.split('=')[1].trim();
   } else if (arg.startsWith('http://') || arg.startsWith('https://')) {
     targetUrl = arg;
   }
@@ -77,13 +86,15 @@ Usage:
   node scripts/import_letterboxd.mjs <letterboxd-url> [options]
 
 Options:
-  --browser        Open a visible browser window (watch the automation live)
-  --pages=<number> Number of pages to import (default: 1)
-  --out=<path>     Custom output file path
+  --browser            Open a visible browser window (watch the automation live)
+  --pages=<number>     Number of pages to import (default: 1)
+  --out=<path>         Custom output file path
+  --username=<user>    Directly save into user's account in MongoDB
+  --collection=<name>  Collection name in user's account
 
 Examples:
   node scripts/import_letterboxd.mjs https://letterboxd.com/films/popular/ --browser
-  node scripts/import_letterboxd.mjs https://letterboxd.com/jack/list/official-top-250-films-with-the-most/ --pages=2
+  node scripts/import_letterboxd.mjs https://letterboxd.com/films/popular/ --username=admin --collection="Popular Films"
 `);
   process.exit(0);
 }
@@ -99,7 +110,7 @@ function parsePosterAlt(altText) {
   };
 }
 
-// Search TMDB / Soulstash backend for movie details
+// Search TMDB / Soulstash backend for movie search result
 async function searchTmdb(title, year) {
   if (!title) return null;
   const cleanTitle = title.replace(/[^\w\s-]/g, ' ').trim();
@@ -134,6 +145,20 @@ async function searchTmdb(title, year) {
     }
   } catch (_) {}
 
+  return null;
+}
+
+// Fetch detailed movie info from backend (gets verified IMDb ID, IMDb rating, and backdrops)
+async function fetchMovieDetails(id) {
+  if (!id) return null;
+  try {
+    const res = await fetch(`https://soulstash-backend.onrender.com/api/movie/${id}`, {
+      signal: AbortSignal.timeout(4000)
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (_) {}
   return null;
 }
 
@@ -226,7 +251,7 @@ async function run() {
   }
 
   console.log(`\n\x1b[32m✔ Total unique movies found: ${allExtractedFilms.length}\x1b[0m`);
-  console.log(`🎬 Matching titles with TMDB metadata (concurrent batches)...`);
+  console.log(`🎬 Matching titles with TMDB & IMDb metadata (concurrent batches)...`);
 
   const matchedMovies = [];
   const BATCH_SIZE = 8;
@@ -236,50 +261,69 @@ async function run() {
       chunk.map(async (film) => {
         const tmdbData = await searchTmdb(film.title, film.year);
         if (tmdbData && (tmdbData.poster_path || tmdbData.backdrop_path || tmdbData.id)) {
-          const poster = tmdbData.poster_path ? (tmdbData.poster_path.startsWith('http') ? tmdbData.poster_path : `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}`) : '';
-          const backdrop = tmdbData.backdrop_path ? (tmdbData.backdrop_path.startsWith('http') ? tmdbData.backdrop_path : `https://image.tmdb.org/t/p/w1280${tmdbData.backdrop_path}`) : '';
-          const voteAvg = Number(tmdbData.vote_average ?? tmdbData.voteAverage) || 0;
-          const lang = tmdbData.originalLanguage || tmdbData.original_language || '';
-          const genreIds = Array.isArray(tmdbData.genre_ids) ? tmdbData.genre_ids : (Array.isArray(tmdbData.genres) ? tmdbData.genres.map(g => g.id) : []);
-          
+          const idNum = Number(tmdbData.id) || tmdbData.id;
+          let details = null;
+          if (typeof idNum === 'number' && !isNaN(idNum)) {
+            details = await fetchMovieDetails(idNum);
+          }
+          const data = details || tmdbData;
+
+          // TMDB relative poster & backdrop paths (with leading slash)
+          const rawPoster = data.poster_path || tmdbData.poster_path || '';
+          const rawBackdrop = data.backdrop_path || tmdbData.backdrop_path || '';
+          const cleanPoster = rawPoster ? (rawPoster.startsWith('/') ? rawPoster : `/${rawPoster.replace(/^https?:\/\/[^\/]+\/(t\/p\/[^\/]+)?\/?/, '')}`) : '';
+          const cleanBackdrop = rawBackdrop ? (rawBackdrop.startsWith('/') ? rawBackdrop : `/${rawBackdrop.replace(/^https?:\/\/[^\/]+\/(t\/p\/[^\/]+)?\/?/, '')}`) : '';
+
+          const isSeries = data.media_type === 'Series' || data.type === 'tv' || tmdbData.media_type === 'Series';
+          const lang = data.originalLanguage || data.original_language || tmdbData.originalLanguage || tmdbData.original_language || '';
+          const genreIds = Array.isArray(data.genre_ids) ? data.genre_ids : (Array.isArray(tmdbData.genre_ids) ? tmdbData.genre_ids : []);
+
           // Detect Anime: Japanese language + Animation genre (16), or explicit anime flags
           const isAnime = Boolean(
+            data.isAnime ||
             tmdbData.isAnime ||
-            tmdbData.is_anime ||
-            ((lang === 'ja' || tmdbData.originCountry === 'JP' || tmdbData.origin_country?.includes('JP')) &&
-             (genreIds.includes(16) || tmdbData.type === 'anime' || /anime/i.test(film.slug || '')))
+            ((lang === 'ja' || data.originCountry === 'JP' || tmdbData.originCountry === 'JP') &&
+             (genreIds.includes(16) || data.genres?.some(g => g.id === 16 || g.name === 'Animation') || /anime/i.test(film.slug || '')))
           );
 
+          const voteAvg = Number(data.vote_average ?? tmdbData.vote_average ?? data.voteAverage) || 0;
+          const imdbRating = data.imdb_rating != null ? Number(Number(data.imdb_rating).toFixed(1)) : null;
+
+          // Exact 1:1 Soulstash MongoDB collection document format:
           return {
-            id: tmdbData.id,
-            title: tmdbData.title || film.title,
-            name: tmdbData.title || film.title,
-            poster_path: poster,
-            backdrop_path: backdrop,
-            release_date: tmdbData.release_date || (film.year ? `${film.year}-01-01` : ''),
-            vote_average: voteAvg,
-            overview: tmdbData.overview || '',
-            media_type: 'Movie',
+            movieId: isSeries ? null : idNum,
+            seriesId: isSeries ? idNum : null,
+            id: idNum,
+            title: data.title || tmdbData.title || film.title,
+            poster_path: cleanPoster,
+            backdrop_path: cleanBackdrop,
+            release_date: data.release_date || tmdbData.release_date || (film.year ? `${film.year}-01-01` : ''),
+            first_air_date: data.first_air_date || '',
+            media_type: isSeries ? 'Series' : 'Movie',
             isAnime,
-            original_language: lang,
-            genre_ids: genreIds,
-            letterboxd_slug: film.slug || ''
+            vote_average: Number(voteAvg.toFixed(2)),
+            imdb_id: data.imdb_id || '',
+            imdb_rating: imdbRating,
+            addedAt: new Date().toISOString()
           };
         }
+
+        // Fallback item
         return {
+          movieId: `lb-${film.slug || Buffer.from(film.title).toString('hex').slice(0, 10)}`,
+          seriesId: null,
           id: `lb-${film.slug || Buffer.from(film.title).toString('hex').slice(0, 10)}`,
           title: film.title,
-          name: film.title,
           poster_path: '',
           backdrop_path: '',
           release_date: film.year ? `${film.year}-01-01` : '',
-          vote_average: 0,
-          overview: '',
+          first_air_date: '',
           media_type: 'Movie',
           isAnime: false,
-          original_language: '',
-          genre_ids: [],
-          letterboxd_slug: film.slug || ''
+          vote_average: 0,
+          imdb_id: '',
+          imdb_rating: null,
+          addedAt: new Date().toISOString()
         };
       })
     );
@@ -289,7 +333,7 @@ async function run() {
     await new Promise(r => setTimeout(r, 100));
   }
 
-  console.log(`\n\x1b[32m✔ Successfully resolved all ${matchedMovies.length} movies!\x1b[0m`);
+  console.log(`\n\x1b[32m✔ Successfully resolved all ${matchedMovies.length} movies in Soulstash MongoDB schema!\x1b[0m`);
 
   // Generate output file
   const urlParts = targetUrl.replace(/\/+$/, '').split('/');
@@ -313,10 +357,70 @@ async function run() {
   console.log(`\n\x1b[32m🎉 Collection saved successfully to:\x1b[0m`);
   console.log(`📁 ${outFilePath}`);
   console.log(`📊 Total titles: ${matchedMovies.length}`);
-  console.log(`\nSample top 5 matched movies:`);
-  matchedMovies.slice(0, 5).forEach((m, i) => {
-    console.log(`  ${i + 1}. ${m.title} (${m.release_date ? m.release_date.slice(0, 4) : 'N/A'}) - TMDB ID: ${m.id}`);
-  });
+  console.log(`\nSample top 3 matched movies (100% database schema):`);
+  console.log(JSON.stringify(matchedMovies.slice(0, 3), null, 2));
+
+  // If user passed --username, save directly into MongoDB!
+  if (targetUsername) {
+    const mongoUri = process.env._MONGODB_URI || process.env.MONGODB_URI;
+    const dbName = process.env._MONGODB_DB_NAME || process.env.MONGODB_DB_NAME || 'tmdb';
+    if (mongoUri) {
+      try {
+        console.log(`\nConnecting to MongoDB to save collection for @${targetUsername}...`);
+        const { MongoClient } = await import('mongodb');
+        const client = new MongoClient(mongoUri);
+        await client.connect();
+        const db = client.db(dbName);
+        const usersCol = db.collection('users');
+
+        const user = await usersCol.findOne({ username: new RegExp(`^${targetUsername}$`, 'i') });
+        if (!user) {
+          console.warn(`User "${targetUsername}" not found in MongoDB.`);
+        } else {
+          const colName = targetCollectionName || collectionData.name;
+          const collections = Array.isArray(user.collections) ? user.collections : [];
+          let targetCol = collections.find(c => c.name?.toLowerCase() === colName.toLowerCase());
+
+          if (targetCol) {
+            const existingIds = new Set((targetCol.movies || []).map(m => String(m.id || m.movieId)));
+            const newMovies = matchedMovies.filter(m => !existingIds.has(String(m.id || m.movieId)));
+            targetCol.movies = [...(targetCol.movies || []), ...newMovies];
+            targetCol.movieCount = targetCol.movies.length;
+            targetCol.updatedAt = new Date();
+          } else {
+            targetCol = {
+              name: colName,
+              description: `Imported from Letterboxd: ${targetUrl}`,
+              isDeletable: true,
+              isPublic: true,
+              isPublished: false,
+              banner: matchedMovies[0]?.backdrop_path || '',
+              movieCount: matchedMovies.length,
+              movies: matchedMovies,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            };
+            collections.push(targetCol);
+          }
+
+          await usersCol.updateOne(
+            { _id: user._id },
+            { 
+              $set: { 
+                collections,
+                collectionVersion: (user.collectionVersion || 0) + 1,
+                updatedAt: new Date()
+              } 
+            }
+          );
+          console.log(`\x1b[32m✔ Successfully updated collection "${colName}" for user @${user.username} in MongoDB!\x1b[0m`);
+        }
+        await client.close();
+      } catch (mongoErr) {
+        console.warn(`Could not save to MongoDB:`, mongoErr.message);
+      }
+    }
+  }
 
   await browser.close();
   process.exit(0);
