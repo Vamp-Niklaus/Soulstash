@@ -1,4 +1,3 @@
-
 node_modules/
 android/.gradle/
 android/.idea/
@@ -14,9 +13,9 @@ android/app/src/test/
 *.jks
 src-tauri/icons/android/
 archive/
-MCP/
 .env
 .env.*
+!.env.example
 *.log
 .cache/
 .vite/
@@ -39,13 +38,12 @@ fixdb.js
 .env2
 environment
 
-
 # Binaries
 *.apk
+!Kartoons/*.apk
 *.exe
 
 # AI and Readmes
-CLAUDE_CONTEXT.md
 SPA-README.md
 
 # Unnecessary Configs
@@ -57,6 +55,4 @@ extra_files/
 New Text Document.txt
 spa/public/test.html
 source_docs/
-graphify-out/
 release-*/
-
