@@ -157,6 +157,11 @@ public class MainActivity extends BridgeActivity {
     public void onStart() {
         super.onStart();
         if (this.bridge != null && this.bridge.getWebView() != null) {
+            // Popups must reach onCreateWindow (blocked below), and scripts may not open windows on their own.
+            android.webkit.WebSettings webSettings = this.bridge.getWebView().getSettings();
+            webSettings.setSupportMultipleWindows(true);
+            webSettings.setJavaScriptCanOpenWindowsAutomatically(false);
+
             // Handle iframe fullscreen (Android native) by extending Capacitor's BridgeWebChromeClient
             this.bridge.getWebView().setWebChromeClient(new BridgeWebChromeClient(this.bridge) {
                 @Override
@@ -206,10 +211,23 @@ public class MainActivity extends BridgeActivity {
                     // Prevent Android WebView from displaying the giant default play button poster
                     return android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
                 }
+
+                @Override
+                public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+                    // Embedded players open popups and new tabs for ads and external links. Never create the
+                    // window, so nothing is handed to Capacitor (which would open the browser).
+                    android.util.Log.w("MainActivity", "Blocked popup window request");
+                    return false;
+                }
             });
 
-            // Handle download links (APKs, files) by opening external intent
+            // Downloads: only the app's own hosts may hand a file to Android. Anything else (for example a
+            // download started by an ad inside an embedded player) is dropped, so no open-with prompt appears.
             this.bridge.getWebView().setDownloadListener((downloadUrl, userAgent, contentDisposition, mimetype, contentLength) -> {
+                if (!isTrustedDownloadHost(downloadUrl)) {
+                    android.util.Log.w("MainActivity", "Blocked download from " + downloadUrl);
+                    return;
+                }
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl));
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -219,35 +237,69 @@ public class MainActivity extends BridgeActivity {
                 }
             });
 
-            // Handle URL navigation
+            // URL navigation: nothing is ever opened outside the app.
+            //  - Main frame: only the app's own pages load. Any other URL is dropped (no browser, no chooser).
+            //  - Embedded frames (players): http/https pages load inside the frame itself, including redirects
+            //    and link clicks. Other schemes (intent:, market:, mailto:, tel:, app deep links) are dropped.
             this.bridge.getWebView().setWebViewClient(new BridgeWebViewClient(this.bridge) {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                    String url = request.getUrl().toString();
+                    Uri uri = request.getUrl();
+                    String url = uri.toString();
 
                     if (request.isForMainFrame()) {
-                        boolean isAllowed = url.startsWith("http://localhost") ||
-                                            url.startsWith("https://localhost") ||
-                                            url.startsWith("capacitor://localhost") ||
-                                            url.startsWith("https://soulstash.onrender.com") ||
-                                            url.startsWith("content://") ||
-                                            url.startsWith("file://");
-
-                        if (!isAllowed) {
-                            try {
-                                Intent intent = new Intent(Intent.ACTION_VIEW, request.getUrl());
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                startActivity(intent);
-                            } catch (Exception e) {
-                                android.util.Log.e("MainActivity", "External browser intent error", e);
-                            }
-                            return true;
+                        if (isAppUrl(url)) {
+                            return super.shouldOverrideUrlLoading(view, request);
                         }
+                        android.util.Log.w("MainActivity", "Blocked main-frame navigation to " + url);
+                        return true;
                     }
 
-                    return super.shouldOverrideUrlLoading(view, request);
+                    String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+                    if (scheme.equals("http") || scheme.equals("https") || scheme.equals("about")
+                            || scheme.equals("blob") || scheme.equals("data")) {
+                        return false;
+                    }
+                    android.util.Log.w("MainActivity", "Blocked frame navigation to " + url);
+                    return true;
+                }
+
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                    // Only used by very old WebViews that give no frame information: stay inside the app.
+                    if (isAppUrl(url)) {
+                        return super.shouldOverrideUrlLoading(view, url);
+                    }
+                    android.util.Log.w("MainActivity", "Blocked navigation to " + url);
+                    return true;
                 }
             });
+        }
+    }
+
+    // Pages that belong to the app itself. Everything else is never opened outside the app.
+    private static boolean isAppUrl(String url) {
+        return url.startsWith("http://localhost") ||
+               url.startsWith("https://localhost") ||
+               url.startsWith("capacitor://localhost") ||
+               url.startsWith("https://soulstash.onrender.com") ||
+               url.startsWith("content://") ||
+               url.startsWith("file://");
+    }
+
+    // Hosts allowed to hand a downloaded file to Android (app updates and the app's own servers).
+    private static boolean isTrustedDownloadHost(String url) {
+        try {
+            String host = Uri.parse(url).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase();
+            return host.equals("localhost")
+                || host.equals("soulstash.onrender.com")
+                || host.equals("soulstash-backend.onrender.com")
+                || host.equals("github.com")
+                || host.endsWith(".githubusercontent.com");
+        } catch (Exception e) {
+            return false;
         }
     }
 }

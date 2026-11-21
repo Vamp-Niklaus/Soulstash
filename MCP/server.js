@@ -28,8 +28,14 @@ const MEMORY_PATH = path.join(MCP_DIR, 'memory.md');
 const HISTORY_PATH = path.join(MCP_DIR, 'history.json');
 const INDEX_REFRESH_MS = 2000;
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024;
-const MAX_SEARCH_RESULTS = 250;
-const MAX_MATCHES_PER_FILE = 50;
+const MAX_SEARCH_RESULTS = 40;
+const MAX_MATCHES_PER_FILE = 8;
+const MAX_READ_LINES = 400; // default read_file window when no end_line is given
+const MAX_LINE_CHARS = 300; // long (minified) lines are clipped so they cannot flood the output
+const SKIP_PATH_PREFIXES = ['android/app/src/main/assets/public', 'android/app/build', 'graphify-out', 'old-backend-no-longer-used'];
+function clipLine(text, max = MAX_LINE_CHARS) {
+  return text.length > max ? `${text.slice(0, max)}... [+${text.length - max} chars]` : text;
+}
 const MAX_DIFF_BYTES = 300 * 1024;
 
 const SKIP_DIRS = new Set([
@@ -157,6 +163,10 @@ function buildFileIndex(force = false) {
     for (const entry of entries) {
       if (shouldSkipName(entry.name)) continue;
       if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue;
+      {
+        const relForSkip = toRelative(path.join(dir, entry.name));
+        if (SKIP_PATH_PREFIXES.some((prefix) => relForSkip === prefix || relForSkip.startsWith(`${prefix}/`))) continue;
+      }
 
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -253,7 +263,7 @@ function searchInFiles({ pattern, files, isRegex = false, caseSensitive = false 
 
       matches.push({
         line: index + 1,
-        text: line.trimEnd()
+        text: clipLine(line.trimEnd())
       });
 
       if (matches.length >= MAX_MATCHES_PER_FILE) break;
@@ -758,12 +768,12 @@ function handleTool(name, input = {}) {
       const raw = readTextFile(fullPath, input.path);
       const lines = raw.split('\n');
       const start = input.start_line ? Math.max(1, Number(input.start_line)) - 1 : 0;
-      const end = input.end_line ? Math.min(lines.length, Number(input.end_line)) : lines.length;
-      const slice = lines.slice(start, end);
+      const end = input.end_line ? Math.min(lines.length, Number(input.end_line)) : Math.min(lines.length, start + MAX_READ_LINES);
+      const slice = lines.slice(start, end).map((line) => clipLine(line.replace(/\r$/, ''), 400));
       return {
         path: input.path,
         total_lines: lines.length,
-        shown: `lines ${start + 1}-${start + slice.length}`,
+        shown: `lines ${start + 1}-${start + slice.length}${start + slice.length < lines.length ? ` (more lines remain; pass start_line=${start + slice.length + 1})` : ''}`,
         content: withLineNumbers(slice, start)
       };
     }
@@ -783,15 +793,22 @@ function handleTool(name, input = {}) {
     case 'edit_file': {
       const fullPath = safePath(input.path);
       const original = readTextFile(fullPath, input.path);
-      if (!original.includes(input.old_text)) {
+      // CRLF files: multi-line old_text written with \n still matches.
+      let oldText = input.old_text;
+      let newText = input.new_text;
+      if (!original.includes(oldText) && original.includes('\r\n')) {
+        oldText = oldText.replace(/\r?\n/g, '\r\n');
+        newText = newText.replace(/\r?\n/g, '\r\n');
+      }
+      if (!original.includes(oldText)) {
         throw new Error(
           `Text not found in "${input.path}".\n` +
           `Searched for: ${input.old_text.slice(0, 120)}\n` +
           'Tip: use read_file first to confirm the exact text.'
         );
       }
-      const replacements = original.split(input.old_text).length - 1;
-      const updated = original.split(input.old_text).join(input.new_text);
+      const replacements = original.split(oldText).length - 1;
+      const updated = original.split(oldText).join(newText);
       fs.writeFileSync(fullPath, updated, 'utf8');
       buildFileIndex(true);
       return { success: true, replacements, path: input.path };

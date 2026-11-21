@@ -1992,6 +1992,7 @@ export function VideoPlayerModal({ request, onClose }) {
                   <i className={`${getZoomIcon()} text-xs`}></i>
                 </button>
               )}
+              {!Capacitor.isNativePlatform() && (
               <a
                 data-player-action="true"
                 data-tv-allow-link
@@ -2007,6 +2008,7 @@ export function VideoPlayerModal({ request, onClose }) {
               >
                 <i className="fas fa-external-link-alt text-xs"></i>
               </a>
+              )}
               <button
                 type="button"
                 data-player-action="true"
@@ -2132,9 +2134,11 @@ export function VideoPlayerModal({ request, onClose }) {
             ) : !canEmbedSource ? (
               <div className="flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center">
                 <p className="max-w-lg text-sm leading-6 text-white/70 sm:text-base">
-                  This source opens best in a new tab.
+                  {Capacitor.isNativePlatform() ? 'This source cannot play inside the app.' : 'This source opens best in a new tab.'}
                 </p>
-                {isTv ? (
+                {Capacitor.isNativePlatform() ? (
+                  <p className="text-xs text-white/60">Pick another source below to keep watching.</p>
+                ) : isTv ? (
                   <p className="text-xs text-white/60">Use Open Provider in the top bar to open this stream.</p>
                 ) : (
                   <a
@@ -2228,19 +2232,6 @@ export function VideoPlayerModal({ request, onClose }) {
                   referrerPolicy={activeUrl.includes('youtube.com') || activeUrl.includes('youtube-nocookie.com') || activeUrl.includes('kartoons') ? 'strict-origin-when-cross-origin' : 'no-referrer'}
                   title="Soulstash Player"
                 />
-                {Capacitor.isNativePlatform() && (activeUrl.includes('youtube.com') || activeUrl.includes('youtu.be') || activeUrl.includes('youtube-nocookie.com')) && (
-                  <div className="absolute top-4 right-4 z-[1000001]">
-                    <a
-                      href={activeUrl.replace('youtube-nocookie.com/embed/', 'youtube.com/watch?v=').replace('youtube.com/embed/', 'youtube.com/watch?v=').split('&')[0]}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-2 rounded-full bg-[#FF0000]/90 px-4 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-[#FF0000] sm:text-sm"
-                    >
-                      <i className="fab fa-youtube text-base" />
-                      <span>Open in App</span>
-                    </a>
-                  </div>
-                )}
               </div>
             )}
 
