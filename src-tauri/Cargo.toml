@@ -1,6 +1,6 @@
 [package]
 name = "soulstash"
-version = "4.2.9"
+version = "4.2.10"
 description = "Soulstash desktop app"
 authors = ["Soulstash"]
 edition = "2024"

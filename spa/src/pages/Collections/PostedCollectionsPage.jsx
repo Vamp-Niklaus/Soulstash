@@ -7,7 +7,7 @@ import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 import { normalizeStoredCollectionItem } from '../../utils/formatters.js';
 import { HOME_GRID_CLASS } from '../../utils/constants.js';
-import { useHomeTwoRowLimit } from '../../hooks/index.js';
+import { useHomeTwoRowLimit, useSessionState } from '../../hooks/index.js';
 import {
   isTmdbSource,
   isLetterboxdSource,
@@ -19,16 +19,45 @@ import {
 
 export function PostedCollectionsPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'letterboxd', 'tmdb', 'community'
-  const [visibleCount, setVisibleCount] = useState(8);
-  const [tmdbPage, setTmdbPage] = useState(1);
-  const [accumulatedTmdb, setAccumulatedTmdb] = useState([]);
+  // Persistent states across page navigation / back button
+  const [activeTab, setActiveTab] = useSessionState('posted_collections:tab', 'all'); // 'all', 'letterboxd', 'tmdb', 'community'
+  const [visibleCount, setVisibleCount] = useSessionState('posted_collections:visibleCount', 8);
+  const [tmdbPage, setTmdbPage] = useSessionState('posted_collections:tmdbPage', 1);
+  const [accumulatedTmdb, setAccumulatedTmdb] = useSessionState('posted_collections:accumulatedTmdb', []);
+  const [letterboxdPage, setLetterboxdPage] = useSessionState('posted_collections:letterboxdPage', 1);
+  const [accumulatedLetterboxd, setAccumulatedLetterboxd] = useSessionState('posted_collections:accumulatedLetterboxd', []);
+
   const [isFetchingMoreTmdb, setIsFetchingMoreTmdb] = useState(false);
+  const [isFetchingMoreLetterboxd, setIsFetchingMoreLetterboxd] = useState(false);
   const homeShelfLimit = useHomeTwoRowLimit();
   const sentinelRef = useRef(null);
 
   useEffect(() => {
     document.title = 'Lists | Soulstash';
+  }, []);
+
+  // Scroll restoration on mount & scroll save on user movement
+  useEffect(() => {
+    const savedY = sessionStorage.getItem('posted_collections:scrollY');
+    if (savedY != null) {
+      const y = parseInt(savedY, 10);
+      if (!isNaN(y) && y > 0) {
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            window.scrollTo({ top: y, behavior: 'instant' });
+          }, 40);
+        });
+      }
+    }
+    const handleScroll = () => {
+      if (window.scrollY > 0) {
+        sessionStorage.setItem('posted_collections:scrollY', String(window.scrollY));
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
   }, []);
 
   // 1. User published collections
@@ -38,13 +67,24 @@ export function PostedCollectionsPage() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // 2. Letterboxd curated lists
-  const { data: letterboxdRawData, isPending: letterboxdPending } = useQuery({
-    queryKey: ['letterboxdCollections'],
-    queryFn: () => apiFetch('/api/collections/letterboxd'),
+  // 2. Initial Letterboxd curated lists
+  const { data: letterboxdInitialData, isPending: letterboxdPending } = useQuery({
+    queryKey: ['letterboxdCollections', 1],
+    queryFn: () => apiFetch('/api/collections/letterboxd?page=1&limit=10'),
     staleTime: 6 * 60 * 60 * 1000,
     retry: false,
   });
+
+  useEffect(() => {
+    if (Array.isArray(letterboxdInitialData) && letterboxdInitialData.length > 0) {
+      setAccumulatedLetterboxd((prev) => {
+        const existing = Array.isArray(prev) ? prev : [];
+        const existingSlugs = new Set(existing.map((c) => c?.slug || c?.name || c?.collection?.name));
+        const newItems = letterboxdInitialData.filter((c) => !existingSlugs.has(c?.slug || c?.name || c?.collection?.name));
+        return existing.length === 0 ? letterboxdInitialData : [...existing, ...newItems];
+      });
+    }
+  }, [letterboxdInitialData, setAccumulatedLetterboxd]);
 
   // 3. Initial page of TMDB franchises
   const { data: tmdbInitialData, isPending: tmdbPending } = useQuery({
@@ -57,26 +97,28 @@ export function PostedCollectionsPage() {
   useEffect(() => {
     if (Array.isArray(tmdbInitialData) && tmdbInitialData.length > 0) {
       setAccumulatedTmdb((prev) => {
-        const existingIds = new Set(prev.map((c) => c.tmdbId));
-        const newItems = tmdbInitialData.filter((c) => !existingIds.has(c.tmdbId));
-        return prev.length === 0 ? tmdbInitialData : [...prev, ...newItems];
+        const existing = Array.isArray(prev) ? prev : [];
+        const existingIds = new Set(existing.map((c) => c?.tmdbId));
+        const newItems = tmdbInitialData.filter((c) => !existingIds.has(c?.tmdbId));
+        return existing.length === 0 ? tmdbInitialData : [...existing, ...newItems];
       });
     }
-  }, [tmdbInitialData]);
+  }, [tmdbInitialData, setAccumulatedTmdb]);
 
   // Infinite loader for TMDB franchises
   const loadNextTmdbBatch = useCallback(async () => {
     if (isFetchingMoreTmdb) return;
     setIsFetchingMoreTmdb(true);
-    const nextPage = tmdbPage + 1;
+    const nextPage = (tmdbPage || 1) + 1;
     try {
       const data = await apiFetch(`/api/tmdb-collections/featured?page=${nextPage}&limit=12`);
+      setTmdbPage(nextPage);
       if (Array.isArray(data) && data.length > 0) {
-        setTmdbPage(nextPage);
         setAccumulatedTmdb((prev) => {
-          const existingIds = new Set(prev.map((c) => c.tmdbId));
-          const fresh = data.filter((c) => !existingIds.has(c.tmdbId));
-          return [...prev, ...fresh];
+          const existing = Array.isArray(prev) ? prev : [];
+          const existingIds = new Set(existing.map((c) => c?.tmdbId));
+          const fresh = data.filter((c) => !existingIds.has(c?.tmdbId));
+          return [...existing, ...fresh];
         });
       }
     } catch (err) {
@@ -84,7 +126,30 @@ export function PostedCollectionsPage() {
     } finally {
       setIsFetchingMoreTmdb(false);
     }
-  }, [tmdbPage, isFetchingMoreTmdb]);
+  }, [tmdbPage, isFetchingMoreTmdb, setTmdbPage, setAccumulatedTmdb]);
+
+  // Infinite loader for Letterboxd curated collections
+  const loadNextLetterboxdBatch = useCallback(async () => {
+    if (isFetchingMoreLetterboxd) return;
+    setIsFetchingMoreLetterboxd(true);
+    const nextPage = (letterboxdPage || 1) + 1;
+    try {
+      const data = await apiFetch(`/api/collections/letterboxd?page=${nextPage}&limit=10`);
+      setLetterboxdPage(nextPage);
+      if (Array.isArray(data) && data.length > 0) {
+        setAccumulatedLetterboxd((prev) => {
+          const existing = Array.isArray(prev) ? prev : [];
+          const existingSlugs = new Set(existing.map((c) => c?.slug || c?.name || c?.collection?.name));
+          const fresh = data.filter((c) => !existingSlugs.has(c?.slug || c?.name || c?.collection?.name));
+          return [...existing, ...fresh];
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to fetch more Letterboxd collections:', err);
+    } finally {
+      setIsFetchingMoreLetterboxd(false);
+    }
+  }, [letterboxdPage, isFetchingMoreLetterboxd, setLetterboxdPage, setAccumulatedLetterboxd]);
 
   const toEntry = useCallback((entry) => {
     const col = entry?.collection || entry || {};
@@ -116,13 +181,18 @@ export function PostedCollectionsPage() {
   }, [userRawData, toEntry]);
 
   const parsedLetterboxdLists = useMemo(() => {
-    const list = Array.isArray(letterboxdRawData) ? letterboxdRawData : [];
+    const list = Array.isArray(accumulatedLetterboxd) && accumulatedLetterboxd.length > 0
+      ? accumulatedLetterboxd
+      : (Array.isArray(letterboxdInitialData) ? letterboxdInitialData : []);
     return list.map(toEntry).filter((c) => c.movies.length > 0);
-  }, [letterboxdRawData, toEntry]);
+  }, [accumulatedLetterboxd, letterboxdInitialData, toEntry]);
 
   const parsedTmdbLists = useMemo(() => {
-    return accumulatedTmdb.map(toEntry).filter((c) => c.movies.length > 0);
-  }, [accumulatedTmdb, toEntry]);
+    const list = Array.isArray(accumulatedTmdb) && accumulatedTmdb.length > 0
+      ? accumulatedTmdb
+      : (Array.isArray(tmdbInitialData) ? tmdbInitialData : []);
+    return list.map(toEntry).filter((c) => c.movies.length > 0);
+  }, [accumulatedTmdb, tmdbInitialData, toEntry]);
 
   // Combined and filtered lists
   const filteredEntries = useMemo(() => {
@@ -146,17 +216,22 @@ export function PostedCollectionsPage() {
     [filteredEntries, visibleCount]
   );
 
-  // Infinite scroll observer: advances visibleCount and loads more TMDB franchises dynamically
+  // Infinite scroll observer: advances visibleCount and loads more lists dynamically
   useEffect(() => {
     if (!sentinelRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
           setVisibleCount((prev) => {
-            const next = prev + 6;
-            // When reaching near the end of loaded lists, trigger next page fetch for endless scrolling
-            if (next >= filteredEntries.length - 4 && (activeTab === 'all' || activeTab === 'tmdb')) {
-              loadNextTmdbBatch();
+            const current = typeof prev === 'number' ? prev : 8;
+            const next = current + 6;
+            if (next >= filteredEntries.length - 4) {
+              if (activeTab === 'all' || activeTab === 'letterboxd') {
+                loadNextLetterboxdBatch();
+              }
+              if (activeTab === 'all' || activeTab === 'tmdb') {
+                loadNextTmdbBatch();
+              }
             }
             return next;
           });
@@ -166,9 +241,9 @@ export function PostedCollectionsPage() {
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [filteredEntries.length, activeTab, loadNextTmdbBatch]);
+  }, [filteredEntries.length, activeTab, loadNextTmdbBatch, loadNextLetterboxdBatch, setVisibleCount]);
 
-  const isInitialLoading = userPending && letterboxdPending && tmdbPending;
+  const isInitialLoading = userPending && letterboxdPending && tmdbPending && filteredEntries.length === 0;
 
   return (
     <section className="content-section space-y-6">
@@ -189,7 +264,7 @@ export function PostedCollectionsPage() {
                 setActiveTab(tab.id);
                 setVisibleCount(8);
               }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all whitespace-nowrap outline-none ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all whitespace-nowrap outline-none cursor-pointer ${
                 isActive
                   ? 'bg-white text-black shadow-lg font-bold'
                   : 'bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:text-white'
@@ -270,17 +345,18 @@ export function PostedCollectionsPage() {
 
           {/* Sentinel & Load More for infinite scroll */}
           <div ref={sentinelRef} className="flex flex-col items-center justify-center py-8 gap-3">
-            {isFetchingMoreTmdb ? (
+            {(isFetchingMoreTmdb || isFetchingMoreLetterboxd) ? (
               <div className="flex items-center gap-2 text-sm text-white/50">
                 <i className="fas fa-spinner fa-spin text-amber-400"></i>
                 <span>Loading more lists...</span>
               </div>
-            ) : (activeTab === 'all' || activeTab === 'tmdb') ? (
+            ) : (activeTab === 'all' || activeTab === 'tmdb' || activeTab === 'letterboxd') ? (
               <button
                 type="button"
                 onClick={() => {
-                  setVisibleCount((prev) => prev + 8);
-                  loadNextTmdbBatch();
+                  setVisibleCount((prev) => (typeof prev === 'number' ? prev : 8) + 8);
+                  if (activeTab === 'letterboxd' || activeTab === 'all') loadNextLetterboxdBatch();
+                  if (activeTab === 'tmdb' || activeTab === 'all') loadNextTmdbBatch();
                 }}
                 className="px-6 py-2.5 rounded-full border border-white/10 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
               >
@@ -290,7 +366,7 @@ export function PostedCollectionsPage() {
             ) : visibleCount < filteredEntries.length ? (
               <button
                 type="button"
-                onClick={() => setVisibleCount((prev) => prev + 8)}
+                onClick={() => setVisibleCount((prev) => (typeof prev === 'number' ? prev : 8) + 8)}
                 className="px-6 py-2.5 rounded-full border border-white/10 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
               >
                 <span>Load More Lists</span>

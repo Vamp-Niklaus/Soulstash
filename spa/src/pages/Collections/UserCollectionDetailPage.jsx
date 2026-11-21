@@ -63,19 +63,26 @@ export function UserCollectionDetailPage() {
             source: 'letterboxd'
           }];
         }
-        // 2. From React Query cache
-        const lbFeatured = queryClient.getQueryData(['letterboxdCollections']);
-        if (Array.isArray(lbFeatured)) {
-          const match = lbFeatured.find((f) => {
+        // 2. From React Query cache or session storage
+        let allLb = queryClient.getQueryData(['letterboxdCollections', 1]) || queryClient.getQueryData(['letterboxdCollections']);
+        if (!Array.isArray(allLb) || allLb.length === 0) {
+          try {
+            const raw = sessionStorage.getItem('posted_collections:accumulatedLetterboxd');
+            if (raw) allLb = JSON.parse(raw);
+          } catch (_) {}
+        }
+        if (Array.isArray(allLb)) {
+          const match = allLb.find((f) => {
             const cName = f.collection?.name || f.name || f.slug || '';
-            return cName.toLowerCase() === decodedCollectionName.toLowerCase();
+            return cName.toLowerCase() === decodedCollectionName.toLowerCase() ||
+                   cName.toLowerCase().replace(/[^a-z0-9]+/g, '-') === decodedCollectionName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
           });
           if (match) {
             const colData = match.collection || match;
             const movies = colData.movies || [];
             return [{
               _id: match._id || match.slug || decodedCollectionName,
-              name: colData.name || match.name,
+              name: colData.name || match.name || decodedCollectionName,
               description: colData.description || match.description || '',
               banner: colData.banner || '',
               movieCount: movies.length,

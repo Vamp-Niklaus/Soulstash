@@ -56,8 +56,14 @@ export function AppShell() {
   //  TV / remote D-pad navigation 
   useTvFocus(location);
 
-  // Automatically reset scroll position on route change
+  // Automatically reset scroll position on route change (except when returning to pages with preserved scroll)
   useEffect(() => {
+    if (location.pathname === '/posted-collections') {
+      const saved = sessionStorage.getItem('posted_collections:scrollY');
+      if (saved && parseInt(saved, 10) > 0) {
+        return;
+      }
+    }
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
