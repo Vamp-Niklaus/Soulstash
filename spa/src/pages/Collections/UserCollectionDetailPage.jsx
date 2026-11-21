@@ -35,7 +35,16 @@ export function UserCollectionDetailPage() {
 
   const { data: publicCollectionData, isLoading: publicLoadingQuery, error: publicQueryError } = useQuery({
     queryKey: ['collection', username, decodedCollectionName],
-    queryFn: () => apiFetch(`/api/collection/${encodeURIComponent(username)}/${encodeURIComponent(decodedCollectionName)}`),
+    queryFn: async () => {
+      if (isLetterboxd) {
+        try {
+          const res = await apiFetch(`/api/collection/${encodeURIComponent(username)}/${encodeURIComponent(decodedCollectionName)}`);
+          if (res && (!Array.isArray(res) || res.length > 0)) return res;
+        } catch (_) {}
+        return apiFetch(`/api/letterboxd-collection/${encodeURIComponent(decodedCollectionName)}`);
+      }
+      return apiFetch(`/api/collection/${encodeURIComponent(username)}/${encodeURIComponent(decodedCollectionName)}`);
+    },
     enabled: !isOwner && !isTmdb,
     initialData: () => {
       if (isLetterboxd) {
@@ -44,17 +53,15 @@ export function UserCollectionDetailPage() {
         if (stateCol) {
           const colData = stateCol.collection || stateCol;
           const movies = colData.movies || [];
-          if (movies.length > 0) {
-            return [{
-              _id: stateCol._id || stateCol.slug || decodedCollectionName,
-              name: colData.name || stateCol.name,
-              description: colData.description || stateCol.description || '',
-              banner: colData.banner || '',
-              movieCount: movies.length,
-              movies: movies,
-              source: 'letterboxd'
-            }];
-          }
+          return [{
+            _id: stateCol._id || stateCol.slug || decodedCollectionName,
+            name: colData.name || stateCol.name || decodedCollectionName,
+            description: colData.description || stateCol.overview || stateCol.description || '',
+            banner: colData.banner || (stateCol.backdrop_path ? (stateCol.backdrop_path.startsWith('http') ? stateCol.backdrop_path : `https://image.tmdb.org/t/p/w1280${stateCol.backdrop_path}`) : ''),
+            movieCount: movies.length || (typeof stateCol.itemCount === 'number' ? stateCol.itemCount : 0),
+            movies: movies,
+            source: 'letterboxd'
+          }];
         }
         // 2. From React Query cache
         const lbFeatured = queryClient.getQueryData(['letterboxdCollections']);
@@ -93,11 +100,33 @@ export function UserCollectionDetailPage() {
       if (stateCol && (String(stateCol.tmdbId) === String(tmdbId) || String(stateCol.id) === String(tmdbId))) {
         const colData = stateCol.collection || stateCol;
         const movies = colData.movies || [];
-        if (movies.length > 0) {
+        return {
+          id: Number(tmdbId),
+          name: colData.name || stateCol.name || decodedCollectionName,
+          overview: colData.description || stateCol.overview || stateCol.description || '',
+          backdrop_path: colData.banner ? colData.banner.replace('https://image.tmdb.org/t/p/w1280', '') : (stateCol.backdrop_path || ''),
+          poster_path: stateCol.poster_path || '',
+          parts: movies.map((m) => ({
+            id: m.id || m.movieId,
+            title: m.title,
+            poster_path: m.poster_path,
+            backdrop_path: m.backdrop_path,
+            release_date: m.release_date,
+            vote_average: m.vote_average
+          }))
+        };
+      }
+      // 2. From React Query cache if featured collections were loaded
+      const featured = queryClient.getQueryData(['tmdbFeaturedCollections']);
+      if (Array.isArray(featured)) {
+        const match = featured.find((f) => String(f.tmdbId) === String(tmdbId));
+        if (match) {
+          const colData = match.collection || match;
+          const movies = colData.movies || [];
           return {
             id: Number(tmdbId),
-            name: colData.name || stateCol.name,
-            overview: colData.description || stateCol.description || '',
+            name: colData.name || match.name,
+            overview: colData.description || match.description || '',
             backdrop_path: colData.banner ? colData.banner.replace('https://image.tmdb.org/t/p/w1280', '') : '',
             parts: movies.map((m) => ({
               id: m.id || m.movieId,
@@ -108,31 +137,6 @@ export function UserCollectionDetailPage() {
               vote_average: m.vote_average
             }))
           };
-        }
-      }
-      // 2. From React Query cache if featured collections were loaded
-      const featured = queryClient.getQueryData(['tmdbFeaturedCollections']);
-      if (Array.isArray(featured)) {
-        const match = featured.find((f) => String(f.tmdbId) === String(tmdbId));
-        if (match) {
-          const colData = match.collection || match;
-          const movies = colData.movies || [];
-          if (movies.length > 0) {
-            return {
-              id: Number(tmdbId),
-              name: colData.name || match.name,
-              overview: colData.description || match.description || '',
-              backdrop_path: colData.banner ? colData.banner.replace('https://image.tmdb.org/t/p/w1280', '') : '',
-              parts: movies.map((m) => ({
-                id: m.id || m.movieId,
-                title: m.title,
-                poster_path: m.poster_path,
-                backdrop_path: m.backdrop_path,
-                release_date: m.release_date,
-                vote_average: m.vote_average
-              }))
-            };
-          }
         }
       }
       return undefined;

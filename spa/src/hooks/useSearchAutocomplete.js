@@ -120,19 +120,24 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
             const tmdbList = tmdbRes.status === 'fulfilled' && Array.isArray(tmdbRes.value?.results)
               ? tmdbRes.value.results
               : [];
-            // TMDB franchises: publisher is the plain label "TMDB" (no user profile link/avatar).
-            const tmdbResults = tmdbList.map((c) => ({
-              id: `tmdb-collection-${c.id}`,
-              tmdbId: c.id,
-              media_type: 'Collection',
-              source: 'tmdb',
-              title: c.name || 'Collection',
-              name: c.name || 'Collection',
-              publisher: 'TMDB',
-              itemCount: typeof c.item_count === 'number' ? c.item_count : 0,
-              overview: c.overview || '',
-              poster_path: c.poster_path || c.backdrop_path || ''
-            }));
+            // TMDB franchises & Letterboxd curated collections
+            const tmdbResults = tmdbList.map((c) => {
+              const isLb = c.source === 'letterboxd' || c.publisher === 'Letterboxd';
+              const name = c.name || c.title || 'Collection';
+              return {
+                id: isLb ? (c.id || `letterboxd-${c.slug || name}`) : `tmdb-collection-${c.id}`,
+                tmdbId: c.tmdbId || (isLb ? null : c.id),
+                media_type: 'Collection',
+                source: isLb ? 'letterboxd' : 'tmdb',
+                title: name,
+                name: name,
+                publisher: isLb ? 'Letterboxd' : 'TMDB',
+                itemCount: typeof c.item_count === 'number' ? c.item_count : 0,
+                overview: c.overview || c.description || '',
+                poster_path: c.poster_path || c.backdrop_path || '',
+                collectionPath: isLb ? `/user/letterboxd/collection/${encodeURIComponent(name)}` : undefined
+              };
+            });
             const safeResults = [...publishedResults, ...tmdbResults];
             allResultsRef.current = safeResults;
             searchCacheRef.current.set(cacheKey, { results: safeResults, hasMore: false, timestamp: Date.now() });

@@ -112,6 +112,12 @@ export function NavbarSearchOverlay({
       });
       return;
     }
+    if (item.media_type === 'Collection' && item.source === 'letterboxd') {
+      navigate(`/user/letterboxd/collection/${encodeURIComponent(item.name || item.title || 'Collection')}`, {
+        state: { collection: item }
+      });
+      return;
+    }
     if (item.media_type === 'Collection' && item.collectionPath) { navigate(item.collectionPath); return; }
     // Pure Kartoons-only result → go to Kartoons detail page
     if (item.source === 'kartoons' && item.kartoons?.slug) {

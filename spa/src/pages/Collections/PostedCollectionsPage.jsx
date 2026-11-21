@@ -268,14 +268,34 @@ export function PostedCollectionsPage() {
             })}
           </div>
 
-          {/* Sentinel for infinite scroll */}
-          <div ref={sentinelRef} className="flex justify-center py-6">
-            {(visibleCount < filteredEntries.length || isFetchingMoreTmdb) && (
+          {/* Sentinel & Load More for infinite scroll */}
+          <div ref={sentinelRef} className="flex flex-col items-center justify-center py-8 gap-3">
+            {isFetchingMoreTmdb ? (
               <div className="flex items-center gap-2 text-sm text-white/50">
                 <i className="fas fa-spinner fa-spin text-amber-400"></i>
                 <span>Loading more lists...</span>
               </div>
-            )}
+            ) : (activeTab === 'all' || activeTab === 'tmdb') ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setVisibleCount((prev) => prev + 8);
+                  loadNextTmdbBatch();
+                }}
+                className="px-6 py-2.5 rounded-full border border-white/10 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+              >
+                <i className="fas fa-plus text-xs text-amber-400"></i>
+                <span>Load More Lists</span>
+              </button>
+            ) : visibleCount < filteredEntries.length ? (
+              <button
+                type="button"
+                onClick={() => setVisibleCount((prev) => prev + 8)}
+                className="px-6 py-2.5 rounded-full border border-white/10 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
+              >
+                <span>Load More Lists</span>
+              </button>
+            ) : null}
           </div>
         </>
       ) : (
