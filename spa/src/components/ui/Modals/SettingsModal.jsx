@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
 import { check as checkTauriUpdate } from '@tauri-apps/plugin-updater';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -45,7 +46,32 @@ export function SettingsModal({
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [windowsExeInfo, setWindowsExeInfo] = useState(null);
-  const currentVersion = 'v4.2.3';
+  const [currentVersion, setCurrentVersion] = useState(
+    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.3'
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function resolveAppVersion() {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const info = await CapApp.getInfo();
+          if (!cancelled && info?.version) {
+            const formatted = info.version.startsWith('v') ? info.version : `v${info.version}`;
+            setCurrentVersion(formatted);
+            return;
+          }
+        } catch (err) {
+          console.warn('Could not read native app version:', err);
+        }
+      }
+      if (typeof __APP_VERSION__ !== 'undefined' && !cancelled) {
+        setCurrentVersion(__APP_VERSION__);
+      }
+    }
+    resolveAppVersion();
+    return () => { cancelled = true; };
+  }, []);
   const [installing, setInstalling] = useState(false);
   const [installProgress, setInstallProgress] = useState(null);
   const [cacheCleared, setCacheCleared] = useState(false);

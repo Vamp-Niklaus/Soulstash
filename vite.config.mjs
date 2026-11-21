@@ -1,6 +1,9 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import fs from 'node:fs';
+
+const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf-8'));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -55,6 +58,10 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true
         }
       }
+    },
+    define: {
+      __APP_VERSION__: JSON.stringify(`v${pkg.version}`),
+      __APP_VERSION_RAW__: JSON.stringify(pkg.version)
     },
     build: {
       outDir: 'dist',
