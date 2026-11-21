@@ -27,6 +27,7 @@ import { AdminPage } from './pages/Admin/AdminPage.jsx';
 
 import { UserCollectionDetailPage } from './pages/Collections/UserCollectionDetailPage.jsx';
 import { PostedCollectionsPage } from './pages/Collections/PostedCollectionsPage.jsx';
+import { PostedLetterboxdPage } from './pages/Collections/PostedLetterboxdPage.jsx';
 import { CollectionsLayout } from './pages/Collections/CollectionsLayout.jsx';
 
 import { HomePage } from './pages/Explore/HomePage.jsx';
@@ -60,6 +61,12 @@ export function AppShell() {
   useEffect(() => {
     if (location.pathname === '/posted-collections') {
       const saved = sessionStorage.getItem('posted_collections:scrollY');
+      if (saved && parseInt(saved, 10) > 0) {
+        return;
+      }
+    }
+    if (location.pathname === '/posted-letterbox' || location.pathname === '/posted-letterboxd') {
+      const saved = sessionStorage.getItem('posted_letterbox:scrollY');
       if (saved && parseInt(saved, 10) > 0) {
         return;
       }
@@ -156,6 +163,8 @@ export function AppShell() {
       <Route path="/upcoming" element={<UpcomingPage />} />
       <Route path="/continue-watching" element={<ContinueWatchingPage />} />
       <Route path="/posted-collections" element={<PostedCollectionsPage />} />
+      <Route path="/posted-letterbox" element={<PostedLetterboxdPage />} />
+      <Route path="/posted-letterboxd" element={<PostedLetterboxdPage />} />
       <Route path="/genre/" element={<Navigate to="/" replace />} />
       <Route path="/genre" element={<Navigate to="/" replace />} />
       <Route path="/genre/:id/:name?" element={<GenrePage />} />

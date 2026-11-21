@@ -10,11 +10,9 @@ import { HOME_GRID_CLASS } from '../../utils/constants.js';
 import { useHomeTwoRowLimit, useSessionState } from '../../hooks/index.js';
 import {
   isTmdbSource,
-  isLetterboxdSource,
   collectionDetailPath,
   publisherProfilePath,
-  TMDB_PUBLISHER_LABEL,
-  LETTERBOXD_PUBLISHER_LABEL
+  TMDB_PUBLISHER_LABEL
 } from '../../utils/collectionSource.js';
 
 export function PostedCollectionsPage() {
@@ -23,11 +21,8 @@ export function PostedCollectionsPage() {
   const [visibleCount, setVisibleCount] = useSessionState('posted_collections:visibleCount', 8);
   const [tmdbPage, setTmdbPage] = useSessionState('posted_collections:tmdbPage', 1);
   const [accumulatedTmdb, setAccumulatedTmdb] = useSessionState('posted_collections:accumulatedTmdb', []);
-  const [letterboxdPage, setLetterboxdPage] = useSessionState('posted_collections:letterboxdPage', 1);
-  const [accumulatedLetterboxd, setAccumulatedLetterboxd] = useSessionState('posted_collections:accumulatedLetterboxd', []);
 
   const [isFetchingMoreTmdb, setIsFetchingMoreTmdb] = useState(false);
-  const [isFetchingMoreLetterboxd, setIsFetchingMoreLetterboxd] = useState(false);
   const homeShelfLimit = useHomeTwoRowLimit();
   const sentinelRef = useRef(null);
   const restoredRef = useRef(false);
@@ -43,26 +38,7 @@ export function PostedCollectionsPage() {
     staleTime: 2 * 60 * 1000,
   });
 
-  // 2. Initial Letterboxd curated lists
-  const { data: letterboxdInitialData, isPending: letterboxdPending } = useQuery({
-    queryKey: ['letterboxdCollections', 1],
-    queryFn: () => apiFetch('/api/collections/letterboxd?page=1&limit=10'),
-    staleTime: 6 * 60 * 60 * 1000,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (Array.isArray(letterboxdInitialData) && letterboxdInitialData.length > 0) {
-      setAccumulatedLetterboxd((prev) => {
-        const existing = Array.isArray(prev) ? prev : [];
-        const existingSlugs = new Set(existing.map((c) => c?.slug || c?.name || c?.collection?.name));
-        const newItems = letterboxdInitialData.filter((c) => !existingSlugs.has(c?.slug || c?.name || c?.collection?.name));
-        return existing.length === 0 ? letterboxdInitialData : [...existing, ...newItems];
-      });
-    }
-  }, [letterboxdInitialData, setAccumulatedLetterboxd]);
-
-  // 3. Initial page of TMDB franchises
+  // 2. Initial page of TMDB franchises
   const { data: tmdbInitialData, isPending: tmdbPending } = useQuery({
     queryKey: ['tmdbFeaturedCollections', 1],
     queryFn: () => apiFetch('/api/tmdb-collections/featured?page=1&limit=12'),
@@ -106,51 +82,23 @@ export function PostedCollectionsPage() {
     }
   }, [tmdbPage, isFetchingMoreTmdb, setTmdbPage, setAccumulatedTmdb]);
 
-  // Infinite loader for Letterboxd curated collections with safety timeout
-  const loadNextLetterboxdBatch = useCallback(async () => {
-    if (isFetchingMoreLetterboxd) return;
-    setIsFetchingMoreLetterboxd(true);
-    const nextPage = (letterboxdPage || 1) + 1;
-    try {
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
-      const fetchPromise = apiFetch(`/api/collections/letterboxd?page=${nextPage}&limit=10`);
-      const data = await Promise.race([fetchPromise, timeoutPromise]);
-      setLetterboxdPage(nextPage);
-      if (Array.isArray(data) && data.length > 0) {
-        setAccumulatedLetterboxd((prev) => {
-          const existing = Array.isArray(prev) ? prev : [];
-          const existingSlugs = new Set(existing.map((c) => c?.slug || c?.name || c?.collection?.name));
-          const fresh = data.filter((c) => !existingSlugs.has(c?.slug || c?.name || c?.collection?.name));
-          return [...existing, ...fresh];
-        });
-      }
-    } catch (err) {
-      console.warn('Failed to fetch more Letterboxd collections:', err);
-    } finally {
-      setIsFetchingMoreLetterboxd(false);
-    }
-  }, [letterboxdPage, isFetchingMoreLetterboxd, setLetterboxdPage, setAccumulatedLetterboxd]);
-
   const toEntry = useCallback((entry) => {
     const col = entry?.collection || entry || {};
     const username = entry?.username || col.username || '';
     const name = col.name || entry?.name || 'Collection';
     const movies = Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : []);
-    const source = entry?.source === 'tmdb' ? 'tmdb' : (entry?.source === 'letterboxd' ? 'letterboxd' : '');
+    const source = entry?.source === 'tmdb' ? 'tmdb' : '';
     const banner = col.banner || entry?.banner || (col.backdrop_path ? (col.backdrop_path.startsWith('http') ? col.backdrop_path : `https://image.tmdb.org/t/p/w1280${col.backdrop_path}`) : '');
     const backdrop_path = col.backdrop_path || entry?.backdrop_path || (banner ? banner.replace('https://image.tmdb.org/t/p/w1280', '') : '');
     const poster_path = col.poster_path || entry?.poster_path || '';
     return {
       _id: source === 'tmdb'
         ? `tmdb-${entry?.tmdbId || name}`
-        : source === 'letterboxd'
-          ? `letterboxd-${entry?.slug || name}`
-          : (col._id || entry?._id || `${username}-${name}`),
+        : (col._id || entry?._id || `${username}-${name}`),
       name,
-      username: source === 'letterboxd' ? 'letterboxd' : (source === 'tmdb' ? 'tmdb' : username),
+      username: source === 'tmdb' ? 'tmdb' : username,
       source,
       tmdbId: entry?.tmdbId,
-      slug: entry?.slug,
       description: col.description || '',
       banner,
       backdrop_path,
@@ -166,13 +114,6 @@ export function PostedCollectionsPage() {
     return list.map(toEntry).filter((c) => c.movies.length > 0);
   }, [userRawData, toEntry]);
 
-  const parsedLetterboxdLists = useMemo(() => {
-    const list = Array.isArray(accumulatedLetterboxd) && accumulatedLetterboxd.length > 0
-      ? accumulatedLetterboxd
-      : (Array.isArray(letterboxdInitialData) ? letterboxdInitialData : []);
-    return list.map(toEntry).filter((c) => c.movies.length > 0);
-  }, [accumulatedLetterboxd, letterboxdInitialData, toEntry]);
-
   const parsedTmdbLists = useMemo(() => {
     const list = Array.isArray(accumulatedTmdb) && accumulatedTmdb.length > 0
       ? accumulatedTmdb
@@ -180,17 +121,16 @@ export function PostedCollectionsPage() {
     return list.map(toEntry).filter((c) => c.movies.length > 0);
   }, [accumulatedTmdb, tmdbInitialData, toEntry]);
 
-  // Interleave Letterboxd, TMDB, and Community into a rich, unified stream
+  // Interleave TMDB franchises and Community user lists into a rich, unified stream
   const filteredEntries = useMemo(() => {
     const merged = [];
-    const max = Math.max(parsedLetterboxdLists.length, parsedTmdbLists.length, parsedUserLists.length);
+    const max = Math.max(parsedTmdbLists.length, parsedUserLists.length);
     for (let i = 0; i < max; i++) {
-      if (i < parsedLetterboxdLists.length) merged.push(parsedLetterboxdLists[i]);
       if (i < parsedTmdbLists.length) merged.push(parsedTmdbLists[i]);
       if (i < parsedUserLists.length) merged.push(parsedUserLists[i]);
     }
     return merged;
-  }, [parsedLetterboxdLists, parsedTmdbLists, parsedUserLists]);
+  }, [parsedTmdbLists, parsedUserLists]);
 
   const visibleEntries = useMemo(
     () => filteredEntries.slice(0, visibleCount),
@@ -235,7 +175,6 @@ export function PostedCollectionsPage() {
             const current = typeof prev === 'number' ? prev : 8;
             const next = current + 6;
             if (next >= filteredEntries.length - 4) {
-              loadNextLetterboxdBatch();
               loadNextTmdbBatch();
             }
             return next;
@@ -246,9 +185,9 @@ export function PostedCollectionsPage() {
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [filteredEntries.length, loadNextTmdbBatch, loadNextLetterboxdBatch, setVisibleCount]);
+  }, [filteredEntries.length, loadNextTmdbBatch, setVisibleCount]);
 
-  const isInitialLoading = userPending && letterboxdPending && tmdbPending && filteredEntries.length === 0;
+  const isInitialLoading = userPending && tmdbPending && filteredEntries.length === 0;
 
   return (
     <section className="content-section space-y-6">
@@ -273,13 +212,10 @@ export function PostedCollectionsPage() {
           <div className="space-y-8">
             {visibleEntries.map((col) => {
               const colTitle = col.name;
-              const isLb = isLetterboxdSource(col);
               const isTm = isTmdbSource(col);
-              const colPublisher = isLb
-                ? LETTERBOXD_PUBLISHER_LABEL
-                : isTm
-                  ? TMDB_PUBLISHER_LABEL
-                  : col.username;
+              const colPublisher = isTm
+                ? TMDB_PUBLISHER_LABEL
+                : col.username;
               const profilePath = publisherProfilePath(col);
               const items = col.movies || [];
               const previewItems = items.slice(0, homeShelfLimit);
@@ -318,7 +254,7 @@ export function PostedCollectionsPage() {
 
           {/* Sentinel & Load More for infinite scroll */}
           <div ref={sentinelRef} className="flex flex-col items-center justify-center py-8 gap-3">
-            {(isFetchingMoreTmdb || isFetchingMoreLetterboxd) ? (
+            {isFetchingMoreTmdb ? (
               <div className="flex items-center gap-2 text-sm text-white/50">
                 <i className="fas fa-spinner fa-spin text-amber-400"></i>
                 <span>Loading more lists...</span>
@@ -328,7 +264,6 @@ export function PostedCollectionsPage() {
                 type="button"
                 onClick={() => {
                   setVisibleCount((prev) => (typeof prev === 'number' ? prev : 8) + 8);
-                  loadNextLetterboxdBatch();
                   loadNextTmdbBatch();
                 }}
                 className="px-6 py-2.5 rounded-full border border-white/10 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
