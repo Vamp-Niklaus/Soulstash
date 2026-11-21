@@ -20,7 +20,6 @@ import {
 export function PostedCollectionsPage() {
   const navigate = useNavigate();
   // Persistent states across page navigation / back button
-  const [activeTab, setActiveTab] = useSessionState('posted_collections:tab', 'all'); // 'all', 'letterboxd', 'tmdb', 'community'
   const [visibleCount, setVisibleCount] = useSessionState('posted_collections:visibleCount', 8);
   const [tmdbPage, setTmdbPage] = useSessionState('posted_collections:tmdbPage', 1);
   const [accumulatedTmdb, setAccumulatedTmdb] = useSessionState('posted_collections:accumulatedTmdb', []);
@@ -31,33 +30,10 @@ export function PostedCollectionsPage() {
   const [isFetchingMoreLetterboxd, setIsFetchingMoreLetterboxd] = useState(false);
   const homeShelfLimit = useHomeTwoRowLimit();
   const sentinelRef = useRef(null);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
     document.title = 'Lists | Soulstash';
-  }, []);
-
-  // Scroll restoration on mount & scroll save on user movement
-  useEffect(() => {
-    const savedY = sessionStorage.getItem('posted_collections:scrollY');
-    if (savedY != null) {
-      const y = parseInt(savedY, 10);
-      if (!isNaN(y) && y > 0) {
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            window.scrollTo({ top: y, behavior: 'instant' });
-          }, 40);
-        });
-      }
-    }
-    const handleScroll = () => {
-      if (window.scrollY > 0) {
-        sessionStorage.setItem('posted_collections:scrollY', String(window.scrollY));
-      }
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
   }, []);
 
   // 1. User published collections
@@ -105,13 +81,15 @@ export function PostedCollectionsPage() {
     }
   }, [tmdbInitialData, setAccumulatedTmdb]);
 
-  // Infinite loader for TMDB franchises
+  // Infinite loader for TMDB franchises with safety timeout
   const loadNextTmdbBatch = useCallback(async () => {
     if (isFetchingMoreTmdb) return;
     setIsFetchingMoreTmdb(true);
     const nextPage = (tmdbPage || 1) + 1;
     try {
-      const data = await apiFetch(`/api/tmdb-collections/featured?page=${nextPage}&limit=12`);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+      const fetchPromise = apiFetch(`/api/tmdb-collections/featured?page=${nextPage}&limit=12`);
+      const data = await Promise.race([fetchPromise, timeoutPromise]);
       setTmdbPage(nextPage);
       if (Array.isArray(data) && data.length > 0) {
         setAccumulatedTmdb((prev) => {
@@ -128,13 +106,15 @@ export function PostedCollectionsPage() {
     }
   }, [tmdbPage, isFetchingMoreTmdb, setTmdbPage, setAccumulatedTmdb]);
 
-  // Infinite loader for Letterboxd curated collections
+  // Infinite loader for Letterboxd curated collections with safety timeout
   const loadNextLetterboxdBatch = useCallback(async () => {
     if (isFetchingMoreLetterboxd) return;
     setIsFetchingMoreLetterboxd(true);
     const nextPage = (letterboxdPage || 1) + 1;
     try {
-      const data = await apiFetch(`/api/collections/letterboxd?page=${nextPage}&limit=10`);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000));
+      const fetchPromise = apiFetch(`/api/collections/letterboxd?page=${nextPage}&limit=10`);
+      const data = await Promise.race([fetchPromise, timeoutPromise]);
       setLetterboxdPage(nextPage);
       if (Array.isArray(data) && data.length > 0) {
         setAccumulatedLetterboxd((prev) => {
@@ -157,6 +137,9 @@ export function PostedCollectionsPage() {
     const name = col.name || entry?.name || 'Collection';
     const movies = Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : []);
     const source = entry?.source === 'tmdb' ? 'tmdb' : (entry?.source === 'letterboxd' ? 'letterboxd' : '');
+    const banner = col.banner || entry?.banner || (col.backdrop_path ? (col.backdrop_path.startsWith('http') ? col.backdrop_path : `https://image.tmdb.org/t/p/w1280${col.backdrop_path}`) : '');
+    const backdrop_path = col.backdrop_path || entry?.backdrop_path || (banner ? banner.replace('https://image.tmdb.org/t/p/w1280', '') : '');
+    const poster_path = col.poster_path || entry?.poster_path || '';
     return {
       _id: source === 'tmdb'
         ? `tmdb-${entry?.tmdbId || name}`
@@ -169,6 +152,9 @@ export function PostedCollectionsPage() {
       tmdbId: entry?.tmdbId,
       slug: entry?.slug,
       description: col.description || '',
+      banner,
+      backdrop_path,
+      poster_path,
       movies: movies.map(normalizeStoredCollectionItem)
     };
   }, []);
@@ -194,13 +180,8 @@ export function PostedCollectionsPage() {
     return list.map(toEntry).filter((c) => c.movies.length > 0);
   }, [accumulatedTmdb, tmdbInitialData, toEntry]);
 
-  // Combined and filtered lists
+  // Interleave Letterboxd, TMDB, and Community into a rich, unified stream
   const filteredEntries = useMemo(() => {
-    if (activeTab === 'letterboxd') return parsedLetterboxdLists;
-    if (activeTab === 'tmdb') return parsedTmdbLists;
-    if (activeTab === 'community') return parsedUserLists;
-
-    // 'all': Interleave Letterboxd, TMDB, and Community so variety is high from page 1
     const merged = [];
     const max = Math.max(parsedLetterboxdLists.length, parsedTmdbLists.length, parsedUserLists.length);
     for (let i = 0; i < max; i++) {
@@ -209,12 +190,40 @@ export function PostedCollectionsPage() {
       if (i < parsedUserLists.length) merged.push(parsedUserLists[i]);
     }
     return merged;
-  }, [activeTab, parsedLetterboxdLists, parsedTmdbLists, parsedUserLists]);
+  }, [parsedLetterboxdLists, parsedTmdbLists, parsedUserLists]);
 
   const visibleEntries = useMemo(
     () => filteredEntries.slice(0, visibleCount),
     [filteredEntries, visibleCount]
   );
+
+  // Restore scroll position once visible entries are rendered
+  useEffect(() => {
+    if (restoredRef.current) return;
+    const savedY = sessionStorage.getItem('posted_collections:scrollY');
+    if (savedY != null && visibleEntries.length > 0) {
+      const y = parseInt(savedY, 10);
+      if (!isNaN(y) && y > 0) {
+        restoredRef.current = true;
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: y, behavior: 'instant' });
+        });
+      }
+    }
+  }, [visibleEntries.length]);
+
+  // Save scroll position on user movement
+  useEffect(() => {
+    const handleScroll = () => {
+      if (restoredRef.current || sessionStorage.getItem('posted_collections:scrollY') === null) {
+        sessionStorage.setItem('posted_collections:scrollY', String(window.scrollY));
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
 
   // Infinite scroll observer: advances visibleCount and loads more lists dynamically
   useEffect(() => {
@@ -226,12 +235,8 @@ export function PostedCollectionsPage() {
             const current = typeof prev === 'number' ? prev : 8;
             const next = current + 6;
             if (next >= filteredEntries.length - 4) {
-              if (activeTab === 'all' || activeTab === 'letterboxd') {
-                loadNextLetterboxdBatch();
-              }
-              if (activeTab === 'all' || activeTab === 'tmdb') {
-                loadNextTmdbBatch();
-              }
+              loadNextLetterboxdBatch();
+              loadNextTmdbBatch();
             }
             return next;
           });
@@ -241,50 +246,12 @@ export function PostedCollectionsPage() {
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [filteredEntries.length, activeTab, loadNextTmdbBatch, loadNextLetterboxdBatch, setVisibleCount]);
+  }, [filteredEntries.length, loadNextTmdbBatch, loadNextLetterboxdBatch, setVisibleCount]);
 
   const isInitialLoading = userPending && letterboxdPending && tmdbPending && filteredEntries.length === 0;
 
   return (
     <section className="content-section space-y-6">
-      {/* Top Filter Tabs: All, Letterboxd, Franchises, Community */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 scrollbar-none border-b border-white/[0.06]">
-        {[
-          { id: 'all', label: 'All Lists', icon: 'fas fa-compass' },
-          { id: 'letterboxd', label: 'Letterboxd Lists', isLetterboxd: true },
-          { id: 'tmdb', label: 'Franchises (TMDB)', icon: 'fas fa-layer-group', iconClass: 'text-amber-400' },
-          { id: 'community', label: 'Community', icon: 'fas fa-users' }
-        ].map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => {
-                setActiveTab(tab.id);
-                setVisibleCount(8);
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all whitespace-nowrap outline-none cursor-pointer ${
-                isActive
-                  ? 'bg-white text-black shadow-lg font-bold'
-                  : 'bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:text-white'
-              }`}
-            >
-              {tab.isLetterboxd ? (
-                <span className="inline-flex items-center gap-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff8000]"></span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#00e054]"></span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#40bcf4]"></span>
-                </span>
-              ) : tab.icon ? (
-                <i className={`${tab.icon} ${tab.iconClass || ''} text-xs`}></i>
-              ) : null}
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
       {isInitialLoading ? (
         <div className="space-y-8 pt-4">
           <GridSkeleton count={7} />
@@ -322,8 +289,14 @@ export function PostedCollectionsPage() {
                   <HomeShelfHeader
                     title={colTitle}
                     publisher={colPublisher}
-                    onPublisherClick={profilePath ? () => navigate(profilePath) : null}
-                    onViewAll={() => colPublisher && navigate(collectionDetailPath(col), { state: { collection: col } })}
+                    onPublisherClick={profilePath ? () => {
+                      sessionStorage.setItem('posted_collections:scrollY', String(window.scrollY));
+                      navigate(profilePath);
+                    } : null}
+                    onViewAll={() => {
+                      sessionStorage.setItem('posted_collections:scrollY', String(window.scrollY));
+                      if (colPublisher) navigate(collectionDetailPath(col), { state: { collection: col } });
+                    }}
                   />
                   {previewItems.length ? (
                     <div className={HOME_GRID_CLASS}>
@@ -350,28 +323,20 @@ export function PostedCollectionsPage() {
                 <i className="fas fa-spinner fa-spin text-amber-400"></i>
                 <span>Loading more lists...</span>
               </div>
-            ) : (activeTab === 'all' || activeTab === 'tmdb' || activeTab === 'letterboxd') ? (
+            ) : (
               <button
                 type="button"
                 onClick={() => {
                   setVisibleCount((prev) => (typeof prev === 'number' ? prev : 8) + 8);
-                  if (activeTab === 'letterboxd' || activeTab === 'all') loadNextLetterboxdBatch();
-                  if (activeTab === 'tmdb' || activeTab === 'all') loadNextTmdbBatch();
+                  loadNextLetterboxdBatch();
+                  loadNextTmdbBatch();
                 }}
                 className="px-6 py-2.5 rounded-full border border-white/10 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
               >
                 <i className="fas fa-plus text-xs text-amber-400"></i>
                 <span>Load More Lists</span>
               </button>
-            ) : visibleCount < filteredEntries.length ? (
-              <button
-                type="button"
-                onClick={() => setVisibleCount((prev) => (typeof prev === 'number' ? prev : 8) + 8)}
-                className="px-6 py-2.5 rounded-full border border-white/10 bg-white/5 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white transition-all flex items-center gap-2 active:scale-95 cursor-pointer"
-              >
-                <span>Load More Lists</span>
-              </button>
-            ) : null}
+            )}
           </div>
         </>
       ) : (

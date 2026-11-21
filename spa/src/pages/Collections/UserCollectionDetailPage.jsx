@@ -39,7 +39,11 @@ export function UserCollectionDetailPage() {
       if (isLetterboxd) {
         try {
           const res = await apiFetch(`/api/collection/${encodeURIComponent(username)}/${encodeURIComponent(decodedCollectionName)}`);
-          if (res && (!Array.isArray(res) || res.length > 0)) return res;
+          if (res && (!Array.isArray(res) || res.length > 0)) {
+            const first = Array.isArray(res) ? res[0] : res;
+            const movies = first?.movies || first?.collection?.movies;
+            if (Array.isArray(movies) && movies.length > 0) return res;
+          }
         } catch (_) {}
         return apiFetch(`/api/letterboxd-collection/${encodeURIComponent(decodedCollectionName)}`);
       }
@@ -48,22 +52,24 @@ export function UserCollectionDetailPage() {
     enabled: !isOwner && !isTmdb,
     initialData: () => {
       if (isLetterboxd) {
-        // 1. From router state
+        // 1. From router state (only if movies array is populated!)
         const stateCol = location.state?.collection || location.state?.entry;
         if (stateCol) {
           const colData = stateCol.collection || stateCol;
           const movies = colData.movies || [];
-          return [{
-            _id: stateCol._id || stateCol.slug || decodedCollectionName,
-            name: colData.name || stateCol.name || decodedCollectionName,
-            description: colData.description || stateCol.overview || stateCol.description || '',
-            banner: colData.banner || (stateCol.backdrop_path ? (stateCol.backdrop_path.startsWith('http') ? stateCol.backdrop_path : `https://image.tmdb.org/t/p/w1280${stateCol.backdrop_path}`) : ''),
-            movieCount: movies.length || (typeof stateCol.itemCount === 'number' ? stateCol.itemCount : 0),
-            movies: movies,
-            source: 'letterboxd'
-          }];
+          if (movies.length > 0) {
+            return [{
+              _id: stateCol._id || stateCol.slug || decodedCollectionName,
+              name: colData.name || stateCol.name || decodedCollectionName,
+              description: colData.description || stateCol.overview || stateCol.description || '',
+              banner: colData.banner || (stateCol.backdrop_path ? (stateCol.backdrop_path.startsWith('http') ? stateCol.backdrop_path : `https://image.tmdb.org/t/p/w1280${stateCol.backdrop_path}`) : ''),
+              movieCount: movies.length,
+              movies: movies,
+              source: 'letterboxd'
+            }];
+          }
         }
-        // 2. From React Query cache or session storage
+        // 2. From React Query cache or session storage (only if movies array is populated!)
         let allLb = queryClient.getQueryData(['letterboxdCollections', 1]) || queryClient.getQueryData(['letterboxdCollections']);
         if (!Array.isArray(allLb) || allLb.length === 0) {
           try {
@@ -80,15 +86,17 @@ export function UserCollectionDetailPage() {
           if (match) {
             const colData = match.collection || match;
             const movies = colData.movies || [];
-            return [{
-              _id: match._id || match.slug || decodedCollectionName,
-              name: colData.name || match.name || decodedCollectionName,
-              description: colData.description || match.description || '',
-              banner: colData.banner || '',
-              movieCount: movies.length,
-              movies: movies,
-              source: 'letterboxd'
-            }];
+            if (movies.length > 0) {
+              return [{
+                _id: match._id || match.slug || decodedCollectionName,
+                name: colData.name || match.name || decodedCollectionName,
+                description: colData.description || match.description || '',
+                banner: colData.banner || '',
+                movieCount: movies.length,
+                movies: movies,
+                source: 'letterboxd'
+              }];
+            }
           }
         }
       }
@@ -123,10 +131,16 @@ export function UserCollectionDetailPage() {
           }))
         };
       }
-      // 2. From React Query cache if featured collections were loaded
-      const featured = queryClient.getQueryData(['tmdbFeaturedCollections']);
+      // 2. From React Query cache or sessionStorage
+      let featured = queryClient.getQueryData(['tmdbFeaturedCollections', 1]) || queryClient.getQueryData(['tmdbFeaturedCollections']);
+      if (!Array.isArray(featured) || featured.length === 0) {
+        try {
+          const raw = sessionStorage.getItem('posted_collections:accumulatedTmdb');
+          if (raw) featured = JSON.parse(raw);
+        } catch (_) {}
+      }
       if (Array.isArray(featured)) {
-        const match = featured.find((f) => String(f.tmdbId) === String(tmdbId));
+        const match = featured.find((f) => String(f.tmdbId) === String(tmdbId) || String(f.id) === String(tmdbId));
         if (match) {
           const colData = match.collection || match;
           const movies = colData.movies || [];
@@ -134,7 +148,8 @@ export function UserCollectionDetailPage() {
             id: Number(tmdbId),
             name: colData.name || match.name,
             overview: colData.description || match.description || '',
-            backdrop_path: colData.banner ? colData.banner.replace('https://image.tmdb.org/t/p/w1280', '') : '',
+            backdrop_path: colData.banner ? colData.banner.replace('https://image.tmdb.org/t/p/w1280', '') : (colData.backdrop_path || match.backdrop_path || ''),
+            poster_path: colData.poster_path || match.poster_path || '',
             parts: movies.map((m) => ({
               id: m.id || m.movieId,
               title: m.title,
