@@ -18,7 +18,7 @@ export function useMediaCredits(id, type) {
     retryDelay: 2500,
   });
 
-  const credits = creditsData ? (creditsData.cast || []).slice(0, 16) : [];
+  const credits = creditsData ? (creditsData.cast || []) : [];
   const creditsCrew = creditsData ? (Array.isArray(creditsData.crew) ? creditsData.crew : []) : [];
   const creditsError = creditsErrorObj ? creditsErrorObj.message || '' : '';
 

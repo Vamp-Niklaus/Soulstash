@@ -737,11 +737,11 @@ export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, epis
     {
       id: 'youtube',
       key: 'youtube',
-      label: 'YouTube',
+      label: input?.isTrailer ? 'Trailer' : 'YouTube',
       url: input?.youtubeTrailerKey
-        ? `https://www.youtube-nocookie.com/embed/${input.youtubeTrailerKey}`
+        ? `https://www.youtube-nocookie.com/embed/${input.youtubeTrailerKey}?autoplay=1&rel=0`
         : input?.title
-        ? `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${input.title} full movie trailer`)}`
+        ? `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${input.title} trailer`)}&autoplay=1`
         : '',
       urls: [],
       embeddable: true,
@@ -812,6 +812,7 @@ export function createPlayerRequest({
   kartoonsSlug,
   kartoonsEpisodeId,
   isKartoons,
+  isTrailer,
   imdbId,
   title,
   originalTitle,
@@ -841,6 +842,7 @@ export function createPlayerRequest({
     kartoonsSlug: kartoonsSlug || '',
     kartoonsEpisodeId: kartoonsEpisodeId || '',
     isKartoons: Boolean(isKartoons || String(tmdbId || '').startsWith('kartoons-')),
+    isTrailer: Boolean(isTrailer),
     imdbId: imdbId || '',
     title: title || '',
     originalTitle: originalTitle || originalName || '',
@@ -858,7 +860,8 @@ export function createPlayerRequest({
       seasonNumber: resolvedSeasonNumber,
       episodeNumber: typeof resolvedEpisodeNumber === 'number' ? resolvedEpisodeNumber : parseInt(resolvedEpisodeNumber) || 1,
       title: title || seriesTitle || originalTitle || '',
-      youtubeTrailerKey
+      youtubeTrailerKey,
+      isTrailer: Boolean(isTrailer)
     }) : []
   };
 }
@@ -996,4 +999,51 @@ export function navigateWithoutReload(to, options = {}) {
   } catch {
     window.dispatchEvent(new Event('popstate'));
   }
+}
+
+/**
+ * Returns true if a movie or series has not yet been released.
+ * Uses: release date > current date + 1 day (so if released today, it is considered released and NOT upcoming).
+ */
+export function isUnreleasedTitle(content) {
+  const dateStr = content?.release_date || content?.first_air_date;
+  if (!dateStr || typeof dateStr !== 'string') return false;
+
+  const parts = dateStr.split('-');
+  if (parts.length < 3) return false;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const relDate = new Date(year, month, day);
+  if (isNaN(relDate.getTime())) return false;
+
+  const now = new Date();
+  const threshold = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59, 999);
+  return relDate.getTime() > threshold.getTime();
+}
+
+/**
+ * Finds the best YouTube trailer or teaser video from TMDB metadata (content.videos.results).
+ */
+export function findTrailerVideo(content) {
+  const videos = Array.isArray(content?.videos?.results) ? content.videos.results : [];
+  if (!videos.length) return null;
+
+  // 1. Official YouTube Trailer
+  const officialTrailer = videos.find((v) => v.site === 'YouTube' && v.type === 'Trailer' && v.official && v.key);
+  if (officialTrailer) return { key: officialTrailer.key, name: officialTrailer.name || 'Official Trailer' };
+
+  // 2. Any YouTube Trailer
+  const anyTrailer = videos.find((v) => v.site === 'YouTube' && v.type === 'Trailer' && v.key);
+  if (anyTrailer) return { key: anyTrailer.key, name: anyTrailer.name || 'Trailer' };
+
+  // 3. YouTube Teaser
+  const teaser = videos.find((v) => v.site === 'YouTube' && (v.type === 'Teaser' || v.type === 'Clip') && v.key);
+  if (teaser) return { key: teaser.key, name: teaser.name || 'Teaser' };
+
+  // 4. Any YouTube video with a key
+  const anyYt = videos.find((v) => v.site === 'YouTube' && v.key);
+  if (anyYt) return { key: anyYt.key, name: anyYt.name || 'Trailer' };
+
+  return null;
 }

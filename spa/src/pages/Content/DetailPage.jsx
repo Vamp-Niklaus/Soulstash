@@ -13,7 +13,7 @@
  *   3. Render subcomponents in order
  */
 
-import { useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { useDetailPage } from '../../hooks/useDetailPage.js';
@@ -40,7 +40,8 @@ import {
   formatRuntime, yearFrom, getLanguageName, getPrimaryCountry,
   getDirectorLabel, getDirectorPeople,
   getValidImdbRating, getValidVoteAverage,
-  isContentInCollection, imageUrl
+  isContentInCollection, imageUrl,
+  isUnreleasedTitle, findTrailerVideo
 } from '../../utils/formatters.js';
 import { createPlayerRequest, createEmptyCollectionDraft } from '../../utils/formatters.js';
 
@@ -88,6 +89,10 @@ export function DetailPage({ type }) {
   const content = page.content;
   const kartoonsSlug = location.state?.kartoonsSlug || content?.kartoons_slug || '';
 
+  const [creditsTab, setCreditsTab] = useState('cast');
+  const [castSortMode, setCastSortMode] = useState('ranked');
+  const [castLimit, setCastLimit] = useState(25);
+
   const handlePlayClick = useCallback((customResumeTime = null, customSeason = null, customEpisode = null) => {
     if (!content) return;
     const tmdbId = content?.id || id;
@@ -97,6 +102,30 @@ export function DetailPage({ type }) {
     const posterVal = content?.poster_path || content?.image || '';
     const backdropVal = content?.backdrop_path || content?.backdrop || '';
     const titleVal = content?.title || content?.name || 'Unknown title';
+
+    // Unreleased content check: if release_date > current date + 1 day, play official trailer from TMDB metadata
+    const isUnreleased = isUnreleasedTitle(content);
+    if (isUnreleased) {
+      const trailer = findTrailerVideo(content);
+      page.setPlayerRequest(
+        createPlayerRequest({
+          mediaType: type,
+          tmdbId,
+          imdbId: content?.imdb_id,
+          title: `${titleVal} - ${trailer?.name || 'Trailer'}`,
+          originalTitle,
+          originalName,
+          seriesTitle: titleVal,
+          year: yearVal,
+          isTrailer: true,
+          youtubeTrailerKey: trailer?.key || '',
+          poster_path: posterVal,
+          backdrop_path: backdropVal,
+          image: posterVal
+        })
+      );
+      return;
+    }
 
     if (type === 'movie') {
       page.setPlayerRequest(
@@ -253,10 +282,25 @@ export function DetailPage({ type }) {
     <DetailStat label={type === 'series' ? 'Creator' : 'Directed By'} value={directorLabel} />
   );
 
+  const displayedCast = useMemo(() => {
+    const list = [...(page.credits || [])];
+    if (type === 'series') {
+      if (castSortMode === 'episodes') {
+        list.sort((a, b) => (b.total_episode_count || 0) - (a.total_episode_count || 0));
+      } else {
+        list.sort((a, b) => (b.score || 0) - (a.score || 0) || (a.ranking || 999) - (b.ranking || 999));
+      }
+    }
+    return list;
+  }, [page.credits, type, castSortMode]);
+
+  const activeCreditList = creditsTab === 'cast' ? displayedCast : (page.creditsCrew || []);
+  const visibleCreditList = activeCreditList.slice(0, castLimit);
+
   return (
     <div className="space-y-10">
 
-      {/* 1. Hero ΓÇö backdrop, poster, metadata, action buttons */}
+      {/* 1. Hero — backdrop, poster, metadata, action buttons */}
       <DetailHero
         content={content}
         type={type}
@@ -280,6 +324,7 @@ export function DetailPage({ type }) {
         }}
         onPlay={handlePlayClick}
         isPlayerOpen={!!page.playerRequest?.tmdbId}
+        isUnreleased={isUnreleasedTitle(content)}
       />
 
       {/* 2. Overview + genres */}
@@ -324,44 +369,103 @@ export function DetailPage({ type }) {
         />
       )}
 
-      {/* 4. Cast */}
+      {/* 4. Cast & Crew */}
       <section className="content-section">
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <SectionHeader title="Cast" />
-          {page.credits.length > 0 && (
-            <div className="hidden items-center gap-2 md:flex">
-              <button
-                type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/18"
-                onClick={() => page.castScrollerRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
-                aria-label="Scroll cast left"
-              >
-                <i className="fas fa-chevron-left" />
-              </button>
-              <button
-                type="button"
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/18"
-                onClick={() => page.castScrollerRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
-                aria-label="Scroll cast right"
-              >
-                <i className="fas fa-chevron-right" />
-              </button>
-            </div>
-          )}
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <SectionHeader title={type === 'series' ? 'Cast & Crew' : 'Cast'} />
+            {type === 'series' && page.creditsCrew.length > 0 && (
+              <div className="flex rounded-full bg-white/[0.06] p-1 border border-white/10 text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setCreditsTab('cast'); setCastLimit(25); }}
+                  className={`rounded-full px-3 py-1 font-medium transition-all cursor-pointer ${creditsTab === 'cast' ? 'bg-white text-black shadow' : 'text-white/70 hover:text-white'}`}
+                >
+                  Cast ({page.credits.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCreditsTab('crew'); setCastLimit(25); }}
+                  className={`rounded-full px-3 py-1 font-medium transition-all cursor-pointer ${creditsTab === 'crew' ? 'bg-white text-black shadow' : 'text-white/70 hover:text-white'}`}
+                >
+                  Crew ({page.creditsCrew.length})
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Sort pills for series cast */}
+            {type === 'series' && creditsTab === 'cast' && page.credits.length > 1 && (
+              <div className="flex items-center gap-1.5 text-xs text-white/60">
+                <span className="hidden sm:inline text-white/40">Sort:</span>
+                <button
+                  type="button"
+                  onClick={() => setCastSortMode('ranked')}
+                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${castSortMode === 'ranked' ? 'bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/40' : 'bg-white/[0.04] text-white/60 hover:text-white'}`}
+                >
+                  Ranked
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCastSortMode('episodes')}
+                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${castSortMode === 'episodes' ? 'bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/40' : 'bg-white/[0.04] text-white/60 hover:text-white'}`}
+                >
+                  Episodes
+                </button>
+              </div>
+            )}
+
+            {/* Scroll navigation arrows */}
+            {activeCreditList.length > 0 && (
+              <div className="hidden items-center gap-2 md:flex">
+                <button
+                  type="button"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/18 cursor-pointer"
+                  onClick={() => page.castScrollerRef.current?.scrollBy({ left: -320, behavior: 'smooth' })}
+                  aria-label="Scroll left"
+                >
+                  <i className="fas fa-chevron-left" />
+                </button>
+                <button
+                  type="button"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/18 cursor-pointer"
+                  onClick={() => page.castScrollerRef.current?.scrollBy({ left: 320, behavior: 'smooth' })}
+                  aria-label="Scroll right"
+                >
+                  <i className="fas fa-chevron-right" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {page.creditsLoading ? (
           <CastRowSkeleton />
-        ) : page.credits.length > 0 ? (
-          <div ref={page.castScrollerRef} className="cast-scroll flex gap-4 overflow-x-auto pb-2">
-            {page.credits.map((person) => (
-              <CastCard key={person.id} person={person} />
-            ))}
-          </div>
+        ) : visibleCreditList.length > 0 ? (
+          <>
+            <div ref={page.castScrollerRef} className="cast-scroll flex gap-4 overflow-x-auto pb-2">
+              {visibleCreditList.map((person) => (
+                <CastCard key={`${person.id}-${person.credit_id || person.character || person.job}`} person={person} />
+              ))}
+            </div>
+            {activeCreditList.length > 25 && (
+              <div className="mt-3 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setCastLimit((prev) => (prev >= activeCreditList.length ? 25 : prev + 35))}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                >
+                  <span>{castLimit >= activeCreditList.length ? 'Show Less' : `Show More (${activeCreditList.length - visibleCreditList.length} more)`}</span>
+                  <i className={`fas fa-chevron-${castLimit >= activeCreditList.length ? 'up' : 'down'} text-[10px]`} />
+                </button>
+              </div>
+            )}
+          </>
         ) : page.creditsError ? (
-          <div className="empty-state">Unable to load cast right now.</div>
+          <div className="empty-state">Unable to load {creditsTab} right now.</div>
         ) : (
-          <div className="empty-state">No cast information available.</div>
+          <div className="empty-state">No {creditsTab} information available.</div>
         )}
       </section>
 

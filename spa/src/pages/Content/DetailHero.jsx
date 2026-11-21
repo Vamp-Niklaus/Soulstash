@@ -47,6 +47,7 @@ export function DetailHero({
   onOpenSaveModal,
   onPlay,
   isPlayerOpen,
+  isUnreleased = false,
 }) {
   const [viewerOpen, setViewerOpen] = useState(false);
   
@@ -238,11 +239,16 @@ export function DetailHero({
           type="button"
           data-play-btn="true"
           className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/65 active:scale-95 active:bg-black/70 lg:h-16 lg:w-16 touch-manipulation ${isPlayerOpen ? 'pointer-events-none opacity-50' : ''}`}
-          aria-label={`Play ${title}`}
+          aria-label={isUnreleased ? `Watch Trailer for ${title}` : `Play ${title}`}
           onClick={isPlayerOpen ? undefined : onPlay}
           disabled={isPlayerOpen}
         >
           <i className="fas fa-play translate-x-[1px] text-sm lg:text-base" />
+          {isUnreleased && (
+            <span className="absolute -bottom-6 text-[10px] font-bold tracking-wider text-amber-300 uppercase whitespace-nowrap bg-black/80 px-2 py-0.5 rounded-full border border-amber-400/30 shadow">
+              Trailer
+            </span>
+          )}
         </button>
 
         <div className="detail-backdrop-fade absolute inset-x-0 bottom-0 h-[38%] sm:h-[44%] z-10" aria-hidden="true" />

@@ -1387,6 +1387,16 @@ export function VideoPlayerModal({ request, onClose }) {
     const playable = displayedSources.filter((s) => s.url && !failedUrls.has(s.url));
     if (!playable.length) return undefined;
 
+    // Unreleased trailer mode: select YouTube trailer source immediately
+    if (request?.isTrailer) {
+      const ytSource = playable.find((s) => s.id === 'youtube') || playable[0];
+      if (ytSource && activeUrl !== ytSource.url) {
+        setActiveUrl(ytSource.url);
+        setVerifiedUrls((prev) => new Set(prev).add(ytSource.url));
+      }
+      return undefined;
+    }
+
     // Kartoon streams (direct Cloudflare Worker HLS) take 1-2s to resolve after initial TMDB sources;
     // auto-switch to Kartoon stream as soon as it resolves unless user manually chose another source
     const kartoonSource = playable.find(isKartoonSource);
@@ -1461,6 +1471,7 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [playableKey, activeUrl, failedUrls, displayedSources, hasManualSourceSelection, kartoonResolveDone, kartoonGraceOver]);
 
   const defaultSource =
+    (request?.isTrailer ? displayedSources.find((s) => s.id === 'youtube') : null) ||
     displayedSources.find((s) => s.url && !s.failed && isKartoonSource(s)) ||
     displayedSources.find((s) => s.url && !s.failed && isVidboltSource(s)) ||
     displayedSources.find((source) => source.url && !source.failed) ||
