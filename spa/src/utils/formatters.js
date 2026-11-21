@@ -526,6 +526,16 @@ export function sortLabel(filters) {
 const SEARCH_HISTORY_KEY = 'ss_search_history';
 
 /**
+ * Clears the search history from local storage.
+ */
+export function clearSearchHistory() {
+  try {
+    localStorage.removeItem(SEARCH_HISTORY_KEY);
+    localStorage.removeItem('soulstash_search_history');
+  } catch {}
+}
+
+/**
  * Retrieves the search history from local storage.
  */
 export function getSearchHistory() {
@@ -631,13 +641,33 @@ export function firstPlayableUrl(source) {
 /**
  * Generates an array of fallback third-party streaming iframes for when the main server fails.
  */
-export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId }) {
-  const input = { mediaType, tmdbId, seasonNumber, episodeNumber, imdbId };
+export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title, youtubeTrailerKey, isTrailer }) {
+  const input = { mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title, youtubeTrailerKey, isTrailer };
   const type = String(mediaType || '').toLowerCase();
   const isMovie = type === 'movie';
   const s = seasonNumber || 1;
   const e = episodeNumber || 1;
   const id = Number(tmdbId || 0);
+
+  if (isTrailer) {
+    const ytUrl = youtubeTrailerKey
+      ? `https://www.youtube-nocookie.com/embed/${youtubeTrailerKey}?autoplay=1&rel=0`
+      : title
+      ? `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${title} trailer`)}&autoplay=1`
+      : '';
+    return ytUrl ? [
+      {
+        id: 'youtube',
+        key: 'youtube',
+        label: 'Trailer',
+        url: ytUrl,
+        urls: [ytUrl],
+        embeddable: true,
+        fallback: true
+      }
+    ] : [];
+  }
+
   if (!id) return [];
   
   return [

@@ -10,6 +10,7 @@ import { toast } from '../../../utils/toast.js';
 import { useAuthSession } from '../../../hooks/useAuthSession.js';
 import { clearAuthSession } from '../../../api/client.js';
 import { clearAllWatchProgress } from '../../../utils/watchProgress.js';
+import { clearSearchHistory } from '../../../utils/formatters.js';
 import { useQueryClient } from '@tanstack/react-query';
 
 // Native Android plugin (ApkUpdaterPlugin.java): downloads the APK and opens the installer.
@@ -47,7 +48,7 @@ export function SettingsModal({
   const [updateInfo, setUpdateInfo] = useState(null);
   const [windowsExeInfo, setWindowsExeInfo] = useState(null);
   const [currentVersion, setCurrentVersion] = useState(
-    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.6'
+    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.7'
   );
 
   useEffect(() => {
@@ -79,12 +80,15 @@ export function SettingsModal({
 
   const handleClearCache = () => {
     clearAllWatchProgress();
+    clearSearchHistory();
     try {
+      localStorage.removeItem('soulstash_search_history');
+      localStorage.removeItem('ss_search_history');
       sessionStorage.clear();
       queryClient.clear();
     } catch (_) {}
     setCacheCleared(true);
-    toast('Continue Watching and app cache cleared successfully', 'success');
+    toast('Continue Watching, search history, and cache cleared successfully', 'success');
     setTimeout(() => setCacheCleared(false), 3000);
   };
 

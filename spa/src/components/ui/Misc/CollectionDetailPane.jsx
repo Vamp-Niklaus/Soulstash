@@ -195,7 +195,7 @@ export function CollectionDetailPane({
                       className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] bg-white/[0.1] px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/[0.16] focus:outline-none focus:ring-2 focus:ring-white"
                       onClick={openProfile}
                       aria-label={profileLabel}>
-                      <i className="fas fa-user"></i><span>{publisherLabel}</span>
+                      <i className={`fas ${hasProfile ? 'fa-user' : 'fa-film text-amber-400'}`}></i><span>{publisherLabel}</span>
                     </button>
                   )}
                 </div>
@@ -250,7 +250,7 @@ export function CollectionDetailPane({
                     className="flex h-10 flex-shrink-0 items-center justify-center gap-2 rounded-[14px] bg-white/[0.1] px-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.16] focus:outline-none focus:ring-2 focus:ring-white"
                     onClick={openProfile}
                     aria-label={profileLabel}>
-                    <i className="fas fa-user"></i><span>{publisherLabel}</span>
+                    <i className={`fas ${hasProfile ? 'fa-user' : 'fa-film text-amber-400'}`}></i><span>{publisherLabel}</span>
                   </button>
                 )}
               </div>

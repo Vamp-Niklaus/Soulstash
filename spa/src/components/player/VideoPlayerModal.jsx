@@ -52,7 +52,7 @@ import { loadHlsJs, startHlsSession, safePlay } from './hlsSession.js';
 
 export function VideoPlayerModal({ request, onClose }) {
   const isValidRequest = Boolean(request?.tmdbId || request?.kartoonsSlug || request?.kartoonsEpisodeId);
-  const [selectedGroup, setSelectedGroup] = useState('hindi');
+  const [selectedGroup, setSelectedGroup] = useState(request?.isTrailer ? 'subbed' : 'hindi');
   const [hindiSources, setHindiSources] = useState([]);
   const [animeSources, setAnimeSources] = useState([]);
   const [kartoonSources, setKartoonSources] = useState([]);
@@ -65,7 +65,18 @@ export function VideoPlayerModal({ request, onClose }) {
   const hlsSessionActiveRef = useRef(false);
   const resumeAfterRetryRef = useRef(0);
   const [anilistId, setAnilistId] = useState(null);
-  const [activeUrl, setActiveUrl] = useState('');
+  const [activeUrl, setActiveUrl] = useState(() => {
+    if (request?.isTrailer) {
+      if (request?.youtubeTrailerKey) {
+        return `https://www.youtube-nocookie.com/embed/${request.youtubeTrailerKey}?autoplay=1&rel=0`;
+      }
+      if (Array.isArray(request?.fallbackSources)) {
+        const found = request.fallbackSources.find((s) => s.id === 'youtube');
+        if (found?.url) return found.url;
+      }
+    }
+    return '';
+  });
   const [hasManualSourceSelection, setHasManualSourceSelection] = useState(false);
   const [sourceSignature, setSourceSignature] = useState('');
   const [failedUrls, setFailedUrls] = useState(() => new Set());
@@ -1251,7 +1262,7 @@ export function VideoPlayerModal({ request, onClose }) {
   const { data: sourcePayload, isLoading: sourceLoading, error: sourceError, isFetching } = useQuery({
     queryKey: ['playerSources', request.mediaType, request.tmdbId, request.seasonNumber, request.episodeNumber, request.imdbId],
     queryFn: () => apiFetch(`/api/player/sources?${queryParams.toString()}`),
-    enabled: !!request.tmdbId && !isPureKartoons,
+    enabled: !!request.tmdbId && !isPureKartoons && !request?.isTrailer,
     retry: (failureCount, error) => {
       if (error?.status === 503 && failureCount < 30) return true;
       return false;
@@ -1319,6 +1330,9 @@ export function VideoPlayerModal({ request, onClose }) {
   // 2. If no AniList ID, hide anime sources with (Sub), (Dub), (Hindi) in label (preserve Kartoon sources!)
   // 3. Hide entire dubbed section if no AniList ID
   const displayedSources = useMemo(() => {
+    if (request?.isTrailer) {
+      return sources.filter((s) => s.id === 'youtube' || s.key === 'youtube' || s.label === 'Trailer');
+    }
     return sources.filter((s) => {
       if (!s.url && !s.pending) return false;
       const isKartoon = /kartoon/i.test(s.id || s.key || s.label || '');

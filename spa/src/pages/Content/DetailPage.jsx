@@ -107,6 +107,7 @@ export function DetailPage({ type }) {
     // Unreleased content check: if release_date > current date + 1 day, play official trailer from TMDB metadata
     const isUnreleased = isUnreleasedTitle(content);
     if (isUnreleased) {
+      const existingTrailer = findTrailerVideo(content);
       const openTrailer = (trailer) => page.setPlayerRequest(
         createPlayerRequest({
           mediaType: type,
@@ -124,10 +125,22 @@ export function DetailPage({ type }) {
           image: posterVal
         })
       );
+
+      if (existingTrailer?.key) {
+        openTrailer(existingTrailer);
+      }
       // TMDB /videos endpoint first (best quality trailer), then the metadata already on the page.
       fetchTrailer({ type: type === 'movie' ? 'movie' : 'series', id: tmdbId })
-        .then((trailer) => openTrailer(trailer || findTrailerVideo(content)))
-        .catch(() => openTrailer(findTrailerVideo(content)));
+        .then((trailer) => {
+          if (trailer?.key && trailer.key !== existingTrailer?.key) {
+            openTrailer(trailer);
+          } else if (!existingTrailer?.key) {
+            openTrailer(trailer || findTrailerVideo(content));
+          }
+        })
+        .catch(() => {
+          if (!existingTrailer?.key) openTrailer(findTrailerVideo(content));
+        });
       return;
     }
 
@@ -217,6 +230,7 @@ export function DetailPage({ type }) {
     // Episode not aired yet: play its trailer (episode videos, then season, then series).
     const airTs = Date.parse(episode?.air_date || '');
     if (Number.isFinite(airTs) && airTs > Date.now() + 36 * 60 * 60 * 1000) {
+      const existingTrailer = findTrailerVideo(content);
       const openEpisodeTrailer = (trailer) => page.setPlayerRequest(
         createPlayerRequest({
           mediaType: 'series',
@@ -236,14 +250,26 @@ export function DetailPage({ type }) {
           image: posterVal
         })
       );
+
+      if (existingTrailer?.key) {
+        openEpisodeTrailer(existingTrailer);
+      }
       fetchTrailer({
         type: 'series',
         id: content?.id || id,
         season: episode.season_number,
         episode: episode.episode_number
       })
-        .then((trailer) => openEpisodeTrailer(trailer || findTrailerVideo(content)))
-        .catch(() => openEpisodeTrailer(findTrailerVideo(content)));
+        .then((trailer) => {
+          if (trailer?.key && trailer.key !== existingTrailer?.key) {
+            openEpisodeTrailer(trailer);
+          } else if (!existingTrailer?.key) {
+            openEpisodeTrailer(trailer || findTrailerVideo(content));
+          }
+        })
+        .catch(() => {
+          if (!existingTrailer?.key) openEpisodeTrailer(findTrailerVideo(content));
+        });
       return;
     }
 

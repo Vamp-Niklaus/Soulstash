@@ -92,7 +92,9 @@ export function NavbarSearchOverlay({
     if (item.media_type === 'User') { navigate(`/user/${encodeURIComponent(item.username || item.title || item.name)}`); return; }
     if (item.media_type === 'Collection' && item.source === 'tmdb' && item.tmdbId) {
       // TMDB franchises open the same collection page as user collections, under the "tmdb" source.
-      navigate(`/user/tmdb/collection/${encodeURIComponent(item.name || item.title || 'Collection')}?id=${item.tmdbId}`);
+      navigate(`/user/tmdb/collection/${encodeURIComponent(item.name || item.title || 'Collection')}?id=${item.tmdbId}`, {
+        state: { collection: item }
+      });
       return;
     }
     if (item.media_type === 'Collection' && item.collectionPath) { navigate(item.collectionPath); return; }

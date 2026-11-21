@@ -42,6 +42,56 @@ export function UserCollectionDetailPage() {
     queryFn: () => apiFetch(`/api/tmdb-collection/${encodeURIComponent(tmdbId)}`),
     enabled: isTmdb && !!tmdbId,
     retry: false,
+    initialData: () => {
+      // 1. From router state if navigated from Lists or search
+      const stateCol = location.state?.collection || location.state?.entry;
+      if (stateCol && (String(stateCol.tmdbId) === String(tmdbId) || String(stateCol.id) === String(tmdbId))) {
+        const colData = stateCol.collection || stateCol;
+        const movies = colData.movies || [];
+        if (movies.length > 0) {
+          return {
+            id: Number(tmdbId),
+            name: colData.name || stateCol.name,
+            overview: colData.description || stateCol.description || '',
+            backdrop_path: colData.banner ? colData.banner.replace('https://image.tmdb.org/t/p/w1280', '') : '',
+            parts: movies.map((m) => ({
+              id: m.id || m.movieId,
+              title: m.title,
+              poster_path: m.poster_path,
+              backdrop_path: m.backdrop_path,
+              release_date: m.release_date,
+              vote_average: m.vote_average
+            }))
+          };
+        }
+      }
+      // 2. From React Query cache if featured collections were loaded
+      const featured = queryClient.getQueryData(['tmdbFeaturedCollections']);
+      if (Array.isArray(featured)) {
+        const match = featured.find((f) => String(f.tmdbId) === String(tmdbId));
+        if (match) {
+          const colData = match.collection || match;
+          const movies = colData.movies || [];
+          if (movies.length > 0) {
+            return {
+              id: Number(tmdbId),
+              name: colData.name || match.name,
+              overview: colData.description || match.description || '',
+              backdrop_path: colData.banner ? colData.banner.replace('https://image.tmdb.org/t/p/w1280', '') : '',
+              parts: movies.map((m) => ({
+                id: m.id || m.movieId,
+                title: m.title,
+                poster_path: m.poster_path,
+                backdrop_path: m.backdrop_path,
+                release_date: m.release_date,
+                vote_average: m.vote_average
+              }))
+            };
+          }
+        }
+      }
+      return undefined;
+    }
   });
 
   const tmdbCollection = useMemo(() => {

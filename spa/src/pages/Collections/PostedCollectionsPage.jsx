@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
@@ -15,6 +15,7 @@ export function PostedCollectionsPage() {
   const navigate = useNavigate();
   const [visibleCount, setVisibleCount] = useState(8);
   const homeShelfLimit = useHomeTwoRowLimit();
+  const sentinelRef = useRef(null);
 
   useEffect(() => {
     document.title = 'Lists | Soulstash';
@@ -72,6 +73,20 @@ export function PostedCollectionsPage() {
     [rawEntries, visibleCount]
   );
 
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisibleCount((prev) => (prev < rawEntries.length ? Math.min(prev + 6, rawEntries.length) : prev));
+        }
+      },
+      { rootMargin: '800px 0px' }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [rawEntries.length]);
+
   return (
     <section className="content-section space-y-8">
       {isPending ? (
@@ -106,7 +121,7 @@ export function PostedCollectionsPage() {
                     title={colTitle}
                     publisher={colPublisher}
                     onPublisherClick={profilePath ? () => navigate(profilePath) : null}
-                    onViewAll={() => colPublisher && navigate(collectionDetailPath(col))}
+                    onViewAll={() => colPublisher && navigate(collectionDetailPath(col), { state: { collection: col } })}
                   />
                   {previewItems.length ? (
                     <div className={HOME_GRID_CLASS}>
@@ -126,18 +141,21 @@ export function PostedCollectionsPage() {
             })}
           </div>
 
-          {rawEntries.length > visibleCount ? (
-            <div className="flex justify-center pt-4">
-              <button
-                type="button"
-                className="shelf-action focus:outline-none focus:ring-2 focus:ring-[var(--cinema-accent)]"
-                onClick={() => setVisibleCount((c) => c + 8)}
-              >
-                <span>View more lists</span>
-                <span aria-hidden="true">→</span>
-              </button>
+          {rawEntries.length > visibleCount && (
+            <div ref={sentinelRef} className="flex justify-center py-6">
+              <div className="flex items-center gap-2 text-sm text-white/50">
+                <i className="fas fa-spinner fa-spin text-amber-400"></i>
+                <span>Loading more lists...</span>
+              </div>
             </div>
-          ) : null}
+          )}
+
+          {rawEntries.length > 0 && visibleCount >= rawEntries.length && (
+            <div className="flex flex-col items-center justify-center py-10 text-white/30 text-xs gap-1.5 border-t border-white/[0.04] mt-8">
+              <i className="fas fa-check-circle text-base text-white/20"></i>
+              <span>All {rawEntries.length} curated lists loaded</span>
+            </div>
+          )}
         </>
       ) : (
         <div className="app-empty">
