@@ -1,8 +1,23 @@
 import React from 'react';
+import { isTmdbSource, isLetterboxdSource } from '../../../utils/collectionSource.js';
 
 export function CollectionVisibilityBadge({ collection, iconOnly = false }) {
-  const isTmdb = collection?.source === 'tmdb' || String(collection?.username || '').toLowerCase() === 'tmdb';
+  const isLetterboxd = isLetterboxdSource(collection);
+  const isTmdb = isTmdbSource(collection);
   const isPublic = collection?.isPublic === true || collection?.isPublished === true;
+
+  if (isLetterboxd) {
+    return (
+      <div className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium bg-[#00e054]/10 border border-[#00e054]/25 text-[#00e054] gap-1.5 w-fit h-fit">
+        <span className="inline-flex items-center gap-0.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#ff8000]"></span>
+          <span className="w-1.5 h-1.5 rounded-full bg-[#00e054]"></span>
+          <span className="w-1.5 h-1.5 rounded-full bg-[#40bcf4]"></span>
+        </span>
+        {iconOnly ? null : <span className="text-[#00e054] text-xs font-semibold">Letterboxd</span>}
+      </div>
+    );
+  }
 
   if (isTmdb) {
     return (

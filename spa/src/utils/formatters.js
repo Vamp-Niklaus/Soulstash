@@ -536,6 +536,24 @@ export function clearSearchHistory() {
 }
 
 /**
+ * Removes a single item from the search history in local storage.
+ */
+export function removeSearchHistoryItem(item) {
+  try {
+    const list = getSearchHistory().filter(
+      (entry) =>
+        `${entry.media_type}:${entry.id || entry.username}` !==
+        `${item.media_type}:${item.id || item.username}`
+    );
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(list));
+    localStorage.setItem('soulstash_search_history', JSON.stringify(list));
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Retrieves the search history from local storage.
  */
 export function getSearchHistory() {

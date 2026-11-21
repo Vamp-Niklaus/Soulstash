@@ -11,7 +11,7 @@ import { CollectionDetailPane } from '../../components/ui/Misc/CollectionDetailP
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 import { CollectionSearchDrawer } from '../../components/ui/Misc/CollectionSearchDrawer.jsx';
 import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
-import { isTmdbSource } from '../../utils/collectionSource.js';
+import { isTmdbSource, isLetterboxdSource } from '../../utils/collectionSource.js';
 
 export function UserCollectionDetailPage() {
   const { username = '', collectionName = '' } = useParams();
@@ -24,10 +24,12 @@ export function UserCollectionDetailPage() {
   const { collections, loading } = useLiveCollections();
   
   // TMDB franchises are opened as /user/tmdb/collection/<name>?id=<tmdbCollectionId>.
+  // Letterboxd lists are opened as /user/letterboxd/collection/<name>.
   const isTmdb = isTmdbSource(username);
+  const isLetterboxd = isLetterboxdSource(username);
   const tmdbId = new URLSearchParams(location.search).get('id');
 
-  const isOwner = !isTmdb && Boolean(auth.isLoggedIn && auth.username && username && auth.username.toLowerCase() === username.toLowerCase());
+  const isOwner = !isTmdb && !isLetterboxd && Boolean(auth.isLoggedIn && auth.username && username && auth.username.toLowerCase() === username.toLowerCase());
   
   const queryClient = useQueryClient();
 
@@ -35,6 +37,49 @@ export function UserCollectionDetailPage() {
     queryKey: ['collection', username, decodedCollectionName],
     queryFn: () => apiFetch(`/api/collection/${encodeURIComponent(username)}/${encodeURIComponent(decodedCollectionName)}`),
     enabled: !isOwner && !isTmdb,
+    initialData: () => {
+      if (isLetterboxd) {
+        // 1. From router state
+        const stateCol = location.state?.collection || location.state?.entry;
+        if (stateCol) {
+          const colData = stateCol.collection || stateCol;
+          const movies = colData.movies || [];
+          if (movies.length > 0) {
+            return [{
+              _id: stateCol._id || stateCol.slug || decodedCollectionName,
+              name: colData.name || stateCol.name,
+              description: colData.description || stateCol.description || '',
+              banner: colData.banner || '',
+              movieCount: movies.length,
+              movies: movies,
+              source: 'letterboxd'
+            }];
+          }
+        }
+        // 2. From React Query cache
+        const lbFeatured = queryClient.getQueryData(['letterboxdCollections']);
+        if (Array.isArray(lbFeatured)) {
+          const match = lbFeatured.find((f) => {
+            const cName = f.collection?.name || f.name || f.slug || '';
+            return cName.toLowerCase() === decodedCollectionName.toLowerCase();
+          });
+          if (match) {
+            const colData = match.collection || match;
+            const movies = colData.movies || [];
+            return [{
+              _id: match._id || match.slug || decodedCollectionName,
+              name: colData.name || match.name,
+              description: colData.description || match.description || '',
+              banner: colData.banner || '',
+              movieCount: movies.length,
+              movies: movies,
+              source: 'letterboxd'
+            }];
+          }
+        }
+      }
+      return undefined;
+    }
   });
 
   const { data: tmdbData, error: tmdbQueryError } = useQuery({

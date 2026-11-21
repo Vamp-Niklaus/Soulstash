@@ -91,8 +91,15 @@ export function ReactNavbar() {
       }
       setSearchOpen(true);
     };
+    const handleClearSearch = () => {
+      setSearchQuery('');
+    };
     window.addEventListener('soulstash:open-search', handleOpenSearch);
-    return () => window.removeEventListener('soulstash:open-search', handleOpenSearch);
+    window.addEventListener('soulstash:search-cleared', handleClearSearch);
+    return () => {
+      window.removeEventListener('soulstash:open-search', handleOpenSearch);
+      window.removeEventListener('soulstash:search-cleared', handleClearSearch);
+    };
   }, []);
 
   const currentPath = location.pathname;

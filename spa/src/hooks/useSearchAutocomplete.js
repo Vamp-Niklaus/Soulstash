@@ -19,13 +19,28 @@ export function useSearchAutocomplete(searchQuery, searchTab, searchOpen, user) 
   // adminMode: 0=filter adult, 1=all, 2=adult only
   const adminMode = user?.admin === true ? Number(user?.adminMode ?? (user?.showAdult ? 1 : 0)) : 0;
 
-  // Clear cache if admin/adult settings change
+  // Clear cache if admin/adult settings change or cache clear event received
   useEffect(() => {
     searchCacheRef.current.clear();
     setSearchResults([]);
     allResultsRef.current = [];
     kartoonResultsRef.current = null;
   }, [user?.admin, adminMode]);
+
+  useEffect(() => {
+    const handleClear = () => {
+      searchCacheRef.current.clear();
+      setSearchResults([]);
+      allResultsRef.current = [];
+      kartoonResultsRef.current = null;
+      setSearchLoading(false);
+      setIsFetchingNextPage(false);
+      setHasNextPage(false);
+      currentPageRef.current = 1;
+    };
+    window.addEventListener('soulstash:search-cleared', handleClear);
+    return () => window.removeEventListener('soulstash:search-cleared', handleClear);
+  }, []);
 
   useEffect(() => {
     if (!searchOpen || searchQuery.trim().length < 1) {

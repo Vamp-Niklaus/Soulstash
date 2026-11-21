@@ -1,19 +1,29 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
-import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { HomeShelfHeader } from '../Explore/HomeShelfHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 import { normalizeStoredCollectionItem } from '../../utils/formatters.js';
 import { HOME_GRID_CLASS } from '../../utils/constants.js';
 import { useHomeTwoRowLimit } from '../../hooks/index.js';
-import { isTmdbSource, collectionDetailPath, publisherProfilePath, TMDB_PUBLISHER_LABEL } from '../../utils/collectionSource.js';
+import {
+  isTmdbSource,
+  isLetterboxdSource,
+  collectionDetailPath,
+  publisherProfilePath,
+  TMDB_PUBLISHER_LABEL,
+  LETTERBOXD_PUBLISHER_LABEL
+} from '../../utils/collectionSource.js';
 
 export function PostedCollectionsPage() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'letterboxd', 'tmdb', 'community'
   const [visibleCount, setVisibleCount] = useState(8);
+  const [tmdbPage, setTmdbPage] = useState(1);
+  const [accumulatedTmdb, setAccumulatedTmdb] = useState([]);
+  const [isFetchingMoreTmdb, setIsFetchingMoreTmdb] = useState(false);
   const homeShelfLimit = useHomeTwoRowLimit();
   const sentinelRef = useRef(null);
 
@@ -21,96 +31,213 @@ export function PostedCollectionsPage() {
     document.title = 'Lists | Soulstash';
   }, []);
 
-  const { data, isPending, isError, error, refetch } = useQuery({
+  // 1. User published collections
+  const { data: userRawData, isPending: userPending, isError: userError, error: userErrorObj, refetch: refetchUser } = useQuery({
     queryKey: ['postedCollections'],
     queryFn: () => apiFetch('/api/collections/published'),
     staleTime: 2 * 60 * 1000,
   });
 
-  // TMDB franchises (curated on the backend). A failure here must never break the user lists.
-  const { data: tmdbData } = useQuery({
-    queryKey: ['tmdbFeaturedCollections'],
-    queryFn: () => apiFetch('/api/tmdb-collections/featured'),
+  // 2. Letterboxd curated lists
+  const { data: letterboxdRawData, isPending: letterboxdPending } = useQuery({
+    queryKey: ['letterboxdCollections'],
+    queryFn: () => apiFetch('/api/collections/letterboxd'),
     staleTime: 6 * 60 * 60 * 1000,
     retry: false,
   });
 
-  const rawEntries = useMemo(() => {
-    const toEntry = (entry) => {
-      const col = entry?.collection || entry || {};
-      const username = entry?.username || col.username || '';
-      const name = col.name || entry?.name || 'Collection';
-      const movies = Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : []);
-      const source = entry?.source === 'tmdb' ? 'tmdb' : '';
-      return {
-        _id: source ? `tmdb-${entry?.tmdbId}` : (col._id || entry?._id || `${username}-${name}`),
-        name,
-        username,
-        source,
-        tmdbId: entry?.tmdbId,
-        description: col.description || '',
-        movies: movies.map(normalizeStoredCollectionItem)
-      };
+  // 3. Initial page of TMDB franchises
+  const { data: tmdbInitialData, isPending: tmdbPending } = useQuery({
+    queryKey: ['tmdbFeaturedCollections', 1],
+    queryFn: () => apiFetch('/api/tmdb-collections/featured?page=1&limit=12'),
+    staleTime: 6 * 60 * 60 * 1000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (Array.isArray(tmdbInitialData) && tmdbInitialData.length > 0) {
+      setAccumulatedTmdb((prev) => {
+        const existingIds = new Set(prev.map((c) => c.tmdbId));
+        const newItems = tmdbInitialData.filter((c) => !existingIds.has(c.tmdbId));
+        return prev.length === 0 ? tmdbInitialData : [...prev, ...newItems];
+      });
+    }
+  }, [tmdbInitialData]);
+
+  // Infinite loader for TMDB franchises
+  const loadNextTmdbBatch = useCallback(async () => {
+    if (isFetchingMoreTmdb) return;
+    setIsFetchingMoreTmdb(true);
+    const nextPage = tmdbPage + 1;
+    try {
+      const data = await apiFetch(`/api/tmdb-collections/featured?page=${nextPage}&limit=12`);
+      if (Array.isArray(data) && data.length > 0) {
+        setTmdbPage(nextPage);
+        setAccumulatedTmdb((prev) => {
+          const existingIds = new Set(prev.map((c) => c.tmdbId));
+          const fresh = data.filter((c) => !existingIds.has(c.tmdbId));
+          return [...prev, ...fresh];
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to fetch more TMDB collections:', err);
+    } finally {
+      setIsFetchingMoreTmdb(false);
+    }
+  }, [tmdbPage, isFetchingMoreTmdb]);
+
+  const toEntry = useCallback((entry) => {
+    const col = entry?.collection || entry || {};
+    const username = entry?.username || col.username || '';
+    const name = col.name || entry?.name || 'Collection';
+    const movies = Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : []);
+    const source = entry?.source === 'tmdb' ? 'tmdb' : (entry?.source === 'letterboxd' ? 'letterboxd' : '');
+    return {
+      _id: source === 'tmdb'
+        ? `tmdb-${entry?.tmdbId || name}`
+        : source === 'letterboxd'
+          ? `letterboxd-${entry?.slug || name}`
+          : (col._id || entry?._id || `${username}-${name}`),
+      name,
+      username: source === 'letterboxd' ? 'letterboxd' : (source === 'tmdb' ? 'tmdb' : username),
+      source,
+      tmdbId: entry?.tmdbId,
+      slug: entry?.slug,
+      description: col.description || '',
+      movies: movies.map(normalizeStoredCollectionItem)
     };
+  }, []);
 
-    const userList = (Array.isArray(data)
-      ? data
-      : (Array.isArray(data?.collections) ? data.collections : [])).map(toEntry);
-    const tmdbList = (Array.isArray(tmdbData) ? tmdbData : []).map(toEntry).filter((c) => c.movies.length > 0);
+  const parsedUserLists = useMemo(() => {
+    const list = Array.isArray(userRawData)
+      ? userRawData
+      : (Array.isArray(userRawData?.collections) ? userRawData.collections : []);
+    return list.map(toEntry).filter((c) => c.movies.length > 0);
+  }, [userRawData, toEntry]);
 
-    // Interleave so both kinds show up from the first page instead of one kind pushing the other away.
+  const parsedLetterboxdLists = useMemo(() => {
+    const list = Array.isArray(letterboxdRawData) ? letterboxdRawData : [];
+    return list.map(toEntry).filter((c) => c.movies.length > 0);
+  }, [letterboxdRawData, toEntry]);
+
+  const parsedTmdbLists = useMemo(() => {
+    return accumulatedTmdb.map(toEntry).filter((c) => c.movies.length > 0);
+  }, [accumulatedTmdb, toEntry]);
+
+  // Combined and filtered lists
+  const filteredEntries = useMemo(() => {
+    if (activeTab === 'letterboxd') return parsedLetterboxdLists;
+    if (activeTab === 'tmdb') return parsedTmdbLists;
+    if (activeTab === 'community') return parsedUserLists;
+
+    // 'all': Interleave Letterboxd, TMDB, and Community so variety is high from page 1
     const merged = [];
-    const max = Math.max(userList.length, tmdbList.length);
+    const max = Math.max(parsedLetterboxdLists.length, parsedTmdbLists.length, parsedUserLists.length);
     for (let i = 0; i < max; i++) {
-      if (i < userList.length) merged.push(userList[i]);
-      if (i < tmdbList.length) merged.push(tmdbList[i]);
+      if (i < parsedLetterboxdLists.length) merged.push(parsedLetterboxdLists[i]);
+      if (i < parsedTmdbLists.length) merged.push(parsedTmdbLists[i]);
+      if (i < parsedUserLists.length) merged.push(parsedUserLists[i]);
     }
     return merged;
-  }, [data, tmdbData]);
+  }, [activeTab, parsedLetterboxdLists, parsedTmdbLists, parsedUserLists]);
 
   const visibleEntries = useMemo(
-    () => rawEntries.slice(0, visibleCount),
-    [rawEntries, visibleCount]
+    () => filteredEntries.slice(0, visibleCount),
+    [filteredEntries, visibleCount]
   );
 
+  // Infinite scroll observer: advances visibleCount and loads more TMDB franchises dynamically
   useEffect(() => {
     if (!sentinelRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
-          setVisibleCount((prev) => (prev < rawEntries.length ? Math.min(prev + 6, rawEntries.length) : prev));
+          setVisibleCount((prev) => {
+            const next = prev + 6;
+            // When reaching near the end of loaded lists, trigger next page fetch for endless scrolling
+            if (next >= filteredEntries.length - 4 && (activeTab === 'all' || activeTab === 'tmdb')) {
+              loadNextTmdbBatch();
+            }
+            return next;
+          });
         }
       },
       { rootMargin: '800px 0px' }
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [rawEntries.length]);
+  }, [filteredEntries.length, activeTab, loadNextTmdbBatch]);
+
+  const isInitialLoading = userPending && letterboxdPending && tmdbPending;
 
   return (
-    <section className="content-section space-y-8">
-      {isPending ? (
-        <div className="space-y-8">
+    <section className="content-section space-y-6">
+      {/* Top Filter Tabs: All, Letterboxd, Franchises, Community */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 scrollbar-none border-b border-white/[0.06]">
+        {[
+          { id: 'all', label: 'All Lists', icon: 'fas fa-compass' },
+          { id: 'letterboxd', label: 'Letterboxd Lists', isLetterboxd: true },
+          { id: 'tmdb', label: 'Franchises (TMDB)', icon: 'fas fa-layer-group', iconClass: 'text-amber-400' },
+          { id: 'community', label: 'Community', icon: 'fas fa-users' }
+        ].map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setActiveTab(tab.id);
+                setVisibleCount(8);
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all whitespace-nowrap outline-none ${
+                isActive
+                  ? 'bg-white text-black shadow-lg font-bold'
+                  : 'bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:text-white'
+              }`}
+            >
+              {tab.isLetterboxd ? (
+                <span className="inline-flex items-center gap-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff8000]"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00e054]"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#40bcf4]"></span>
+                </span>
+              ) : tab.icon ? (
+                <i className={`${tab.icon} ${tab.iconClass || ''} text-xs`}></i>
+              ) : null}
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {isInitialLoading ? (
+        <div className="space-y-8 pt-4">
           <GridSkeleton count={7} />
           <GridSkeleton count={7} />
         </div>
-      ) : isError ? (
+      ) : userError && filteredEntries.length === 0 ? (
         <div className="app-error">
-          <p>{error?.message || 'Could not load posted lists.'}</p>
+          <p>{userErrorObj?.message || 'Could not load lists.'}</p>
           <button
             type="button"
             className="mt-4 rounded-full bg-white/10 px-5 py-2 text-white hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
-            onClick={() => refetch()}
+            onClick={() => refetchUser()}
           >
             Try again
           </button>
         </div>
-      ) : rawEntries.length ? (
+      ) : filteredEntries.length ? (
         <>
           <div className="space-y-8">
             {visibleEntries.map((col) => {
               const colTitle = col.name;
-              const colPublisher = isTmdbSource(col) ? TMDB_PUBLISHER_LABEL : col.username;
+              const isLb = isLetterboxdSource(col);
+              const isTm = isTmdbSource(col);
+              const colPublisher = isLb
+                ? LETTERBOXD_PUBLISHER_LABEL
+                : isTm
+                  ? TMDB_PUBLISHER_LABEL
+                  : col.username;
               const profilePath = publisherProfilePath(col);
               const items = col.movies || [];
               const previewItems = items.slice(0, homeShelfLimit);
@@ -141,25 +268,20 @@ export function PostedCollectionsPage() {
             })}
           </div>
 
-          {rawEntries.length > visibleCount && (
-            <div ref={sentinelRef} className="flex justify-center py-6">
+          {/* Sentinel for infinite scroll */}
+          <div ref={sentinelRef} className="flex justify-center py-6">
+            {(visibleCount < filteredEntries.length || isFetchingMoreTmdb) && (
               <div className="flex items-center gap-2 text-sm text-white/50">
                 <i className="fas fa-spinner fa-spin text-amber-400"></i>
                 <span>Loading more lists...</span>
               </div>
-            </div>
-          )}
-
-          {rawEntries.length > 0 && visibleCount >= rawEntries.length && (
-            <div className="flex flex-col items-center justify-center py-10 text-white/30 text-xs gap-1.5 border-t border-white/[0.04] mt-8">
-              <i className="fas fa-check-circle text-base text-white/20"></i>
-              <span>All {rawEntries.length} curated lists loaded</span>
-            </div>
-          )}
+            )}
+          </div>
         </>
       ) : (
-        <div className="app-empty">
-          <p>No lists have been published yet.</p>
+        <div className="app-empty py-16 text-center">
+          <i className="fas fa-film text-3xl text-white/20 mb-3 block"></i>
+          <p className="text-white/60 text-sm">No lists found in this category.</p>
         </div>
       )}
     </section>

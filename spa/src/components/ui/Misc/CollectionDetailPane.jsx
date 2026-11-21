@@ -13,7 +13,7 @@ import { CollectionFilterControls } from './CollectionFilterControls.jsx';
 import { ContentCard } from '../Cards/ContentCard.jsx';
 import { ConfirmModal } from '../Modals/ConfirmModal.jsx';
 import { EditCollectionPosterModal } from '../Modals/EditCollectionPosterModal.jsx';
-import { isTmdbSource, TMDB_PUBLISHER_LABEL } from '../../../utils/collectionSource.js';
+import { isTmdbSource, TMDB_PUBLISHER_LABEL, isLetterboxdSource, LETTERBOXD_PUBLISHER_LABEL } from '../../../utils/collectionSource.js';
 
 export function CollectionDetailPane({
   username,
@@ -31,10 +31,12 @@ export function CollectionDetailPane({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  // TMDB collections look identical to user collections, but their publisher has no profile to open.
-  const hasProfile = !isTmdbSource({ username, source: collection?.source });
-  const publisherLabel = hasProfile ? username : TMDB_PUBLISHER_LABEL;
-  const profileLabel = hasProfile ? `View ${username}'s profile` : 'Collection from TMDB';
+  // TMDB & Letterboxd collections look identical to user collections, but their publisher has no profile to open.
+  const isTmdb = isTmdbSource({ username, source: collection?.source });
+  const isLetterboxd = isLetterboxdSource({ username, source: collection?.source });
+  const hasProfile = !isTmdb && !isLetterboxd;
+  const publisherLabel = isLetterboxd ? LETTERBOXD_PUBLISHER_LABEL : (isTmdb ? TMDB_PUBLISHER_LABEL : username);
+  const profileLabel = isLetterboxd ? 'Curated Letterboxd List' : (isTmdb ? 'Franchise from TMDB' : `View ${username}'s profile`);
   const openProfile = () => { if (hasProfile) navigate(`/user/${username}`); };
   const movies = useMemo(() => filteredCollectionMovies(collection, filters, watchedIds), [collection, filters, watchedIds]);
   const showFilteredResultsCount = hasActiveCollectionContentFilters(filters);

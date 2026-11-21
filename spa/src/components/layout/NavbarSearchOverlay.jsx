@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { NavbarSkeleton, SearchResultSkeletonGrid } from '../ui/Skeletons/index.js';
 import { HoverMarqueeTitle } from '../ui/Misc/Typography.jsx';
-import { getSearchHistory, saveSearchHistoryItem } from '../../utils/formatters.js';
+import { getSearchHistory, saveSearchHistoryItem, clearSearchHistory, removeSearchHistoryItem } from '../../utils/formatters.js';
 import { imageUrl, yearFrom, mediaRoute } from '../../utils/formatters.js';
 import { FALLBACK_AVATAR, FALLBACK_POSTER } from '../../utils/constants.js';
 import { useOverlaySearchKeyboardNav } from '../../hooks/useOverlaySearchKeyboardNav.js';
@@ -72,7 +72,22 @@ export function NavbarSearchOverlay({
     };
   }, [open]);
 
-  const historyItems = useMemo(() => getSearchHistory(), [open]);
+  const [historyItems, setHistoryItems] = useState(() => getSearchHistory());
+
+  useEffect(() => {
+    if (open) {
+      setHistoryItems(getSearchHistory());
+    }
+  }, [open]);
+
+  useEffect(() => {
+    const handleSearchCleared = () => {
+      setHistoryItems([]);
+    };
+    window.addEventListener('soulstash:search-cleared', handleSearchCleared);
+    return () => window.removeEventListener('soulstash:search-cleared', handleSearchCleared);
+  }, []);
+
   const activeResults = useMemo(() => {
     const source = query.trim().length >= 1 ? results : historyItems;
     return source.filter((item) => {
@@ -176,6 +191,27 @@ export function NavbarSearchOverlay({
               <SearchResultSkeletonGrid columns="grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4" count={8} />
             ) : activeResults.length ? (
               <>
+                {query.trim().length === 0 && historyItems.length > 0 && (
+                  <div className="flex items-center justify-between pb-3 pt-1 text-xs text-[#a0a0a0]">
+                    <span className="font-semibold uppercase tracking-wider text-white/50 text-[11px] flex items-center gap-1.5">
+                      <i className="fas fa-history text-[11px] text-amber-400/80"></i>
+                      Recent Searches
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearSearchHistory();
+                        setHistoryItems([]);
+                        window.dispatchEvent(new CustomEvent('soulstash:search-cleared'));
+                      }}
+                      className="text-xs text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white/5 font-medium"
+                      title="Clear all recent searches"
+                    >
+                      <i className="fas fa-trash-alt text-[10px]"></i>
+                      <span>Clear All</span>
+                    </button>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                 {activeResults.map((item, index) => {
                   const title = item.title || item.name || item.username || 'Unknown';
@@ -191,28 +227,50 @@ export function NavbarSearchOverlay({
                       ? 'Cast'
                       : `${item.media_type === 'Series' || item.media_type === 'tv' ? 'Series' : 'Movie'}${yearFrom(item) ? ` | ${yearFrom(item)}` : ''}`;
                   return (
-                    <button key={`${item.media_type}-${item.id || item.username || index}`}
-                      ref={(el) => { resultButtonsRef.current[index] = el; }}
-                      type="button" tabIndex={0}
-                      onClick={() => openItem(item)}
-                      onFocus={() => setFocusedIndex(index)}
-                      className={`flex items-center gap-3 rounded-lg p-3 text-left border outline-none bg-[#171717] border-transparent hover:bg-[#1d1d1d] tv-focus-card ${focusedIndex === index ? 'is-focused' : ''}`}>
-                      <div className="h-20 w-14 shrink-0 overflow-hidden rounded-md bg-[#252833]">
-                        {image ? (
-                          <img src={item.media_type === 'User' ? image : imageUrl(image, 'w300_and_h450_face')} alt={title}
-                            className="h-full w-full object-cover"
-                            onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = fallbackImage; }} />
-                        ) : (
-                          <img src={fallbackImage} alt={title} className="h-full w-full object-cover" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 overflow-hidden">
-                        <h3 className="text-sm font-semibold text-[#E2E2E2] overflow-hidden">
-                          <HoverMarqueeTitle title={title} />
-                        </h3>
-                        <p className="mt-1 line-clamp-2 text-xs text-[#9da0a9]">{meta}</p>
-                      </div>
-                    </button>
+                    <div
+                      key={`${item.media_type}-${item.id || item.username || index}`}
+                      className="relative group"
+                    >
+                      <button
+                        ref={(el) => { resultButtonsRef.current[index] = el; }}
+                        type="button" tabIndex={0}
+                        onClick={() => openItem(item)}
+                        onFocus={() => setFocusedIndex(index)}
+                        className={`w-full flex items-center gap-3 rounded-lg p-3 text-left border outline-none bg-[#171717] border-transparent hover:bg-[#1d1d1d] tv-focus-card ${focusedIndex === index ? 'is-focused' : ''}`}>
+                        <div className="h-20 w-14 shrink-0 overflow-hidden rounded-md bg-[#252833]">
+                          {image ? (
+                            <img src={item.media_type === 'User' ? image : imageUrl(image, 'w300_and_h450_face')} alt={title}
+                              className="h-full w-full object-cover"
+                              onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = fallbackImage; }} />
+                          ) : (
+                            <img src={fallbackImage} alt={title} className="h-full w-full object-cover" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <h3 className="text-sm font-semibold text-[#E2E2E2] overflow-hidden">
+                            <HoverMarqueeTitle title={title} />
+                          </h3>
+                          <p className="mt-1 line-clamp-2 text-xs text-[#9da0a9]">{meta}</p>
+                        </div>
+                      </button>
+                      {query.trim().length === 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const updated = removeSearchHistoryItem(item);
+                            setHistoryItems(updated);
+                          }}
+                          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white/40 hover:text-white hover:bg-black/90 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Remove from history"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>

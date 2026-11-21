@@ -48,7 +48,7 @@ export function SettingsModal({
   const [updateInfo, setUpdateInfo] = useState(null);
   const [windowsExeInfo, setWindowsExeInfo] = useState(null);
   const [currentVersion, setCurrentVersion] = useState(
-    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.7'
+    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.8'
   );
 
   useEffect(() => {
@@ -87,6 +87,7 @@ export function SettingsModal({
       sessionStorage.clear();
       queryClient.clear();
     } catch (_) {}
+    window.dispatchEvent(new CustomEvent('soulstash:search-cleared'));
     setCacheCleared(true);
     toast('Continue Watching, search history, and cache cleared successfully', 'success');
     setTimeout(() => setCacheCleared(false), 3000);
