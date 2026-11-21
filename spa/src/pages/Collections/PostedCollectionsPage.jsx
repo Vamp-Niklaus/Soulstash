@@ -85,7 +85,8 @@ export function PostedCollectionsPage() {
   const toEntry = useCallback((entry) => {
     const col = entry?.collection || entry || {};
     const username = entry?.username || col.username || '';
-    const name = col.name || entry?.name || 'Collection';
+    const rawName = col.name || entry?.name || 'Collection';
+    const name = rawName.replace(/\s+collection$/i, '').trim() || rawName;
     const movies = Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : []);
     const source = entry?.source === 'tmdb' ? 'tmdb' : '';
     const banner = col.banner || entry?.banner || (col.backdrop_path ? (col.backdrop_path.startsWith('http') ? col.backdrop_path : `https://image.tmdb.org/t/p/w1280${col.backdrop_path}`) : '');
