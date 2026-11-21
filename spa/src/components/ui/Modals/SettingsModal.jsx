@@ -47,7 +47,7 @@ export function SettingsModal({
   const [updateInfo, setUpdateInfo] = useState(null);
   const [windowsExeInfo, setWindowsExeInfo] = useState(null);
   const [currentVersion, setCurrentVersion] = useState(
-    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.3'
+    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.5'
   );
 
   useEffect(() => {

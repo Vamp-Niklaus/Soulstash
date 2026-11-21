@@ -233,6 +233,21 @@ export function DetailPage({ type }) {
     );
   }, [content, id, kartoonsSlug, page]);
 
+  const displayedCast = useMemo(() => {
+    const list = [...(page.credits || [])];
+    if (type === 'series') {
+      if (castSortMode === 'episodes') {
+        list.sort((a, b) => (b.total_episode_count || 0) - (a.total_episode_count || 0));
+      } else {
+        list.sort((a, b) => (b.score || 0) - (a.score || 0) || (a.ranking || 999) - (b.ranking || 999));
+      }
+    }
+    return list;
+  }, [page.credits, type, castSortMode]);
+
+  const activeCreditList = creditsTab === 'cast' ? displayedCast : (page.creditsCrew || []);
+  const visibleCreditList = activeCreditList.slice(0, castLimit);
+
   // Loading / error states
   if (page.loading || !content) {
     return <DetailPageSkeleton type={type} />;
@@ -281,21 +296,6 @@ export function DetailPage({ type }) {
   ) : (
     <DetailStat label={type === 'series' ? 'Creator' : 'Directed By'} value={directorLabel} />
   );
-
-  const displayedCast = useMemo(() => {
-    const list = [...(page.credits || [])];
-    if (type === 'series') {
-      if (castSortMode === 'episodes') {
-        list.sort((a, b) => (b.total_episode_count || 0) - (a.total_episode_count || 0));
-      } else {
-        list.sort((a, b) => (b.score || 0) - (a.score || 0) || (a.ranking || 999) - (b.ranking || 999));
-      }
-    }
-    return list;
-  }, [page.credits, type, castSortMode]);
-
-  const activeCreditList = creditsTab === 'cast' ? displayedCast : (page.creditsCrew || []);
-  const visibleCreditList = activeCreditList.slice(0, castLimit);
 
   return (
     <div className="space-y-10">
