@@ -9,6 +9,7 @@ import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 import { normalizeStoredCollectionItem } from '../../utils/formatters.js';
 import { HOME_GRID_CLASS } from '../../utils/constants.js';
 import { useHomeTwoRowLimit } from '../../hooks/index.js';
+import { isTmdbSource, collectionDetailPath, publisherProfilePath, TMDB_PUBLISHER_LABEL } from '../../utils/collectionSource.js';
 
 export function PostedCollectionsPage() {
   const navigate = useNavigate();
@@ -25,24 +26,46 @@ export function PostedCollectionsPage() {
     staleTime: 2 * 60 * 1000,
   });
 
+  // TMDB franchises (curated on the backend). A failure here must never break the user lists.
+  const { data: tmdbData } = useQuery({
+    queryKey: ['tmdbFeaturedCollections'],
+    queryFn: () => apiFetch('/api/tmdb-collections/featured'),
+    staleTime: 6 * 60 * 60 * 1000,
+    retry: false,
+  });
+
   const rawEntries = useMemo(() => {
-    const list = Array.isArray(data)
-      ? data
-      : (Array.isArray(data?.collections) ? data.collections : []);
-    return list.map((entry) => {
+    const toEntry = (entry) => {
       const col = entry?.collection || entry || {};
       const username = entry?.username || col.username || '';
       const name = col.name || entry?.name || 'Collection';
       const movies = Array.isArray(col.movies) ? col.movies : (Array.isArray(entry?.movies) ? entry.movies : []);
+      const source = entry?.source === 'tmdb' ? 'tmdb' : '';
       return {
-        _id: col._id || entry?._id || `${username}-${name}`,
+        _id: source ? `tmdb-${entry?.tmdbId}` : (col._id || entry?._id || `${username}-${name}`),
         name,
         username,
+        source,
+        tmdbId: entry?.tmdbId,
         description: col.description || '',
         movies: movies.map(normalizeStoredCollectionItem)
       };
-    });
-  }, [data]);
+    };
+
+    const userList = (Array.isArray(data)
+      ? data
+      : (Array.isArray(data?.collections) ? data.collections : [])).map(toEntry);
+    const tmdbList = (Array.isArray(tmdbData) ? tmdbData : []).map(toEntry).filter((c) => c.movies.length > 0);
+
+    // Interleave so both kinds show up from the first page instead of one kind pushing the other away.
+    const merged = [];
+    const max = Math.max(userList.length, tmdbList.length);
+    for (let i = 0; i < max; i++) {
+      if (i < userList.length) merged.push(userList[i]);
+      if (i < tmdbList.length) merged.push(tmdbList[i]);
+    }
+    return merged;
+  }, [data, tmdbData]);
 
   const visibleEntries = useMemo(
     () => rawEntries.slice(0, visibleCount),
@@ -72,7 +95,8 @@ export function PostedCollectionsPage() {
           <div className="space-y-8">
             {visibleEntries.map((col) => {
               const colTitle = col.name;
-              const colPublisher = col.username;
+              const colPublisher = isTmdbSource(col) ? TMDB_PUBLISHER_LABEL : col.username;
+              const profilePath = publisherProfilePath(col);
               const items = col.movies || [];
               const previewItems = items.slice(0, homeShelfLimit);
 
@@ -81,8 +105,8 @@ export function PostedCollectionsPage() {
                   <HomeShelfHeader
                     title={colTitle}
                     publisher={colPublisher}
-                    onPublisherClick={() => colPublisher && navigate(`/user/${encodeURIComponent(colPublisher)}`)}
-                    onViewAll={() => colPublisher && navigate(`/user/${encodeURIComponent(colPublisher)}/collection/${encodeURIComponent(colTitle)}`)}
+                    onPublisherClick={profilePath ? () => navigate(profilePath) : null}
+                    onViewAll={() => colPublisher && navigate(collectionDetailPath(col))}
                   />
                   {previewItems.length ? (
                     <div className={HOME_GRID_CLASS}>

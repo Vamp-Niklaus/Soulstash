@@ -11,6 +11,7 @@ import { CollectionDetailPane } from '../../components/ui/Misc/CollectionDetailP
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
 import { CollectionSearchDrawer } from '../../components/ui/Misc/CollectionSearchDrawer.jsx';
 import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
+import { isTmdbSource } from '../../utils/collectionSource.js';
 
 export function UserCollectionDetailPage() {
   const { username = '', collectionName = '' } = useParams();
@@ -22,15 +23,50 @@ export function UserCollectionDetailPage() {
   const decodedCollectionName = decodeURIComponent(collectionName);
   const { collections, loading } = useLiveCollections();
   
-  const isOwner = Boolean(auth.isLoggedIn && auth.username && username && auth.username.toLowerCase() === username.toLowerCase());
+  // TMDB franchises are opened as /user/tmdb/collection/<name>?id=<tmdbCollectionId>.
+  const isTmdb = isTmdbSource(username);
+  const tmdbId = new URLSearchParams(location.search).get('id');
+
+  const isOwner = !isTmdb && Boolean(auth.isLoggedIn && auth.username && username && auth.username.toLowerCase() === username.toLowerCase());
   
   const queryClient = useQueryClient();
 
   const { data: publicCollectionData, isLoading: publicLoadingQuery, error: publicQueryError } = useQuery({
     queryKey: ['collection', username, decodedCollectionName],
     queryFn: () => apiFetch(`/api/collection/${encodeURIComponent(username)}/${encodeURIComponent(decodedCollectionName)}`),
-    enabled: !isOwner,
+    enabled: !isOwner && !isTmdb,
   });
+
+  const { data: tmdbData, error: tmdbQueryError } = useQuery({
+    queryKey: ['tmdb-collection', tmdbId],
+    queryFn: () => apiFetch(`/api/tmdb-collection/${encodeURIComponent(tmdbId)}`),
+    enabled: isTmdb && !!tmdbId,
+    retry: false,
+  });
+
+  const tmdbCollection = useMemo(() => {
+    if (!tmdbData) return null;
+    const parts = (Array.isArray(tmdbData.parts) ? tmdbData.parts : [])
+      .slice()
+      .sort((a, b) => String(a?.release_date || '9999').localeCompare(String(b?.release_date || '9999')));
+    return {
+      name: tmdbData.name || decodedCollectionName,
+      description: tmdbData.overview || '',
+      banner: tmdbData.backdrop_path ? `https://image.tmdb.org/t/p/w1280${tmdbData.backdrop_path}` : '',
+      source: 'tmdb',
+      username: 'tmdb',
+      movies: parts.map((p) => ({
+        id: p.id,
+        movieId: p.id,
+        title: p.title,
+        media_type: 'Movie',
+        poster_path: p.poster_path,
+        backdrop_path: p.backdrop_path,
+        release_date: p.release_date,
+        vote_average: p.vote_average,
+      })),
+    };
+  }, [tmdbData, decodedCollectionName]);
 
   const publicCollection = useMemo(() => {
     if (!publicCollectionData) return null;
@@ -39,8 +75,10 @@ export function UserCollectionDetailPage() {
       : publicCollectionData?.collection || publicCollectionData?.data || publicCollectionData;
   }, [publicCollectionData]);
 
-  const publicLoading = isOwner ? false : publicLoadingQuery;
-  const publicError = publicQueryError ? (publicQueryError.message || 'Collection not found.') : '';
+  const publicLoading = isOwner || isTmdb ? false : publicLoadingQuery;
+  const publicError = isTmdb
+    ? (!tmdbId ? 'Collection not found.' : tmdbQueryError ? (tmdbQueryError.message || 'Collection not found.') : '')
+    : (publicQueryError ? (publicQueryError.message || 'Collection not found.') : '');
 
   const watchedCollection = useMemo(() => collections.find((item) => item.name === 'Watched'), [collections]);
   const watchedIds = useMemo(
@@ -54,9 +92,13 @@ export function UserCollectionDetailPage() {
   const collection = useMemo(
     () =>
       normalizeCollection(
-        (isOwner ? collections.find((item) => item.name === decodedCollectionName || item._id === decodedCollectionName) : publicCollection) || null
+        (isTmdb
+          ? tmdbCollection
+          : isOwner
+            ? collections.find((item) => item.name === decodedCollectionName || item._id === decodedCollectionName)
+            : publicCollection) || null
       ),
-    [collections, decodedCollectionName, isOwner, publicCollection]
+    [collections, decodedCollectionName, isOwner, isTmdb, publicCollection, tmdbCollection]
   );
   
   const [filters, setFilters] = useSessionState(`collection-page:${location.pathname}:filters`, { contentType: 'all', anime: 'yes', sortBy: 'recent', hideWatched: false });
@@ -270,7 +312,20 @@ export function UserCollectionDetailPage() {
   }
 
   // Show skeleton if collection is loading OR if current collection does not match the requested collectionName
-  const isMatching = collection && (collection.name === decodedCollectionName || collection._id === decodedCollectionName);
+  // TMDB collections are matched by id, so the URL slug does not have to equal the TMDB name.
+  const isMatching = isTmdb
+    ? Boolean(collection)
+    : collection && (collection.name === decodedCollectionName || collection._id === decodedCollectionName);
+
+  // TMDB request failed (hidden by the adult filter, not found, or no id): show the error, not a skeleton forever.
+  if (isTmdb && publicError && !isMatching) {
+    return (
+      <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">
+        <div className="app-error">{publicError}</div>
+      </div>
+    );
+  }
+
   const isStillLoading = !isMatching;
   if (isStillLoading) {
     return (

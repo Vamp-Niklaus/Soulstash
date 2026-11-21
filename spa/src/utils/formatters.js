@@ -1023,27 +1023,29 @@ export function isUnreleasedTitle(content) {
 }
 
 /**
- * Finds the best YouTube trailer or teaser video from TMDB metadata (content.videos.results).
+ * Picks the best YouTube video from a TMDB videos list (`results`).
+ * Order: Trailer, then Teaser/Clip, then anything else. Inside a group the higher quality
+ * (TMDB `size`: 1080 > 720 ...) wins, then official uploads, then the newest upload.
+ * Returns { key, name, size, type } or null.
+ */
+export function pickBestTrailer(videos) {
+  const list = (Array.isArray(videos) ? videos : []).filter((v) => v && v.site === 'YouTube' && v.key);
+  if (!list.length) return null;
+  const rank = (v) => (v.type === 'Trailer' ? 0 : (v.type === 'Teaser' || v.type === 'Clip') ? 1 : 2);
+  const time = (v) => { const t = Date.parse(v.published_at || ''); return Number.isFinite(t) ? t : 0; };
+  const best = [...list].sort((a, b) =>
+    rank(a) - rank(b)
+    || (Number(b.size) || 0) - (Number(a.size) || 0)
+    || (b.official ? 1 : 0) - (a.official ? 1 : 0)
+    || time(b) - time(a)
+  )[0];
+  return { key: best.key, name: best.name || 'Trailer', size: Number(best.size) || 0, type: best.type || '' };
+}
+
+/**
+ * Finds the best YouTube trailer from TMDB metadata (content.videos.results).
  */
 export function findTrailerVideo(content) {
-  const videos = Array.isArray(content?.videos?.results) ? content.videos.results : [];
-  if (!videos.length) return null;
-
-  // 1. Official YouTube Trailer
-  const officialTrailer = videos.find((v) => v.site === 'YouTube' && v.type === 'Trailer' && v.official && v.key);
-  if (officialTrailer) return { key: officialTrailer.key, name: officialTrailer.name || 'Official Trailer' };
-
-  // 2. Any YouTube Trailer
-  const anyTrailer = videos.find((v) => v.site === 'YouTube' && v.type === 'Trailer' && v.key);
-  if (anyTrailer) return { key: anyTrailer.key, name: anyTrailer.name || 'Trailer' };
-
-  // 3. YouTube Teaser
-  const teaser = videos.find((v) => v.site === 'YouTube' && (v.type === 'Teaser' || v.type === 'Clip') && v.key);
-  if (teaser) return { key: teaser.key, name: teaser.name || 'Teaser' };
-
-  // 4. Any YouTube video with a key
-  const anyYt = videos.find((v) => v.site === 'YouTube' && v.key);
-  if (anyYt) return { key: anyYt.key, name: anyYt.name || 'Trailer' };
-
-  return null;
+  return pickBestTrailer(content?.videos?.results);
 }
+

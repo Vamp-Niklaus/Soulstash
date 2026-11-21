@@ -800,3 +800,102 @@
 {"at":"2026-11-21T06:29:50.516Z","tool":"edit_file","args":{"new_text":"[string:62]","old_text":"[string:69]","path":"MCP/server.js"}}
 {"at":"2026-11-21T06:29:52.474Z","tool":"edit_file","args":{"new_text":"[string:60]","old_text":"[string:74]","path":"MCP/server.js"}}
 {"at":"2026-11-21T06:30:03.700Z","tool":"append_memory","args":{"heading":"Session notes (Nov 21, 2026)","content":"[string:1706]"}}
+{"at":"2026-11-21T08:43:17.132Z","tool":"search_files","args":{"case_sensitive":false,"is_regex":true,"pattern":"trailer|/videos","subdir":"spa/src"}}
+{"at":"2026-11-21T08:43:22.499Z","tool":"read_file","args":{"path":"spa/src/pages/Content/DetailPage.jsx","start_line":95,"end_line":150}}
+{"at":"2026-11-21T08:43:27.386Z","tool":"read_file","args":{"end_line":215,"path":"spa/src/pages/Content/DetailPage.jsx","start_line":150}}
+{"at":"2026-11-21T08:43:32.058Z","tool":"search_files","args":{"is_regex":false,"pattern":"func (h *ContentHandler) fetchProxy","subdir":"backend-go/internal/handler"}}
+{"at":"2026-11-21T08:43:34.430Z","tool":"read_file","args":{"end_line":2440,"path":"backend-go/internal/handler/content_handler.go","start_line":2397}}
+{"at":"2026-11-21T08:43:58.363Z","tool":"write_file","args":{"content":"[string:2169]","path":"backend-go/internal/handler/videos_handler.go"}}
+{"at":"2026-11-21T08:44:02.104Z","tool":"search_files","args":{"is_regex":false,"pattern":"cr.Get(\"/series/{id}/season/{seasonNumber}\", h.GetSeriesSeason)","subdir":"backend-go/internal/handler"}}
+{"at":"2026-11-21T08:44:08.081Z","tool":"insert_lines","args":{"after_line":94,"content":"[string:397]","path":"backend-go/internal/handler/content_handler.go"}}
+{"at":"2026-11-21T08:44:09.886Z","tool":"read_file","args":{"end_line":1055,"path":"spa/src/utils/formatters.js","start_line":1020}}
+{"at":"2026-11-21T08:44:16.530Z","tool":"delete_lines","args":{"end_line":1049,"path":"spa/src/utils/formatters.js","start_line":1025}}
+{"at":"2026-11-21T08:44:21.092Z","tool":"insert_lines","args":{"after_line":1024,"content":"[string:1186]","path":"spa/src/utils/formatters.js"}}
+{"at":"2026-11-21T08:44:26.317Z","tool":"write_file","args":{"content":"[string:1255]","path":"spa/src/api/trailers.js"}}
+{"at":"2026-11-21T08:44:30.466Z","tool":"delete_lines","args":{"end_line":127,"path":"spa/src/pages/Content/DetailPage.jsx","start_line":109}}
+{"at":"2026-11-21T08:44:34.495Z","tool":"insert_lines","args":{"after_line":108,"content":"[string:872]","path":"spa/src/pages/Content/DetailPage.jsx"}}
+{"at":"2026-11-21T08:44:37.100Z","tool":"edit_file","args":{"new_text":"[string:122]","old_text":"[string:68]","path":"spa/src/pages/Content/DetailPage.jsx"}}
+{"at":"2026-11-21T08:44:38.494Z","tool":"read_file","args":{"end_line":140,"path":"spa/src/pages/Content/DetailPage.jsx","start_line":104}}
+{"at":"2026-11-21T08:44:40.595Z","tool":"read_file","args":{"end_line":275,"path":"spa/src/pages/Content/DetailPage.jsx","start_line":208}}
+{"at":"2026-11-21T08:44:46.793Z","tool":"insert_lines","args":{"after_line":216,"content":"[string:1280]","path":"spa/src/pages/Content/DetailPage.jsx"}}
+{"at":"2026-11-21T08:44:49.914Z","tool":"append_memory","args":{"content":"[string:588]","heading":"Trailers (Nov 21, 2026)"}}
+{"at":"2026-11-21T09:03:01.364Z","tool":"read_file","args":{"path":"backend-go/internal/handler/search_collections_handler.go"}}
+{"at":"2026-11-21T09:03:41.768Z","tool":"write_file","args":{"content":"[string:9032]","path":"backend-go/internal/handler/search_collections_handler.go"}}
+{"at":"2026-11-21T09:03:46.303Z","tool":"edit_file","args":{"new_text":"[string:165]","old_text":"[string:93]","path":"backend-go/internal/handler/search_collections_handler.go"}}
+{"at":"2026-11-21T09:03:49.406Z","tool":"search_files","args":{"is_regex":false,"pattern":"cr.Get(\"/search/collections\", h.SearchTMDBCollections)","subdir":"backend-go/internal/handler"}}
+{"at":"2026-11-21T09:03:52.277Z","tool":"insert_lines","args":{"after_line":125,"content":"[string:68]","path":"backend-go/internal/handler/content_handler.go"}}
+{"at":"2026-11-21T09:03:56.118Z","tool":"search_files","args":{"is_regex":true,"pattern":"tmdb|TMDB|item_count|collectionPath","subdir":"spa/src","extension":"js"}}
+{"at":"2026-11-21T09:03:59.522Z","tool":"search_files","args":{"is_regex":false,"pattern":"item.source === 'tmdb'","subdir":"spa/src/components/layout"}}
+{"at":"2026-11-21T09:04:00.892Z","tool":"read_file","args":{"end_line":107,"path":"spa/src/components/layout/NavbarSearchOverlay.jsx","start_line":90}}
+{"at":"2026-11-21T09:04:05.051Z","tool":"delete_lines","args":{"end_line":104,"path":"spa/src/components/layout/NavbarSearchOverlay.jsx","start_line":94}}
+{"at":"2026-11-21T09:04:08.914Z","tool":"insert_lines","args":{"after_line":93,"content":"[string:327]","path":"spa/src/components/layout/NavbarSearchOverlay.jsx"}}
+{"at":"2026-11-21T09:04:11.525Z","tool":"edit_file","args":{"new_text":"[string:0]","old_text":"[string:48]","path":"spa/src/components/layout/NavbarSearchOverlay.jsx"}}
+{"at":"2026-11-21T09:04:15.227Z","tool":"search_files","args":{"pattern":"export function UserCollectionDetailPage","subdir":"spa/src"}}
+{"at":"2026-11-21T09:04:16.906Z","tool":"read_file","args":{"end_line":400,"path":"spa/src/pages/Collections/UserCollectionDetailPage.jsx","start_line":1}}
+{"at":"2026-11-21T09:16:22.365Z","tool":"search_files","args":{"pattern":"tmdb-collection|tmdb-collections|posted-collections|PostedCollections|GetFeaturedTMDBCollections","is_regex":true}}
+{"at":"2026-11-21T09:16:23.497Z","tool":"list_files","args":{"subdir":"spa/src/pages/Collections"}}
+{"at":"2026-11-21T09:16:24.107Z","tool":"search_files","args":{"pattern":"export function CollectionDetailPane","subdir":"spa/src"}}
+{"at":"2026-11-21T09:16:27.907Z","tool":"read_file","args":{"path":"spa/src/pages/Collections/PostedCollectionsPage.jsx"}}
+{"at":"2026-11-21T09:16:28.392Z","tool":"read_file","args":{"path":"spa/src/components/ui/Misc/CollectionDetailPane.jsx"}}
+{"at":"2026-11-21T09:16:29.529Z","tool":"search_files","args":{"pattern":"func (h \\*ContentHandler) GetTMDBCollection\\(","is_regex":true,"subdir":"backend-go"}}
+{"at":"2026-11-21T09:16:30.211Z","tool":"search_files","args":{"pattern":"tmdb","subdir":"spa/src/pages/Collections/UserCollectionDetailPage.jsx","case_sensitive":false}}
+{"at":"2026-11-21T09:16:33.357Z","tool":"search_files","args":{"pattern":"GetTMDBCollection\\b","is_regex":true,"extension":"go"}}
+{"at":"2026-11-21T09:16:33.789Z","tool":"read_file","args":{"path":"spa/src/pages/Explore/HomeShelfHeader.jsx"}}
+{"at":"2026-11-21T09:16:34.744Z","tool":"search_files","args":{"pattern":"export function (normalizeCollection|collectionItemCount)","is_regex":true,"subdir":"spa/src/utils"}}
+{"at":"2026-11-21T09:16:38.162Z","tool":"read_file","args":{"path":"backend-go/internal/handler/content_handler.go","start_line":225,"end_line":290}}
+{"at":"2026-11-21T09:16:38.638Z","tool":"read_file","args":{"path":"spa/src/utils/collectionsCache.js","start_line":30,"end_line":90}}
+{"at":"2026-11-21T09:16:39.329Z","tool":"read_file","args":{"path":"backend-go/internal/handler/content_handler.go","start_line":1,"end_line":30}}
+{"at":"2026-11-21T09:16:42.091Z","tool":"search_files","args":{"pattern":"func normalizeStoredCollectionItem|export function normalizeStoredCollectionItem","is_regex":true,"subdir":"spa/src/utils"}}
+{"at":"2026-11-21T09:16:46.529Z","tool":"read_file","args":{"path":"spa/src/utils/formatters.js","start_line":325,"end_line":375}}
+{"at":"2026-11-21T09:16:46.992Z","tool":"read_file","args":{"path":"spa/src/components/ui/Misc/CollectionDetailPane.jsx","start_line":400,"end_line":511}}
+{"at":"2026-11-21T09:16:47.980Z","tool":"search_files","args":{"pattern":"/api/collections/published","extension":"go"}}
+{"at":"2026-11-21T09:17:00.674Z","tool":"read_file","args":{"path":"spa/src/components/layout/Navbar.jsx","start_line":98,"end_line":112}}
+{"at":"2026-11-21T09:17:02.360Z","tool":"search_files","args":{"pattern":"collection/:collectionName|user/:username/collection","is_regex":true,"subdir":"spa/src"}}
+{"at":"2026-11-21T09:17:08.894Z","tool":"write_file","args":{"path":"spa/src/utils/collectionSource.js","content":"[string:1266]"}}
+{"at":"2026-11-21T09:17:09.460Z","tool":"read_file","args":{"path":"spa/src/pages/Collections/UserCollectionDetailPage.jsx","start_line":1,"end_line":50}}
+{"at":"2026-11-21T09:17:25.411Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/UserCollectionDetailPage.jsx","old_text":"[string:76]","new_text":"[string:140]"}}
+{"at":"2026-11-21T09:17:26.977Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/UserCollectionDetailPage.jsx","old_text":"[string:500]","new_text":"[string:1830]"}}
+{"at":"2026-11-21T09:17:28.355Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/UserCollectionDetailPage.jsx","old_text":"[string:162]","new_text":"[string:305]"}}
+{"at":"2026-11-21T09:17:30.406Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/UserCollectionDetailPage.jsx","old_text":"[string:225]","new_text":"[string:319]"}}
+{"at":"2026-11-21T09:17:32.336Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/UserCollectionDetailPage.jsx","old_text":"[string:161]","new_text":"[string:639]"}}
+{"at":"2026-11-21T09:17:42.350Z","tool":"edit_file","args":{"path":"spa/src/components/ui/Misc/CollectionDetailPane.jsx","old_text":"[string:85]","new_text":"[string:174]"}}
+{"at":"2026-11-21T09:17:43.849Z","tool":"edit_file","args":{"path":"spa/src/components/ui/Misc/CollectionDetailPane.jsx","old_text":"[string:65]","new_text":"[string:487]"}}
+{"at":"2026-11-21T09:17:46.940Z","tool":"edit_file","args":{"path":"spa/src/components/ui/Misc/CollectionDetailPane.jsx","old_text":"[string:45]","new_text":"[string:21]"}}
+{"at":"2026-11-21T09:17:49.009Z","tool":"edit_file","args":{"path":"spa/src/components/ui/Misc/CollectionDetailPane.jsx","old_text":"[string:42]","new_text":"[string:26]"}}
+{"at":"2026-11-21T09:17:50.683Z","tool":"edit_file","args":{"path":"spa/src/components/ui/Misc/CollectionDetailPane.jsx","old_text":"[string:54]","new_text":"[string:60]"}}
+{"at":"2026-11-21T09:17:52.466Z","tool":"edit_file","args":{"path":"spa/src/components/ui/Misc/CollectionDetailPane.jsx","old_text":"[string:77]","new_text":"[string:116]"}}
+{"at":"2026-11-21T09:18:03.203Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/PostedCollectionsPage.jsx","old_text":"[string:59]","new_text":"[string:189]"}}
+{"at":"2026-11-21T09:18:04.299Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/PostedCollectionsPage.jsx","old_text":"[string:716]","new_text":"[string:1666]"}}
+{"at":"2026-11-21T09:18:05.741Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/PostedCollectionsPage.jsx","old_text":"[string:48]","new_text":"[string:152]"}}
+{"at":"2026-11-21T09:18:06.938Z","tool":"edit_file","args":{"path":"spa/src/pages/Collections/PostedCollectionsPage.jsx","old_text":"[string:265]","new_text":"[string:177]"}}
+{"at":"2026-11-21T09:18:11.831Z","tool":"search_files","args":{"pattern":"func searchItemVisible|func \\(h \\*ContentHandler\\) searchAdminMode|func getFloat|adultEngine\\s","is_regex":true,"extension":"go","subdir":"backend-go/internal"}}
+{"at":"2026-11-21T09:18:15.187Z","tool":"search_files","args":{"pattern":"tmdbCollectionItemCountCache|func tmdbCollectionParts|func tmdbCollectionPoster|tmdbFeaturedTTL|tmdbCollectionDetailTTL","is_regex":true,"extension":"go"}}
+{"at":"2026-11-21T09:18:15.670Z","tool":"read_file","args":{"path":"backend-go/internal/handler/search_collections_handler.go","start_line":205,"end_line":312}}
+{"at":"2026-11-21T09:27:03.844Z","tool":"search_files","args":{"pattern":"Cast &amp; Crew|Cast & Crew","subdir":"spa/src"}}
+{"at":"2026-11-21T09:27:04.752Z","tool":"search_files","args":{"pattern":"StatusBar|status-bar|statusBar|safe-area|overlaysWebView|windowLightStatusBar|SplashScreen","is_regex":true,"case_sensitive":false}}
+{"at":"2026-11-21T09:27:07.048Z","tool":"read_file","args":{"path":"android/app/src/main/java/app/soul/soulstash/MainActivity.java"}}
+{"at":"2026-11-21T09:27:07.478Z","tool":"read_file","args":{"path":"spa/src/components/layout/NavbarSearchOverlay.jsx","start_line":1,"end_line":90}}
+{"at":"2026-11-21T09:27:08.397Z","tool":"search_files","args":{"pattern":"Cast|Collections","subdir":"spa/src/components/layout"}}
+{"at":"2026-11-21T09:27:17.106Z","tool":"search_files","args":{"pattern":"\"@capacitor/(core|android|status-bar)\"","is_regex":true,"extension":"json"}}
+{"at":"2026-11-21T09:27:17.539Z","tool":"list_files","args":{"subdir":"android/app/src/main/res/values"}}
+{"at":"2026-11-21T09:27:17.940Z","tool":"search_files","args":{"pattern":"capacitor.config","subdir":".","extension":"json"}}
+{"at":"2026-11-21T09:27:20.264Z","tool":"read_file","args":{"path":"android/app/src/main/res/values/styles.xml"}}
+{"at":"2026-11-21T09:27:21.158Z","tool":"search_files","args":{"pattern":"backgroundColor|SystemBars|StatusBar|insetsHandling|androidScheme","is_regex":true,"subdir":".","extension":"ts"}}
+{"at":"2026-11-21T09:27:21.590Z","tool":"list_files","args":{"subdir":".","text_only":true}}
+{"at":"2026-11-21T09:27:26.732Z","tool":"search_files","args":{"pattern":"appId|app\\.soul\\.soulstash","is_regex":true,"subdir":".","extension":"js"}}
+{"at":"2026-11-21T09:27:27.572Z","tool":"search_files","args":{"pattern":"capacitor\\.config","is_regex":true,"case_sensitive":false}}
+{"at":"2026-11-21T09:27:29.880Z","tool":"read_file","args":{"path":"capacitor.config.json"}}
+{"at":"2026-11-21T09:27:30.312Z","tool":"read_file","args":{"path":"spa/src/styles.css","start_line":1,"end_line":60}}
+{"at":"2026-11-21T09:27:30.707Z","tool":"read_file","args":{"path":"spa/src/components/layout/NavbarSearchOverlay.jsx","start_line":108,"end_line":251}}
+{"at":"2026-11-21T09:27:44.182Z","tool":"edit_file","args":{"path":"spa/src/components/layout/NavbarSearchOverlay.jsx","old_text":"[string:561]","new_text":"[string:688]"}}
+{"at":"2026-11-21T09:27:45.106Z","tool":"edit_file","args":{"path":"spa/src/components/layout/NavbarSearchOverlay.jsx","old_text":"[string:38]","new_text":"[string:38]"}}
+{"at":"2026-11-21T09:27:46.193Z","tool":"edit_file","args":{"path":"spa/src/components/layout/NavbarSearchOverlay.jsx","old_text":"[string:37]","new_text":"[string:30]"}}
+{"at":"2026-11-21T09:27:47.304Z","tool":"edit_file","args":{"path":"spa/src/components/layout/NavbarSearchOverlay.jsx","old_text":"[string:30]","new_text":"[string:23]"}}
+{"at":"2026-11-21T09:27:47.726Z","tool":"search_files","args":{"pattern":"filter-scrollbar-hidden","extension":"css"}}
+{"at":"2026-11-21T09:27:48.289Z","tool":"search_files","args":{"pattern":"Cast (&|&amp;) Crew","is_regex":true,"subdir":"spa/src"}}
+{"at":"2026-11-21T09:28:36.492Z","tool":"edit_file","args":{"path":"android/app/src/main/java/app/soul/soulstash/MainActivity.java","old_text":"[string:1036]","new_text":"[string:308]"}}
+{"at":"2026-11-21T09:28:37.760Z","tool":"edit_file","args":{"path":"android/app/src/main/java/app/soul/soulstash/MainActivity.java","old_text":"[string:1021]","new_text":"[string:956]"}}
+{"at":"2026-11-21T09:28:39.144Z","tool":"edit_file","args":{"path":"android/app/src/main/java/app/soul/soulstash/MainActivity.java","old_text":"[string:209]","new_text":"[string:324]"}}
+{"at":"2026-11-21T09:28:40.076Z","tool":"edit_file","args":{"path":"android/app/src/main/java/app/soul/soulstash/MainActivity.java","old_text":"[string:26]","new_text":"[string:199]"}}
+{"at":"2026-11-21T09:28:40.971Z","tool":"edit_file","args":{"path":"android/app/src/main/res/values/styles.xml","old_text":"[string:150]","new_text":"[string:396]"}}
+{"at":"2026-11-21T09:28:41.986Z","tool":"edit_file","args":{"path":"capacitor.config.json","old_text":"[string:23]","new_text":"[string:55]"}}

@@ -35,6 +35,7 @@ import { DetailHero } from './DetailHero.jsx';
 import { SeasonEpisodeSection } from './SeasonEpisodeSection.jsx';
 import { SimilarSection } from './SimilarSection.jsx';
 import { TMDBCollectionSection } from './TMDBCollectionSection.jsx';
+import { fetchTrailer } from '../../api/trailers.js';
 
 import {
   formatRuntime, yearFrom, getLanguageName, getPrimaryCountry,
@@ -106,8 +107,7 @@ export function DetailPage({ type }) {
     // Unreleased content check: if release_date > current date + 1 day, play official trailer from TMDB metadata
     const isUnreleased = isUnreleasedTitle(content);
     if (isUnreleased) {
-      const trailer = findTrailerVideo(content);
-      page.setPlayerRequest(
+      const openTrailer = (trailer) => page.setPlayerRequest(
         createPlayerRequest({
           mediaType: type,
           tmdbId,
@@ -124,6 +124,10 @@ export function DetailPage({ type }) {
           image: posterVal
         })
       );
+      // TMDB /videos endpoint first (best quality trailer), then the metadata already on the page.
+      fetchTrailer({ type: type === 'movie' ? 'movie' : 'series', id: tmdbId })
+        .then((trailer) => openTrailer(trailer || findTrailerVideo(content)))
+        .catch(() => openTrailer(findTrailerVideo(content)));
       return;
     }
 
@@ -209,6 +213,40 @@ export function DetailPage({ type }) {
     const posterVal = content?.poster_path || content?.image || '';
     const backdropVal = content?.backdrop_path || content?.backdrop || '';
     const titleVal = content?.title || content?.name || 'Unknown title';
+
+    // Episode not aired yet: play its trailer (episode videos, then season, then series).
+    const airTs = Date.parse(episode?.air_date || '');
+    if (Number.isFinite(airTs) && airTs > Date.now() + 36 * 60 * 60 * 1000) {
+      const openEpisodeTrailer = (trailer) => page.setPlayerRequest(
+        createPlayerRequest({
+          mediaType: 'series',
+          tmdbId: content?.id || id,
+          seasonNumber: episode.season_number,
+          episodeNumber: episode.episode_number,
+          imdbId: content?.imdb_id,
+          title: `${titleVal} S${episode.season_number}E${episode.episode_number} - ${trailer?.name || 'Trailer'}`,
+          originalTitle,
+          originalName,
+          seriesTitle: titleVal,
+          year: yearVal,
+          isTrailer: true,
+          youtubeTrailerKey: trailer?.key || '',
+          poster_path: posterVal,
+          backdrop_path: backdropVal,
+          image: posterVal
+        })
+      );
+      fetchTrailer({
+        type: 'series',
+        id: content?.id || id,
+        season: episode.season_number,
+        episode: episode.episode_number
+      })
+        .then((trailer) => openEpisodeTrailer(trailer || findTrailerVideo(content)))
+        .catch(() => openEpisodeTrailer(findTrailerVideo(content)));
+      return;
+    }
+
 
     page.setPlayerRequest(
       createPlayerRequest({

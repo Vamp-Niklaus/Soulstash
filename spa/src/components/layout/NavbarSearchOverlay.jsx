@@ -5,7 +5,6 @@ import { getSearchHistory, saveSearchHistoryItem } from '../../utils/formatters.
 import { imageUrl, yearFrom, mediaRoute } from '../../utils/formatters.js';
 import { FALLBACK_AVATAR, FALLBACK_POSTER } from '../../utils/constants.js';
 import { useOverlaySearchKeyboardNav } from '../../hooks/useOverlaySearchKeyboardNav.js';
-import { apiFetch } from '../../api/client.js';
 
 export function NavbarSearchOverlay({
   open,
@@ -92,14 +91,8 @@ export function NavbarSearchOverlay({
     if (item.media_type === 'Person') { navigate(`/person/${item.id}`); return; }
     if (item.media_type === 'User') { navigate(`/user/${encodeURIComponent(item.username || item.title || item.name)}`); return; }
     if (item.media_type === 'Collection' && item.source === 'tmdb' && item.tmdbId) {
-      apiFetch(`/api/tmdb-collection/${item.tmdbId}`)
-        .then((data) => {
-          const parts = (Array.isArray(data?.parts) ? data.parts : [])
-            .slice()
-            .sort((a, b) => String(a?.release_date || '9999').localeCompare(String(b?.release_date || '9999')));
-          if (parts[0]?.id) navigate(`/movie/${parts[0].id}`);
-        })
-        .catch(() => {});
+      // TMDB franchises open the same collection page as user collections, under the "tmdb" source.
+      navigate(`/user/tmdb/collection/${encodeURIComponent(item.name || item.title || 'Collection')}?id=${item.tmdbId}`);
       return;
     }
     if (item.media_type === 'Collection' && item.collectionPath) { navigate(item.collectionPath); return; }
@@ -146,7 +139,7 @@ export function NavbarSearchOverlay({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => setFocusedIndex(-1)}
-                placeholder="Search for Movies, Shows, Anime, Cast & Crew or Users..."
+                placeholder="Search for Movies, Shows, Anime, Cast or Users..."
                 className="h-14 w-full rounded-lg border border-[#353945] bg-[#171717] pl-12 pr-12 text-[#E2E2E2] outline-none transition-all placeholder:text-[#707070] focus:border-white/20"
               />
               <button 
@@ -162,17 +155,17 @@ export function NavbarSearchOverlay({
               </button>
             </div>
           </div>
-          <div className="mb-6 mt-3 flex items-center space-x-8 border-b border-[#252833] pb-1">
-            {[['content','Content',-2],['cast','Cast & Crew',-3],['users','Users',-4],['collections','Collections',-5]].map(([value, label, tabIdxVal], index) => (
+          <div className="filter-scrollbar-hidden mb-6 mt-3 flex items-center gap-6 overflow-x-auto overflow-y-hidden whitespace-nowrap border-b border-[#252833] pb-[6px]" style={{ WebkitOverflowScrolling: 'touch' }}>
+            {[['content','Content',-2],['cast','Cast',-3],['users','Users',-4],['collections','Collections',-5]].map(([value, label, tabIdxVal], index) => (
               <button key={value} ref={(el) => { tabButtonsRef.current[index] = el; }} type="button" tabIndex={0}
-                className={`relative text-sm font-medium outline-none tv-focus-pill ${tab === value ? 'text-white' : 'text-[#A0A0A0]'} ${focusedIndex === tabIdxVal ? 'is-focused' : ''}`}
+                className={`relative shrink-0 text-[13px] font-medium outline-none tv-focus-pill ${tab === value ? 'text-white' : 'text-[#A0A0A0]'} ${focusedIndex === tabIdxVal ? 'is-focused' : ''}`}
                 onClick={() => setTab(value)} 
                 onFocus={() => {
                   setFocusedIndex(tabIdxVal);
                   setTab(value);
                 }}>
                 {label}
-                {tab === value ? <span className="absolute inset-x-0 -bottom-[5px] h-0.5 rounded-full bg-white"></span> : null}
+                {tab === value ? <span className="absolute inset-x-0 -bottom-[6px] h-0.5 rounded-full bg-white"></span> : null}
               </button>
             ))}
           </div>
@@ -193,7 +186,7 @@ export function NavbarSearchOverlay({
                     : item.media_type === 'Collection'
                       ? `${item.publisher || item.username || 'Soulstash'}${typeof item.itemCount === 'number' ? ` · ${item.itemCount} ${item.itemCount === 1 ? 'title' : 'titles'}` : ''}`
                       : item.media_type === 'Person'
-                      ? 'Cast & Crew'
+                      ? 'Cast'
                       : `${item.media_type === 'Series' || item.media_type === 'tv' ? 'Series' : 'Movie'}${yearFrom(item) ? ` | ${yearFrom(item)}` : ''}`;
                   return (
                     <button key={`${item.media_type}-${item.id || item.username || index}`}

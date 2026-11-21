@@ -13,6 +13,7 @@ import { CollectionFilterControls } from './CollectionFilterControls.jsx';
 import { ContentCard } from '../Cards/ContentCard.jsx';
 import { ConfirmModal } from '../Modals/ConfirmModal.jsx';
 import { EditCollectionPosterModal } from '../Modals/EditCollectionPosterModal.jsx';
+import { isTmdbSource, TMDB_PUBLISHER_LABEL } from '../../../utils/collectionSource.js';
 
 export function CollectionDetailPane({
   username,
@@ -30,6 +31,11 @@ export function CollectionDetailPane({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // TMDB collections look identical to user collections, but their publisher has no profile to open.
+  const hasProfile = !isTmdbSource({ username, source: collection?.source });
+  const publisherLabel = hasProfile ? username : TMDB_PUBLISHER_LABEL;
+  const profileLabel = hasProfile ? `View ${username}'s profile` : 'Collection from TMDB';
+  const openProfile = () => { if (hasProfile) navigate(`/user/${username}`); };
   const movies = useMemo(() => filteredCollectionMovies(collection, filters, watchedIds), [collection, filters, watchedIds]);
   const showFilteredResultsCount = hasActiveCollectionContentFilters(filters);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
@@ -187,9 +193,9 @@ export function CollectionDetailPane({
                   ) : (
                     <button type="button"
                       className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] bg-white/[0.1] px-4 text-[13px] font-medium text-white transition-colors hover:bg-white/[0.16] focus:outline-none focus:ring-2 focus:ring-white"
-                      onClick={() => navigate(`/user/${username}`)}
-                      aria-label={`View ${username}'s profile`}>
-                      <i className="fas fa-user"></i><span>{username}</span>
+                      onClick={openProfile}
+                      aria-label={profileLabel}>
+                      <i className="fas fa-user"></i><span>{publisherLabel}</span>
                     </button>
                   )}
                 </div>
@@ -242,9 +248,9 @@ export function CollectionDetailPane({
                 ) : (
                   <button type="button"
                     className="flex h-10 flex-shrink-0 items-center justify-center gap-2 rounded-[14px] bg-white/[0.1] px-3 text-sm font-medium text-white transition-colors hover:bg-white/[0.16] focus:outline-none focus:ring-2 focus:ring-white"
-                    onClick={() => navigate(`/user/${username}`)}
-                    aria-label={`View ${username}'s profile`}>
-                    <i className="fas fa-user"></i><span>{username}</span>
+                    onClick={openProfile}
+                    aria-label={profileLabel}>
+                    <i className="fas fa-user"></i><span>{publisherLabel}</span>
                   </button>
                 )}
               </div>
@@ -278,7 +284,7 @@ export function CollectionDetailPane({
 
           <button type="button"
             className={`absolute top-4 left-4 bg-black/70 p-2.5 rounded-full hover:bg-black/90 transition-colors z-10 focus:outline-none focus:ring-2 focus:ring-white ${!onBackToCollections && !useBannerAsBackdrop ? 'lg:hidden flex' : 'flex'}`}
-            onClick={() => { if (onBackToCollections) { onBackToCollections(); return; } navigate(isOwner ? `/user/${username}/collections` : `/user/${username}`); }}
+            onClick={() => { if (onBackToCollections) { onBackToCollections(); return; } navigate(isOwner ? `/user/${username}/collections` : (hasProfile ? `/user/${username}` : '/posted-collections')); }}
             aria-label="Back to collections">
             <i className="fas fa-arrow-left text-white"></i>
           </button>
@@ -332,9 +338,9 @@ export function CollectionDetailPane({
             ) : (
               <button type="button"
                 className="flex items-center gap-1.5 bg-white/[0.12] hover:bg-white/[0.18] text-white transition-colors text-xs h-9 px-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-white"
-                onClick={() => navigate(`/user/${username}`)}
-                aria-label={`View ${username}'s profile`}>
-                <i className="fas fa-user"></i><span>{username}</span>
+                onClick={openProfile}
+                aria-label={profileLabel}>
+                <i className="fas fa-user"></i><span>{publisherLabel}</span>
               </button>
             )}
           </div>
@@ -365,9 +371,9 @@ export function CollectionDetailPane({
             ) : (
               <button type="button"
                 className="flex-shrink-0 flex h-9 items-center justify-center gap-2 rounded-[16px] bg-white/[0.14] hover:bg-white/[0.22] px-4 text-[13px] font-medium text-white transition-colors focus:outline-none focus:ring-2 focus:ring-white"
-                onClick={() => navigate(`/user/${username}`)}
-                aria-label={`View ${username}'s profile`}>
-                <i className="fas fa-user"></i><span>{username}</span>
+                onClick={openProfile}
+                aria-label={profileLabel}>
+                <i className="fas fa-user"></i><span>{publisherLabel}</span>
               </button>
             )}
           </div>
@@ -413,9 +419,9 @@ export function CollectionDetailPane({
                   ) : (
                     <button type="button"
                       className="mt-2 inline-flex h-9 items-center justify-center gap-2 rounded-full bg-white/10 px-4 text-sm font-medium text-white transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
-                      onClick={() => navigate(`/user/${username}`)}
-                      aria-label={`View ${username}'s profile`}>
-                      <i className="fas fa-user"></i><span>{username}</span>
+                      onClick={openProfile}
+                      aria-label={profileLabel}>
+                      <i className="fas fa-user"></i><span>{publisherLabel}</span>
                     </button>
                   )}
                 </div>
