@@ -46,17 +46,29 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
           if (r3.status === 'fulfilled' && r3.value?.results) advResults.push(...r3.value.results);
           if (advResults.length) {
             const currentIdNum = Number(id);
-            const seen = new Set(initialItems.map(i => Number(i.id)));
-            const extra = advResults.filter(it => it?.id && !seen.has(Number(it.id)) && Number(it.id) !== currentIdNum && it.poster_path);
-            if (extra.length) {
-              preloadImages(extra.map(i => i.poster_path));
-              setItems(prev => {
-                const existing = new Set(prev.map(i => Number(i.id)));
-                const uniqueExtra = extra.filter(i => !existing.has(Number(i.id)));
+            setItems(prev => {
+              const existing = new Set(prev.map(i => Number(i.id)));
+              const uniqueExtra = [];
+              for (const it of advResults) {
+                const itId = Number(it?.id);
+                if (itId && itId !== currentIdNum && it.poster_path && !existing.has(itId)) {
+                  existing.add(itId);
+                  uniqueExtra.push(it);
+                }
+              }
+              if (uniqueExtra.length) {
+                preloadImages(uniqueExtra.map(i => i.poster_path));
                 return [...prev, ...uniqueExtra];
-              });
-              setPage(3);
-            }
+              }
+              return prev;
+            });
+            setPage(3);
+          }
+          if (
+            (r2.status === 'fulfilled' && (r2.value?.has_more === false || r2.value?.hasMore === false || (r2.value?.results?.length ?? 0) === 0)) ||
+            (r3.status === 'fulfilled' && (r3.value?.has_more === false || r3.value?.hasMore === false || (r3.value?.results?.length ?? 0) === 0))
+          ) {
+            setHasMore(false);
           }
         }).catch(() => {});
       }
@@ -83,11 +95,12 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
           });
           setItems(initialItems);
           setPage(1);
-          setHasMore((data?.total_pages || 1) > 1 && results.length > 0);
+          const backendHasMore = data?.has_more ?? data?.hasMore;
+          setHasMore(backendHasMore !== false && (data?.total_pages || 1) > 1 && results.length > 0);
           preloadImages(initialItems.map(item => item.poster_path));
 
           // Advance load next 2 pages (page 2 & 3)
-          if ((data?.total_pages || 1) > 1) {
+          if ((data?.total_pages || 1) > 1 && backendHasMore !== false) {
             const ep2 = type === 'series' ? `/api/series/${id}/similar?page=2` : `/api/movies/${id}/similar?page=2`;
             const ep3 = type === 'series' ? `/api/series/${id}/similar?page=3` : `/api/movies/${id}/similar?page=3`;
             Promise.allSettled([apiFetch(ep2), apiFetch(ep3)]).then(([r2, r3]) => {
@@ -97,17 +110,29 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
               if (r3.status === 'fulfilled' && r3.value?.results) advResults.push(...r3.value.results);
               if (advResults.length) {
                 const currentIdNum = Number(id);
-                const seenSet = new Set(initialItems.map(i => Number(i.id)));
-                const extra = advResults.filter(it => it?.id && !seenSet.has(Number(it.id)) && Number(it.id) !== currentIdNum && it.poster_path);
-                if (extra.length) {
-                  preloadImages(extra.map(i => i.poster_path));
-                  setItems(prev => {
-                    const existing = new Set(prev.map(i => Number(i.id)));
-                    const uniqueExtra = extra.filter(i => !existing.has(Number(i.id)));
+                setItems(prev => {
+                  const existing = new Set(prev.map(i => Number(i.id)));
+                  const uniqueExtra = [];
+                  for (const it of advResults) {
+                    const itId = Number(it?.id);
+                    if (itId && itId !== currentIdNum && it.poster_path && !existing.has(itId)) {
+                      existing.add(itId);
+                      uniqueExtra.push(it);
+                    }
+                  }
+                  if (uniqueExtra.length) {
+                    preloadImages(uniqueExtra.map(i => i.poster_path));
                     return [...prev, ...uniqueExtra];
-                  });
-                  setPage(3);
-                }
+                  }
+                  return prev;
+                });
+                setPage(3);
+              }
+              if (
+                (r2.status === 'fulfilled' && (r2.value?.has_more === false || r2.value?.hasMore === false || (r2.value?.results?.length ?? 0) === 0)) ||
+                (r3.status === 'fulfilled' && (r3.value?.has_more === false || r3.value?.hasMore === false || (r3.value?.results?.length ?? 0) === 0))
+              ) {
+                setHasMore(false);
               }
             }).catch(() => {});
           }
@@ -139,24 +164,38 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
       const data = await apiFetch(endpoint, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
-      if (data && Array.isArray(data.results) && data.results.length > 0) {
+      const results = Array.isArray(data?.results) ? data.results : [];
+      const backendHasMore = data?.has_more ?? data?.hasMore;
+      if (backendHasMore === false || results.length === 0) {
+        setHasMore(false);
+      }
+
+      if (results.length > 0) {
         const currentIdNum = Number(id);
-        const newItems = data.results.filter(newItem => {
-          if (!newItem || !newItem.id) return false;
-          if (Number(newItem.id) === currentIdNum) return false;
-          if (!newItem.poster_path) return false;
-          if (items.some(existingItem => Number(existingItem.id) === Number(newItem.id))) return false;
-          return true;
-        });
-        
+        let addedCount = 0;
+
         setItems(prev => {
           const existing = new Set(prev.map(i => Number(i.id)));
-          const uniqueNew = newItems.filter(i => !existing.has(Number(i.id)));
-          preloadImages(uniqueNew.map(item => item.poster_path));
-          return [...prev, ...uniqueNew];
+          const uniqueNew = [];
+          for (const newItem of results) {
+            const newId = Number(newItem?.id);
+            if (newId && newId !== currentIdNum && newItem.poster_path && !existing.has(newId)) {
+              existing.add(newId);
+              uniqueNew.push(newItem);
+            }
+          }
+          addedCount = uniqueNew.length;
+          if (uniqueNew.length > 0) {
+            preloadImages(uniqueNew.map(item => item.poster_path));
+            return [...prev, ...uniqueNew];
+          }
+          return prev;
         });
+
         setPage(nextPage);
-        if (Number(data.total_pages) && nextPage >= Number(data.total_pages)) setHasMore(false);
+        if (addedCount === 0 || (Number(data?.total_pages) && nextPage >= Number(data?.total_pages))) {
+          setHasMore(false);
+        }
       } else {
         setHasMore(false);
       }
@@ -175,7 +214,10 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
     rootMargin: '2000px' // aggressive prefetching threshold
   });
 
-  if (!items || items.length === 0) return null;
+  // Defensive deduplication before rendering
+  const displayItems = Array.from(new Map(items.map(it => [Number(it.id), it])).values());
+
+  if (!displayItems || displayItems.length === 0) return null;
 
   const title = type === 'movie' ? 'Similar Movies' : 'Similar Series';
 
@@ -184,13 +226,13 @@ export function SimilarSection({ similar = [], totalPages = 1, collections = [],
       <SectionHeader title={title} />
       
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mt-4">
-        {items.map((item, index) => {
+        {displayItems.map((item) => {
           // Add media_type so ContentCard can route correctly
           const contentItem = { ...item, media_type: type };
           const status = user ? getCollectionStatus(collections, contentItem.id) : null;
           return (
             <ContentCard 
-              key={`${contentItem.id}-${contentItem.media_type}-${index}`} 
+              key={`similar-${type}-${contentItem.id}`} 
               item={contentItem} 
               status={status}
             />
