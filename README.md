@@ -4,7 +4,7 @@
 > *Web SPA • Android Mobile & Smart TV (Capacitor) • Windows Desktop (Tauri & Rust) • High-Performance Go Backend*
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-soulstash.onrender.com-00C7B7?style=for-the-badge&logo=render&logoColor=white)](https://soulstash.onrender.com)
-[![Version](https://img.shields.io/badge/Release-v4.2.14-red?style=for-the-badge)](https://github.com/Vamp-Niklaus/Soulstash/releases)
+[![Version](https://img.shields.io/badge/Release-v4.2.15-red?style=for-the-badge)](https://github.com/Vamp-Niklaus/Soulstash/releases)
 [![Go Version](https://img.shields.io/badge/Backend-Go%201.24+-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev/)
 [![React Version](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![Tauri](https://img.shields.io/badge/Desktop-Tauri%202.0%20%2B%20Rust-FFC131?style=for-the-badge&logo=tauri&logoColor=black)](https://tauri.app/)
