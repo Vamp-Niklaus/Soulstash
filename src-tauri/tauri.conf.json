@@ -27,7 +27,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNFNEQ2NDQzOEM2NTdFNUIKUldSYmZtV01RMlJOUHBwZXAyWnR2NGh2NldWZEw5aHc2VTBtczd4OVlKamJvdlEycS9TMk1rMnQK",
       "endpoints": [
-        "https://github.com/Vamp-Niklaus/soulstash-backend/releases/latest/download/latest.json"
+        "https://github.com/Vamp-Niklaus/Soulstash/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
