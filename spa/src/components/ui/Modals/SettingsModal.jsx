@@ -143,15 +143,12 @@ export function SettingsModal({
     }
     async function checkReleaseAssets() {
       try {
-        const data = await Promise.all([
-          fetchLatestPublishedRelease('Soulstash', '.apk'),
-          fetchLatestPublishedRelease('soulstash-backend', '.exe')
-        ]);
-        const apk = data[0]?.assets?.find((asset) => asset.name?.toLowerCase().endsWith('.apk'));
-        const exe = data[1]?.assets?.find((asset) => asset.name?.toLowerCase().endsWith('.exe'));
+        const release = await fetchLatestPublishedRelease('Soulstash');
+        const apk = release?.assets?.find((asset) => asset.name?.toLowerCase().endsWith('.apk'));
+        const exe = release?.assets?.find((asset) => asset.name?.toLowerCase().endsWith('.exe'));
         if (cancelled) return;
         setApkDownloadInfo(apk ? { url: apk.browser_download_url, name: apk.name } : { available: false });
-        setWindowsExeInfo(exe ? { available: true, url: exe.browser_download_url, name: exe.name, tagName: data[1].tag_name || data[1].name || '' } : { available: false });
+        setWindowsExeInfo(exe ? { available: true, url: exe.browser_download_url, name: exe.name, tagName: release?.tag_name || release?.name || '' } : { available: false });
       } catch (err) {
         if (!cancelled) { setApkDownloadInfo({ available: false }); setWindowsExeInfo({ available: false }); }
       }
@@ -199,7 +196,7 @@ export function SettingsModal({
           console.warn('Tauri updater check failed, falling back to release lookup:', err);
         }
       }
-      const releaseRepo = isTauri ? 'soulstash-backend' : 'Soulstash';
+      const releaseRepo = 'Soulstash';
       const assetExtension = isTauri ? '.exe' : '.apk';
       const data = await fetchLatestPublishedRelease(releaseRepo, assetExtension);
       if (!data) {

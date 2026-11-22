@@ -8,14 +8,50 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  check-version:
+    name: Check version update
+    runs-on: ubuntu-latest
+    # Skip checking if it's a pull request (PRs don't publish releases)
+    if: github.event_name != 'pull_request'
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Check if version needs release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          echo "Package version: $VERSION ($TAG)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual workflow trigger - proceeding with build"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists on GitHub. Skipping build."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "Release $TAG does not exist. Proceeding with build and release!"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
   windows:
     name: Windows installer
     runs-on: windows-latest
-    # Signing secrets are not exposed to pull-request builds.
-    if: github.event_name != 'pull_request'
+    needs: check-version
+    if: github.event_name != 'pull_request' && needs.check-version.outputs.should_build == 'true'
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -48,7 +84,7 @@ jobs:
           $exe = Get-ChildItem "$dir/*.exe" | Select-Object -First 1
           $sig = Get-Content "$($exe.FullName).sig" -Raw
           $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          $url = "https://github.com/Vamp-Niklaus/soulstash-backend/releases/latest/download/$([uri]::EscapeDataString($exe.Name))"
+          $url = "https://github.com/Vamp-Niklaus/Soulstash/releases/latest/download/$([uri]::EscapeDataString($exe.Name))"
           $json = [ordered]@{
             version  = $version
             notes    = "Soulstash $version"
@@ -59,22 +95,22 @@ jobs:
           }
           $json | ConvertTo-Json -Depth 5 | Set-Content "$dir/latest.json" -Encoding utf8
 
-      - name: Upload Windows installer
+      - name: Upload Windows installer artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: soulstash-windows-${{ github.run_number }}
+          name: windows-artifacts
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/nsis/*.exe.sig
             src-tauri/target/release/bundle/nsis/latest.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
   android:
     name: Signed Android APK
     runs-on: ubuntu-latest
-    # GitHub does not expose repository secrets to pull-request builds.
-    if: github.event_name != 'pull_request'
+    needs: check-version
+    if: github.event_name != 'pull_request' && needs.check-version.outputs.should_build == 'true'
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -141,10 +177,58 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon assembleRelease
 
-      - name: Upload Android APK
+      - name: Rename and Stage APK
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          mkdir -p android-staging
+          cp android/app/build/outputs/apk/release/app-release.apk "android-staging/Soulstash-v${VERSION}.apk"
+
+      - name: Upload Android APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: soulstash-android-${{ github.run_number }}
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: android-artifacts
+          path: android-staging/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [check-version, windows, android]
+    if: always() && needs.check-version.outputs.should_build == 'true' && (needs.windows.result == 'success' || needs.android.result == 'success')
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        if: needs.windows.result == 'success'
+        with:
+          name: windows-artifacts
+          path: dist-release
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        if: needs.android.result == 'success'
+        with:
+          name: android-artifacts
+          path: dist-release
+
+      - name: Publish Release to GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check-version.outputs.version }}
+        run: |
+          TAG="v$VERSION"
+          echo "Release assets staged in dist-release:"
+          ls -la dist-release/
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Uploading assets to existing release $TAG..."
+            gh release upload "$TAG" dist-release/* --clobber
+          else
+            echo "Creating new release $TAG..."
+            gh release create "$TAG" dist-release/* \
+              --title "Soulstash $TAG" \
+              --generate-notes
+          fi
