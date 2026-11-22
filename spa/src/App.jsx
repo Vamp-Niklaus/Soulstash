@@ -7,6 +7,7 @@ import { App as CapApp } from '@capacitor/app';
 // 2. The Layout & Global UI
 import { ReactNavbar } from './components/layout/Navbar.jsx';
 import { SmartFooter } from './components/layout/SmartFooter.jsx';
+import { UpdateNotificationModal } from './components/ui/Modals/UpdateNotificationModal.jsx';
 
 // 3. Authentication & State
 import { getToken, getCurrentUsername } from './api/client.js';
@@ -214,6 +215,7 @@ export function AppShell() {
         </div>
         <SmartFooter />
       </main>
+      <UpdateNotificationModal />
     </div>
   );
 }

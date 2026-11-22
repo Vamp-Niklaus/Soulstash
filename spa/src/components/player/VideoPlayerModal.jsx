@@ -1640,6 +1640,18 @@ export function VideoPlayerModal({ request, onClose }) {
   const mobileMediaMaxH = sourcesExpanded ? 'min(28vh, 200px)' : 'min(44vh, 56.25vw)';
   const mediaMaxH = isDesktopViewport ? desktopMediaMaxH : mobileMediaMaxH;
   const isExpandedPlayerShell = playerDisplayMode >= 2;
+  const isMode2 = playerDisplayMode === 2;
+  const isMode3 = playerDisplayMode === 3;
+
+  const isNative = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform();
+  const isAndroid = isNative && Capacitor.getPlatform() === 'android';
+  const topSafeInset = isTv
+    ? '0px'
+    : (isAndroid || isAndroidViewport
+        ? 'max(env(safe-area-inset-top, 0px), 36px)'
+        : 'env(safe-area-inset-top, 0px)');
+  const bottomSafeInset = isTv ? '0px' : 'env(safe-area-inset-bottom, 0px)';
+  const mode2Height = `calc(100dvh - ${topSafeInset} - ${bottomSafeInset})`;
 
   const videoBoxStyle = isTv ? {
     width: isExpandedPlayerShell ? '100vw' : 'min(94vw, 1760px)',
@@ -1656,8 +1668,8 @@ export function VideoPlayerModal({ request, onClose }) {
       ? `min(94vw, 1340px, calc(${desktopMediaMaxH} * 16 / 9))`
       : 'min(96vw, calc(96vw))',
     maxWidth: isExpandedPlayerShell ? '100vw' : isDesktopViewport ? '1340px' : '96vw',
-    height: isExpandedPlayerShell ? '100dvh' : sourcesExpanded ? (isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh') : undefined,
-    maxHeight: isExpandedPlayerShell ? '100dvh' : isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh',
+    height: isMode3 ? '100dvh' : isMode2 ? mode2Height : sourcesExpanded ? (isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh') : undefined,
+    maxHeight: isMode3 ? '100dvh' : isMode2 ? mode2Height : isDesktopViewport ? 'min(92dvh, 880px)' : '94dvh',
     margin: isExpandedPlayerShell ? '0' : '0 auto',
     display: 'flex',
     flexDirection: 'column'
@@ -1779,7 +1791,7 @@ export function VideoPlayerModal({ request, onClose }) {
   }, [dragOffset, settlePlayerPosition]);
 
   const handlePlayerPointerDown = useCallback((event) => {
-    if (!isAndroidViewport || event.pointerType !== 'touch') return;
+    if (!isAndroidViewport || isExpandedPlayerShell || event.pointerType !== 'touch') return;
     if (!event.target.closest('[data-player-drag-handle]')) return;
     if (event.target.closest('button, a')) return;
 
@@ -1792,7 +1804,7 @@ export function VideoPlayerModal({ request, onClose }) {
       lastOffset: dragOffset,
       activated: false
     };
-  }, [dragOffset, isAndroidViewport]);
+  }, [dragOffset, isAndroidViewport, isExpandedPlayerShell]);
 
   useEffect(() => {
     if (!isAndroidViewport) return undefined;
@@ -1877,6 +1889,21 @@ export function VideoPlayerModal({ request, onClose }) {
 
   const modalContent = (
     <div className="pointer-events-none fixed inset-0 z-[1000000] bg-transparent" data-player-modal="true" data-player-mode={playerDisplayMode}>
+      {/* Mode 2 status bar & navigation bar covers: ensures phone status strip and nav strip remain clean black with no background bleed */}
+      {isMode2 && !isTv && (
+        <>
+          <div
+            data-player-status-bar-cover="true"
+            className="pointer-events-none fixed left-0 right-0 top-0 bg-black"
+            style={{ height: topSafeInset, zIndex: 1000001 }}
+          />
+          <div
+            data-player-nav-bar-cover="true"
+            className="pointer-events-none fixed left-0 right-0 bottom-0 bg-black"
+            style={{ height: bottomSafeInset, zIndex: 1000001 }}
+          />
+        </>
+      )}
       <div
         className="relative h-full w-full"
         style={{
@@ -1891,7 +1918,7 @@ export function VideoPlayerModal({ request, onClose }) {
           style={{
             ...videoBoxStyle,
             left: isExpandedPlayerShell ? '0' : '50%',
-            top: isExpandedPlayerShell ? '0' : isTv ? '10dvh' : '50%',
+            top: isMode3 ? '0' : (isMode2 ? topSafeInset : (isTv ? '10dvh' : '50%')),
             transform: isExpandedPlayerShell ? 'none' : isTv
               ? 'translateX(-50%)'
               : `translate(calc(-50% + ${dragOffset.x}px), calc(-50% + ${baseVerticalShift + dragOffset.y}px))`,
