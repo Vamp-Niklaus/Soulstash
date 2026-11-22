@@ -32,6 +32,7 @@ function getCollectionsTrashCacheKey() {
  * Returns a new object — never mutates the input.
  */
 export function normalizeCollection(collection) {
+  if (!collection) return null;
   const rawMovies = Array.isArray(collection?.movies) ? collection.movies : [];
   let movies = rawMovies;
 
