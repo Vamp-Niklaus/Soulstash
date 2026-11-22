@@ -23,9 +23,12 @@ export function isLetterboxdSource(input) {
 
 /** Link to a collection's detail page, for user, Letterboxd, and TMDB collections. */
 export function collectionDetailPath(entry) {
-  const name = encodeURIComponent(entry?.name || entry?.collection?.name || 'Collection');
+  const rawName = entry?.name || entry?.collection?.name || 'Collection';
+  const cleanName = rawName.replace(/\s+collection$/i, '').trim() || rawName;
+  const name = encodeURIComponent(cleanName);
   if (isTmdbSource(entry)) {
-    return `/user/${TMDB_PUBLISHER}/collection/${name}?id=${entry.tmdbId}`;
+    const tmdbId = entry.tmdbId || entry.id || entry.collection?.tmdbId || entry.collection?.id;
+    return `/user/${TMDB_PUBLISHER}/collection/${name}?id=${tmdbId}`;
   }
   if (isLetterboxdSource(entry)) {
     return `/user/${LETTERBOXD_PUBLISHER}/collection/${name}`;

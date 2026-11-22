@@ -105,15 +105,19 @@ export function NavbarSearchOverlay({
     onClose();
     if (item.media_type === 'Person') { navigate(`/person/${item.id}`); return; }
     if (item.media_type === 'User') { navigate(`/user/${encodeURIComponent(item.username || item.title || item.name)}`); return; }
-    if (item.media_type === 'Collection' && item.source === 'tmdb' && item.tmdbId) {
-      // TMDB franchises open the same collection page as user collections, under the "tmdb" source.
-      navigate(`/user/tmdb/collection/${encodeURIComponent(item.name || item.title || 'Collection')}?id=${item.tmdbId}`, {
+    if (item.media_type === 'Collection' && item.source === 'tmdb' && (item.tmdbId || item.id)) {
+      const tmdbId = item.tmdbId || item.id;
+      const rawName = item.name || item.title || 'Collection';
+      const cleanName = rawName.replace(/\s+collection$/i, '').trim() || rawName;
+      navigate(`/user/tmdb/collection/${encodeURIComponent(cleanName)}?id=${tmdbId}`, {
         state: { collection: item }
       });
       return;
     }
     if (item.media_type === 'Collection' && item.source === 'letterboxd') {
-      navigate(`/user/letterboxd/collection/${encodeURIComponent(item.name || item.title || 'Collection')}`, {
+      const rawName = item.name || item.title || 'Collection';
+      const cleanName = rawName.replace(/\s+collection$/i, '').trim() || rawName;
+      navigate(`/user/letterboxd/collection/${encodeURIComponent(cleanName)}`, {
         state: { collection: item }
       });
       return;
