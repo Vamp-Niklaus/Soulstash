@@ -1,0 +1,1099 @@
+import { IMAGE_BASE, FALLBACK_AVATAR } from './constants.js';
+import { PLAYER_SOURCE_SLOTS } from './playerUtils.js';
+import { Capacitor } from '@capacitor/core';
+
+// ==========================================
+// TYPE NORMALIZATION & IDs
+// ==========================================
+
+/**
+ * Extracts a numeric content ID from any media item object.
+ * Useful for normalizing IDs coming from different APIs (TMDB vs MongoDB).
+ */
+export function contentIdFromItem(item) {
+  const raw = item?.contentId || item?.movieId || item?.seriesId || item?.tmdbId || item?.id || item?._id;
+  if (!raw) return 0;
+  if (typeof raw === 'string' && (raw.startsWith('kartoons-') || raw.startsWith('kartoons:'))) {
+    return raw;
+  }
+  const num = Number(raw);
+  return isNaN(num) ? raw : num;
+}
+
+/**
+ * Normalizes a media type string into exactly 'Movie' or 'Series'.
+ */
+export function normalizeMediaType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['tv', 'series', 'show'].includes(normalized)) return 'Series';
+  if (['movie', 'movies', 'film'].includes(normalized)) return 'Movie';
+  return value || '';
+}
+
+/**
+ * Derives the media type (Movie or Series) from an item object based on its properties.
+ */
+export function mediaTypeFromItem(item) {
+  return normalizeMediaType(
+    item?.media_type ||
+      item?.mediaType ||
+      item?.type ||
+      (item?.seriesId ? 'Series' : '') ||
+      (item?.movieId ? 'Movie' : '') ||
+      (!item?.release_date && item?.first_air_date ? 'Series' : '') ||
+      (item?.title || item?.release_date ? 'Movie' : '')
+  );
+}
+
+// ==========================================
+// RATING & METADATA UTILS
+// ==========================================
+
+/**
+ * Validates and returns an IMDB rating, throwing out extreme outliers (10 or >= 9.4) that are usually fake.
+ */
+export function getValidImdbRating(value) {
+  const rating = Number(value);
+  if (!Number.isFinite(rating) || rating <= 0 || rating === 10 || rating >= 9.4) return null;
+  return rating;
+}
+
+/**
+ * Validates and returns a TMDB vote average.
+ */
+export function getValidVoteAverage(value) {
+  const rating = Number(value);
+  if (!Number.isFinite(rating) || rating <= 0 || rating === 10 || rating >= 9.4) return null;
+  return rating;
+}
+
+/**
+ * Prefers the IMDB rating if available, otherwise falls back to TMDB vote average.
+ */
+export function getPreferredRating(item) {
+  return getValidImdbRating(item?.imdb_rating) ?? getValidVoteAverage(item?.vote_average);
+}
+
+/**
+ * Merges external IMDB ratings into a list of TMDB items.
+ */
+export function mergeImdbRatings(items, ratingItems) {
+  const ratingsByKey = new Map(
+    (ratingItems || []).map((item) => [`${item.mediaType}:${item.tmdbID}`, item])
+  );
+
+  return (items || []).map((item) => {
+    const contentId = contentIdFromItem(item);
+    const mediaType = mediaTypeFromItem(item);
+    const ratingMatch = ratingsByKey.get(`${mediaType}:${contentId}`);
+    if (!ratingMatch) return item;
+
+    const nextRating = getValidImdbRating(ratingMatch.imdb_rating);
+    const nextVoteAverage = getValidVoteAverage(ratingMatch.vote_average);
+    return {
+      ...item,
+      imdb_rating: nextRating ?? item?.imdb_rating,
+      vote_average: nextVoteAverage ?? item?.vote_average,
+      imdb_id: ratingMatch.imdbID || item?.imdb_id || '',
+      rating_lookup_attempted: ratingMatch?.lookup_attempted === true || item?.rating_lookup_attempted === true
+    };
+  });
+}
+
+/**
+ * Checks if a specific item has a valid rating or if a lookup was already attempted.
+ */
+export function hasStoredRating(item) {
+  return getPreferredRating(item) != null || item?.rating_lookup_attempted === true;
+}
+
+/**
+ * Formats a runtime in minutes into a readable "Xh Ym" format.
+ */
+export function formatRuntime(minutes) {
+  if (!minutes || Number(minutes) <= 0) return 'N/A';
+  const total = Number(minutes);
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  if (!hours) return `${mins}m`;
+  if (!mins) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+}
+
+/**
+ * Extracts the release year from a media item.
+ */
+export function yearFrom(item) {
+  const dateValue = item?.release_date || item?.first_air_date;
+  return dateValue ? new Date(dateValue).getFullYear() : 'N/A';
+}
+
+/**
+ * Formats an anticipated release date for upcoming media items.
+ * e.g., '2026-12-16' -> 'Dec 16, 2026' or '2028-02-00' -> 'Feb 2028', or 'TBA' if undecided.
+ */
+export function formatAnticipatedReleaseDate(item) {
+  const dateValue = item?.release_date || item?.first_air_date;
+  if (!dateValue || typeof dateValue !== 'string' || !dateValue.trim()) {
+    return 'TBA';
+  }
+  const parts = dateValue.trim().split('-');
+  if (parts.length >= 2) {
+    const year = parts[0];
+    const monthIdx = parseInt(parts[1], 10) - 1;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (monthIdx >= 0 && monthIdx < 12) {
+      if (parts.length >= 3 && parseInt(parts[2], 10) > 0) {
+        return `${months[monthIdx]} ${parseInt(parts[2], 10)}, ${year}`;
+      }
+      return `${months[monthIdx]} ${year}`;
+    }
+    return year;
+  }
+  return dateValue;
+}
+
+/**
+ * Gets the primary country of origin for a media item.
+ */
+export function getPrimaryCountry(content) {
+  if (content?.country) return content.country;
+  if (Array.isArray(content?.production_countries) && content.production_countries.length) {
+    return content.production_countries
+      .map((country) => (typeof country === 'string' ? country : country?.name))
+      .filter(Boolean)
+      .join(', ');
+  }
+  return 'Unknown';
+}
+
+/**
+ * Returns a readable, comma-separated string of director(s) or creator(s).
+ * SIMPLIFIED: Uses optional chaining and standard set filtering.
+ */
+export function getDirectorLabel(content, crew = [], type = 'movie') {
+  if (type === 'series') {
+    const creators = content?.created_by?.map((c) => c?.name).filter(Boolean) || [];
+    if (creators.length) return creators.join(', ');
+    const dirs = Array.isArray(content?.director) ? content.director : [content?.director];
+    const validDirs = dirs.filter(Boolean);
+    return validDirs.length ? validDirs.join(', ') : 'Unknown';
+  }
+
+  // Check pre-populated director array/string
+  if (Array.isArray(content?.director) && content.director.length) {
+    return content.director.filter(Boolean).join(', ');
+  }
+  if (typeof content?.director === 'string' && content.director.trim()) {
+    return content.director;
+  }
+
+  // Search crew array
+  const crewList = (crew?.length ? crew : content?.crew) || [];
+  const directors = crewList
+    .filter((p) => p?.job === 'Director' || p?.known_for_department === 'Directing')
+    .map((p) => p?.name)
+    .filter(Boolean);
+
+  const uniqueDirectors = [...new Set(directors)].slice(0, 4);
+  return uniqueDirectors.length ? uniqueDirectors.join(', ') : 'Unknown';
+}
+
+/**
+ * Returns an array of director objects ({id, name}) for linking.
+ * SIMPLIFIED: Filters crew natively with Set tracking.
+ */
+export function getDirectorPeople(content, crew = [], type = 'movie') {
+  const getUnique = (people) => {
+    const seen = new Set();
+    return (people || [])
+      .filter((p) => p?.id && p?.name)
+      .filter((p) => seen.has(p.id) ? false : seen.add(p.id))
+      .slice(0, 4)
+      .map((p) => ({ id: p.id, name: p.name }));
+  };
+
+  if (type === 'series') return getUnique(content?.created_by);
+
+  const crewList = (crew?.length ? crew : content?.crew) || [];
+  return getUnique(crewList.filter((p) => p?.job === 'Director' || p?.known_for_department === 'Directing'));
+}
+
+/**
+ * Uses the native Intl.DisplayNames API to convert a language code to a full readable string.
+ */
+export function getLanguageName(languageCode, fallback = 'Unknown') {
+  if (!languageCode) return fallback;
+  try {
+    const displayNames = new Intl.DisplayNames(['en'], { type: 'language' });
+    return displayNames.of(String(languageCode).toLowerCase()) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// ==========================================
+// IMAGE & URL FORMATTING
+// ==========================================
+
+/**
+ * Generates a full TMDB image URL, handling external links and fallbacks.
+ */
+export function imageUrl(path, size = 'w500') {
+  if (!path) return FALLBACK_AVATAR;
+  let p = String(path).trim();
+  if (p.includes('google.com/url?')) {
+    try {
+      const parsed = new URL(p);
+      const target = parsed.searchParams.get('q') || parsed.searchParams.get('url');
+      if (target) p = target;
+    } catch (_) {}
+  }
+  if (/^https?:\/\//i.test(p)) return p;
+  if (p.includes('avatar.png') || p.startsWith('data:')) return p;
+  const cleanPath = p.startsWith('/') ? p : `/${p}`;
+  return `${IMAGE_BASE}/${size}${cleanPath}`;
+}
+
+/**
+ * Determines the correct application route path (e.g. /movie/123) for an item.
+ */
+export function mediaRoute(item) {
+  if (!item) return '#';
+
+  const rawId = item.id || item.tmdbID || item.movieId || item.seriesId || item.tmdbId || item._id;
+  const isNumericTmdb = rawId && (/^\d+$/.test(String(rawId)) || typeof rawId === 'number');
+
+  // If this item has a TMDB numeric ID (even if merged from a kartoon), route directly to TMDB movie/series page
+  if (isNumericTmdb) {
+    const type = String(item.media_type || item.type || (item.seriesId || item.seasonNumber || item.episodeNumber ? 'Series' : 'Movie')).toLowerCase();
+    if (type === 'series' || type === 'tv') return `/series/${rawId}`;
+    return `/movie/${rawId}`;
+  }
+
+  if (item.is_kartoons || item.isKartoons || String(item.id || '').startsWith('kartoons-')) {
+    const slug = item.kartoons_slug || item.slug || String(item.id || '').replace(/^kartoons-/, '');
+    const type = String(item.media_type || item.type || '').toLowerCase();
+    const movieQuery = ['movie', 'film'].includes(type) ? '?type=movie' : '';
+    return `/kartoons/${slug}${movieQuery}`;
+  }
+  const type = String(item.media_type || item.type || (item.seriesId ? 'Series' : 'Movie')).toLowerCase();
+  const id = rawId;
+  if (!id) return '#';
+  if (type === 'person') return `/person/${id}`;
+  if (type === 'series' || type === 'tv') return `/series/${id}`;
+  return `/movie/${id}`;
+}
+
+// ==========================================
+// COLLECTION & FILTERING UTILS
+// ==========================================
+
+export function collectionItemKey(item) {
+  return `${mediaTypeFromItem(item)}:${contentIdFromItem(item)}`;
+}
+
+export function creditItemKey(item) {
+  return `${mediaTypeFromItem(item)}:${Number(item?.id || item?.movieId || item?.seriesId || item?.contentId || 0)}`;
+}
+
+export function creditMatchesCollectionItem(credit, collectionItem) {
+  const creditId = contentIdFromItem(credit);
+  const collectionId = contentIdFromItem(collectionItem);
+  if (!creditId || !collectionId || creditId !== collectionId) return false;
+
+  const creditType = mediaTypeFromItem(credit);
+  const collectionType = mediaTypeFromItem(collectionItem);
+  if (!creditType || !collectionType) return true;
+  return creditType === collectionType;
+}
+
+/**
+ * Filters a list of actor credits to only show the ones that exist in the user's collection.
+ */
+export function filterCreditsByCollectionItems(credits, collection, debugLabel = '', debugEnabled = true) {
+  const collectionItems = Array.isArray(collection?.movies) ? collection.movies : [];
+  if (!collectionItems.length) return [];
+  return credits.filter((credit) => {
+    const matchedItem = collectionItems.find((item) => creditMatchesCollectionItem(credit, item));
+    if (debugEnabled && debugLabel && matchedItem) {
+      console.log(
+        `${debugLabel} cast "${credit?.title || credit?.name || 'Unknown'}" (${mediaTypeFromItem(credit)} ${contentIdFromItem(credit)}) matches collection "${matchedItem?.title || matchedItem?.name || 'Unknown'}" (${mediaTypeFromItem(matchedItem)} ${contentIdFromItem(matchedItem)})`
+      );
+    }
+    return !!matchedItem;
+  });
+}
+
+/**
+ * Standardizes a collection item object.
+ */
+export function normalizeStoredCollectionItem(item) {
+  const isSeries = item?.media_type === 'Series' || item?.media_type === 'tv' || !!item?.seriesId;
+  const id = Number(item?.movieId || item?.seriesId || item?.id || item?._id || 0);
+
+  return {
+    id,
+    title: item?.title || item?.name || 'Unknown',
+    name: item?.name || item?.title || 'Unknown',
+    poster_path: item?.poster_path || '',
+    release_date: item?.release_date || '',
+    first_air_date: item?.first_air_date || '',
+    vote_average: item?.vote_average || 0,
+    imdb_rating: item?.imdb_rating,
+    imdb_id: item?.imdb_id || '',
+    rating_lookup_attempted: item?.rating_lookup_attempted === true,
+    media_type: isSeries ? 'Series' : 'Movie',
+    isAnime: Boolean(
+      item?.isAnime ||
+      item?.is_anime ||
+      ((item?.original_language === 'ja' || item?.originalLanguage === 'ja') &&
+       (item?.genre_ids?.includes(16) || item?.genres?.some(g => g.id === 16 || g.name === 'Animation')))
+    ),
+    genre_ids: Array.isArray(item?.genre_ids) ? item.genre_ids : []
+  };
+}
+
+export function normalizeCredit(item) {
+  return {
+    id: item.id,
+    title: item.title || item.name,
+    name: item.name,
+    poster_path: item.poster_path,
+    release_date: item.release_date,
+    first_air_date: item.first_air_date,
+    vote_average: item.vote_average,
+    imdb_rating: item.imdb_rating,
+    imdb_id: item.imdb_id || '',
+    rating_lookup_attempted: item?.rating_lookup_attempted === true,
+    media_type: item.media_type === 'tv' ? 'Series' : 'Movie'
+  };
+}
+
+export function createEmptyCollectionDraft() {
+  return { name: '', description: '', isPublic: false };
+}
+
+/**
+ * Returns booleans indicating which default collections a piece of content is currently in.
+ */
+export function getCollectionStatus(collections, contentId) {
+  const targetStr = String(contentId || '');
+  const targetSlug = targetStr.replace(/^kartoons[-:]/, '');
+  const targetNum = Number(contentId);
+  const watchedCollection = (collections || []).find((c) => c.name === 'Watched');
+  const watchlistCollection = (collections || []).find((c) => c.name === 'Watchlist');
+  const customCollections = (collections || []).filter((c) => !['Watched', 'Watchlist'].includes(c.name));
+
+  const hasContent = (collection) =>
+    Array.isArray(collection?.movies) &&
+    collection.movies.some((item) => {
+      const rawId = item.movieId || item.seriesId || item.id;
+      const strId = String(rawId || '');
+      return (
+        strId === targetStr ||
+        strId.replace(/^kartoons[-:]/, '') === targetSlug ||
+        (!Number.isNaN(targetNum) && Number(rawId) === targetNum)
+      );
+    });
+
+  return {
+    watched: hasContent(watchedCollection),
+    watchlist: hasContent(watchlistCollection),
+    customSaved: customCollections.some(hasContent)
+  };
+}
+
+export function isContentInCollection(collections, collectionName, contentId, mediaType = '') {
+  const collection = (collections || []).find((item) => item.name === collectionName || item._id === collectionName);
+  if (!collection || !Array.isArray(collection.movies)) return false;
+  const normalizedMediaType = normalizeMediaType(mediaType);
+  const targetStr = String(contentId || '');
+  const targetSlug = targetStr.replace(/^kartoons[-:]/, '');
+  const targetNum = Number(contentId);
+  return collection.movies.some((movie) => {
+    const rawMid = contentIdFromItem(movie) || movie?.movieId || movie?.seriesId || movie?.id || '';
+    const mId = String(rawMid);
+    const mSlug = mId.replace(/^kartoons[-:]/, '');
+
+    const idMatches =
+      mId === targetStr ||
+      mSlug === targetSlug ||
+      (!Number.isNaN(targetNum) && Number(rawMid) === targetNum);
+
+    if (!idMatches) return false;
+    if (!normalizedMediaType) return true;
+    return normalizeMediaType(movie?.media_type || (movie?.seriesId ? 'Series' : 'Movie')) === normalizedMediaType;
+  });
+}
+
+export function hasActiveCollectionContentFilters(filters) {
+  return !!filters && (
+    filters.contentType !== 'all' ||
+    filters.anime !== 'yes' ||
+    filters.sortBy !== 'recent' ||
+    filters.hideWatched === true
+  );
+}
+
+export function hasActivePersonFilters({ contentType, quickFilter, collectionFilter, sortBy }) {
+  return (
+    contentType !== 'all' ||
+    quickFilter !== 'all' ||
+    !!collectionFilter ||
+    sortBy !== 'year-desc'
+  );
+}
+
+/**
+ * SIMPLIFIED: Filters and sorts a collection based on the user's active filter criteria.
+ */
+export function filteredCollectionMovies(collection, filters, watchedIds) {
+  const base = Array.isArray(collection?.movies) ? collection.movies : [];
+  
+  // 1. Filter
+  const filtered = base.filter((movie) => {
+    const isSeries = movie?.media_type === 'Series' || movie?.media_type === 'tv' || !!movie?.seriesId;
+    const isAnime = !!movie?.isAnime;
+    const id = Number(movie?.movieId || movie?.seriesId || movie?.id || movie?._id || 0);
+
+    if (filters.contentType === 'movies' && isSeries) return false;
+    if (filters.contentType === 'series' && !isSeries) return false;
+    if (filters.anime === 'no' && isAnime) return false;
+    if (filters.anime === 'only' && !isAnime) return false;
+    if (filters.hideWatched && watchedIds.has(id)) return false;
+    return true;
+  });
+
+  // 2. Sort
+  return filtered.sort((a, b) => {
+    if (filters.sortBy === 'oldest') {
+        const addedA = new Date(a?.addedAt || a?.updatedAt || a?.release_date || 0).getTime();
+        const addedB = new Date(b?.addedAt || b?.updatedAt || b?.release_date || 0).getTime();
+        return addedA - addedB;
+    }
+    if (filters.sortBy === 'rating-desc') return compareRatingsForSort(a, b, 'desc');
+    if (filters.sortBy === 'rating-asc') return compareRatingsForSort(a, b, 'asc');
+    if (filters.sortBy === 'title-asc') return String(a?.title || a?.name || '').localeCompare(String(b?.title || b?.name || ''));
+    if (filters.sortBy === 'title-desc') return String(b?.title || b?.name || '').localeCompare(String(a?.title || a?.name || ''));
+    
+    const yearA = Number(yearFrom(a)) || 0;
+    const yearB = Number(yearFrom(b)) || 0;
+    if (filters.sortBy === 'year-desc') return yearB - yearA;
+    if (filters.sortBy === 'year-asc') return yearA - yearB;
+    
+    // Default: recent (newest added)
+    const addedA = new Date(a?.addedAt || a?.updatedAt || a?.release_date || 0).getTime();
+    const addedB = new Date(b?.addedAt || b?.updatedAt || b?.release_date || 0).getTime();
+    return addedB - addedA;
+  });
+}
+
+export function compareRatingsForSort(a, b, direction = 'desc') {
+  const ratingA = getPreferredRating(a);
+  const ratingB = getPreferredRating(b);
+  if (ratingA == null && ratingB == null) return 0;
+  if (ratingA == null) return 1;
+  if (ratingB == null) return -1;
+  return direction === 'asc' ? ratingA - ratingB : ratingB - ratingA;
+}
+
+export function filterLabel(filters) {
+  switch (filters.anime) {
+    case 'no': return 'Hide anime';
+    case 'only': return 'Only anime';
+    default: return 'Show anime';
+  }
+}
+
+export function sortLabel(filters) {
+  switch (filters.sortBy) {
+    case 'oldest': return 'Oldest';
+    case 'rating-desc': return 'Rating high';
+    case 'rating-asc': return 'Rating low';
+    case 'title-asc': return 'Title A-Z';
+    case 'title-desc': return 'Title Z-A';
+    case 'year-desc': return 'Year new';
+    case 'year-asc': return 'Year old';
+    default: return 'Recent';
+  }
+}
+
+// ==========================================
+// SEARCH & HISTORY UTILS
+// ==========================================
+
+const SEARCH_HISTORY_KEY = 'ss_search_history';
+
+/**
+ * Clears the search history from local storage.
+ */
+export function clearSearchHistory() {
+  try {
+    localStorage.removeItem(SEARCH_HISTORY_KEY);
+    localStorage.removeItem('soulstash_search_history');
+  } catch {}
+}
+
+/**
+ * Removes a single item from the search history in local storage.
+ */
+export function removeSearchHistoryItem(item) {
+  try {
+    const list = getSearchHistory().filter(
+      (entry) =>
+        `${entry.media_type}:${entry.id || entry.username}` !==
+        `${item.media_type}:${item.id || item.username}`
+    );
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(list));
+    localStorage.setItem('soulstash_search_history', JSON.stringify(list));
+    return list;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Retrieves the search history from local storage.
+ */
+export function getSearchHistory() {
+  try {
+    const raw = localStorage.getItem(SEARCH_HISTORY_KEY);
+    const parsed = JSON.parse(raw || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Truncates and saves a lightweight version of a searched item to local storage history.
+ */
+export function saveSearchHistoryItem(item) {
+  try {
+    const next = [
+      {
+        id: item.id,
+        title: item.title || item.name || item.username || 'Unknown',
+        name: item.name || item.title || '',
+        username: item.username || '',
+        poster_path: item.poster_path || item.posterUrl || item.image || item.kartoons?.image || item.profile_path || item.avatar || '',
+        media_type: item.media_type,
+        release_date: item.release_date || item.first_air_date || '',
+        fullName: item.fullName || '',
+        source: item.source || '',
+        publisher: item.publisher || '',
+        tmdbId: item.tmdbId || null,
+        collectionPath: item.collectionPath || '',
+        kartoons: item.kartoons || null
+      },
+      ...getSearchHistory().filter(
+        (entry) =>
+          `${entry.media_type}:${entry.id || entry.username}` !==
+          `${item.media_type}:${item.id || item.username}`
+      )
+    ].slice(0, 20);
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+/**
+ * SIMPLIFIED: Merges incoming streaming API search results with current results, deduplicating via Set,
+ * and sorts by relevance/score.
+ * @param {number} adminMode - 0=filter adult, 1=show all, 2=adult only (only applies to Movie/Series, not People)
+ */
+export function mergeSearchResults(currentResults, incomingResults, limit = 400, adminMode = 0) {
+  const mergedMap = new Map();
+
+  // Deduplicate items
+  for (const item of [...currentResults, ...incomingResults]) {
+    if (!item) continue;
+    const key = `${item.media_type}:${item.id || item.username || item.title}`;
+    if (!mergedMap.has(key)) mergedMap.set(key, item);
+  }
+
+  // Sort
+  return Array.from(mergedMap.values())
+    .sort((a, b) => {
+      const aIsContent = ['Movie', 'Series', 'tv'].includes(String(a.media_type || ''));
+      const bIsContent = ['Movie', 'Series', 'tv'].includes(String(b.media_type || ''));
+      
+      // Prioritize Content over People/Users
+      if (aIsContent !== bIsContent) return aIsContent ? -1 : 1;
+      
+      // Sort by score (which includes batch separation penalty of -1000 per page) or popularity
+      return (Number(b.score ?? b.popularity ?? 0)) - (Number(a.score ?? a.popularity ?? 0));
+    })
+    .slice(0, limit);
+}
+
+
+// ==========================================
+// VIDEO PLAYER URL BUILDERS
+// ==========================================
+
+export function isDirectMediaUrl(url = '') {
+  const normalized = String(url).toLowerCase();
+  return (
+    normalized.endsWith('.mp4') ||
+    normalized.endsWith('.m3u8') ||
+    normalized.includes('.m3u8') ||
+    normalized.includes('/playlist/') ||
+    normalized.includes('workers.dev') ||
+    normalized.endsWith('.webm') ||
+    normalized.endsWith('.ogg')
+  );
+}
+
+export function sourceKeyText(source = {}) {
+  return `${source.id || ''} ${source.key || ''} ${source.label || ''}`.toLowerCase();
+}
+
+export function firstPlayableUrl(source) {
+  if (!source) return '';
+  if (source.url) return source.url;
+  if (Array.isArray(source.urls)) return source.urls.find(Boolean) || '';
+  return '';
+}
+
+/**
+ * Generates an array of fallback third-party streaming iframes for when the main server fails.
+ */
+export function buildLegacyPlayerSources({ mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title, youtubeTrailerKey, isTrailer }) {
+  const input = { mediaType, tmdbId, seasonNumber, episodeNumber, imdbId, title, youtubeTrailerKey, isTrailer };
+  const type = String(mediaType || '').toLowerCase();
+  const isMovie = type === 'movie';
+  const s = seasonNumber || 1;
+  const e = episodeNumber || 1;
+  const id = Number(tmdbId || 0);
+
+  if (isTrailer) {
+    const ytUrl = youtubeTrailerKey
+      ? `https://www.youtube-nocookie.com/embed/${youtubeTrailerKey}?autoplay=1&rel=0`
+      : title
+      ? `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${title} trailer`)}&autoplay=1`
+      : '';
+    return ytUrl ? [
+      {
+        id: 'youtube',
+        key: 'youtube',
+        label: 'Trailer',
+        url: ytUrl,
+        urls: [ytUrl],
+        embeddable: true,
+        fallback: true
+      }
+    ] : [];
+  }
+
+  if (!id) return [];
+  
+  return [
+    {
+      id: 'vidlink',
+      key: 'vidlink',
+      label: 'VidLink',
+      url: isMovie ? `https://vidlink.pro/movie/${id}` : `https://vidlink.pro/tv/${id}/${s}/${e}`,
+      urls: [isMovie ? `https://vidlink.pro/movie/${id}` : `https://vidlink.pro/tv/${id}/${s}/${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'vidrift',
+      key: 'vidrift',
+      label: 'VidRift',
+      url: isMovie ? `https://embed.vidrift.net/embed/movie/${id}?autoplay=1` : `https://embed.vidrift.net/embed/tv/${id}/${s}/${e}?autoplay=1`,
+      urls: [isMovie ? `https://embed.vidrift.net/embed/movie/${id}?autoplay=1` : `https://embed.vidrift.net/embed/tv/${id}/${s}/${e}?autoplay=1`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'vidly',
+      key: 'vidly',
+      label: 'Vidly',
+      url: isMovie ? `https://vidly.pro/movie/${id}?autoPlay=true` : `https://vidly.pro/tv/${id}/${s}/${e}?autoPlay=true`,
+      urls: [isMovie ? `https://vidly.pro/movie/${id}?autoPlay=true` : `https://vidly.pro/tv/${id}/${s}/${e}?autoPlay=true`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'framextv',
+      key: 'framextv',
+      label: 'FrameXTV',
+      url: isMovie ? `https://framextv.cc/embed/movie/${id}?autoplay=1&muted=0` : `https://framextv.cc/embed/tv/${id}/${s}/${e}?autoplay=1&muted=0`,
+      urls: [isMovie ? `https://framextv.cc/embed/movie/${id}?autoplay=1&muted=0` : `https://framextv.cc/embed/tv/${id}/${s}/${e}?autoplay=1&muted=0`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'cineverse',
+      key: 'cineverse',
+      label: 'Cineverse',
+      url: isMovie ? `https://rozgarlelo.modiplay.xyz/embed/tmdb/movie?id=${id}` : `https://rozgarlelo.modiplay.xyz/embed/tmdb/tv?id=${id}&s=${s}&e=${e}`,
+      urls: [isMovie ? `https://rozgarlelo.modiplay.xyz/embed/tmdb/movie?id=${id}` : `https://rozgarlelo.modiplay.xyz/embed/tmdb/tv?id=${id}&s=${s}&e=${e}`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'vidbolt',
+      key: 'vidbolt',
+      label: 'VidBolt',
+      url: isMovie ? `https://vidbolt.xyz/movie/${id}?theme=e50914&autoPlay=true&audio=hindi` : `https://vidbolt.xyz/tv/${id}/${s}/${e}?theme=e50914&autoPlay=true&audio=hindi`,
+      urls: [isMovie ? `https://vidbolt.xyz/movie/${id}?theme=e50914&autoPlay=true&audio=hindi` : `https://vidbolt.xyz/tv/${id}/${s}/${e}?theme=e50914&autoPlay=true&audio=hindi`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'filmu',
+      key: 'filmu',
+      label: 'Filmu',
+      url: isMovie ? `https://embed.filmu.in/movie/${id}?autoplay=1` : `https://embed.filmu.in/tv/${id}/${s}/${e}?autoplay=1`,
+      urls: [isMovie ? `https://embed.filmu.in/movie/${id}?autoplay=1` : `https://embed.filmu.in/tv/${id}/${s}/${e}?autoplay=1`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'vidout',
+      key: 'vidout',
+      label: 'VIDOUT',
+      url: isMovie ? `https://vidout.pages.dev/movie/${id}?autoplay=1` : `https://vidout.pages.dev/tv/${id}/s${s}/e${e}?autoplay=1`,
+      urls: [isMovie ? `https://vidout.pages.dev/movie/${id}?autoplay=1` : `https://vidout.pages.dev/tv/${id}/s${s}/e${e}?autoplay=1`],
+      embeddable: true,
+      direct: true
+    },
+    {
+      id: 'legacy-vidfast',
+      key: 'legacy-vidfast',
+      label: 'vidfast',
+      url: buildVidfastUrl(input),
+      urls: [buildVidfastUrl(input)],
+      embeddable: true,
+      fallback: true
+    },
+    {
+      id: 'legacy-vidnest',
+      key: 'legacy-vidnest',
+      label: 'VidNest',
+      url: buildVidnestUrl(input),
+      urls: [buildVidnestUrl(input)],
+      embeddable: true,
+      fallback: true
+    },
+    { id: 'legacy-vidsrc-pm', key: 'legacy-vidsrc-pm', label: 'VidSrc PM', url: isMovie ? `https://vidsrc.pm/embed/movie/${id}` : `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`, urls: [isMovie ? `https://vidsrc.pm/embed/movie/${id}` : `https://vidsrc.pm/embed/tv/${id}/${s}/${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-autoembed', key: 'legacy-autoembed', label: 'AutoEmbed', url: isMovie ? `https://autoembed.co/movie/tmdb/${id}` : `https://autoembed.co/tv/tmdb/${id}-${s}-${e}`, urls: [isMovie ? `https://autoembed.co/movie/tmdb/${id}` : `https://autoembed.co/tv/tmdb/${id}-${s}-${e}`], embeddable: true, fallback: true },
+    { id: 'legacy-2embed', key: 'legacy-2embed', label: '2Embed', url: isMovie ? `https://www.2embed.cc/embed/${id}` : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`, urls: [isMovie ? `https://www.2embed.cc/embed/${id}` : `https://www.2embed.cc/embedtv/${id}&s=${s}&e=${e}`], embeddable: true, fallback: true },
+    {
+      id: 'youtube',
+      key: 'youtube',
+      label: input?.isTrailer ? 'Trailer' : 'YouTube',
+      url: input?.youtubeTrailerKey
+        ? `https://www.youtube-nocookie.com/embed/${input.youtubeTrailerKey}?autoplay=1&rel=0`
+        : input?.title
+        ? `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(`${input.title} trailer`)}&autoplay=1`
+        : '',
+      urls: [],
+      embeddable: true,
+      fallback: true
+    }
+  ].filter((source) => source.url);
+}
+
+export function buildVideasyUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  const baseUrl = type === 'movie' ? `https://player.videasy.to/movie/${tmdbId}` : `https://player.videasy.to/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
+  const params = new URLSearchParams({ color: 'F97316', overlay: 'true' });
+  if (type !== 'movie') {
+    params.set('nextEpisode', 'true');
+    params.set('autoplayNextEpisode', 'true');
+    params.set('episodeSelector', 'true');
+  }
+  return `${baseUrl}?${params.toString()}`;
+}
+
+export function buildVideasyHindiAttemptUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const url = new URL(buildVideasyUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }));
+  url.searchParams.set('lang', 'hi');
+  url.searchParams.set('audio', 'hindi');
+  url.searchParams.set('language', 'hindi');
+  return url.toString();
+}
+
+export function buildVidnestUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  if (type === 'movie') return `https://vidnest.fun/movie/${tmdbId}`;
+  return `https://vidnest.fun/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
+}
+
+export function buildVidfastUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  const baseUrl = type === 'movie' ? `https://vidfast.pro/movie/${tmdbId}` : `https://vidfast.pro/tv/${tmdbId}/${seasonNumber || 1}/${episodeNumber || 1}`;
+  const params = new URLSearchParams({ theme: 'F97316', autoPlay: 'true', title: 'true', poster: 'true' });
+  if (type !== 'movie') {
+    params.set('nextButton', 'true');
+    params.set('autoNext', 'true');
+  }
+  return `${baseUrl}?${params.toString()}`;
+}
+
+export function buildStreamexaScrapeUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  let targetUrl = `https://streamexa.to/watch/${type}/${tmdbId}`;
+  if (type === 'tv') targetUrl += `/${seasonNumber || 1}/${episodeNumber || 1}`;
+  return `/api/scrape-embed?url=${encodeURIComponent(targetUrl)}`;
+}
+
+export function buildCinesuUrl({ mediaType, tmdbId, seasonNumber, episodeNumber }) {
+  const type = String(mediaType || '').toLowerCase();
+  if (type === 'movie') return `https://cine.su/en/watch-movie/${tmdbId}`;
+  return `https://cine.su/en/watch-tv/${tmdbId}?provider=cine&season=${seasonNumber || 1}&episode=${episodeNumber || 1}`;
+}
+
+/**
+ * Structures the complete payload required by the player components to begin streaming.
+ */
+export function createPlayerRequest({
+  mediaType,
+  tmdbId,
+  seasonNumber,
+  episodeNumber,
+  episodeTitle,
+  kartoonsSlug,
+  kartoonsEpisodeId,
+  isKartoons,
+  isTrailer,
+  imdbId,
+  title,
+  originalTitle,
+  originalName,
+  seriesTitle,
+  year,
+  youtubeTrailerKey,
+  poster_path,
+  backdrop_path,
+  image,
+  poster,
+  resumeTime
+}) {
+  const normalizedType = String(mediaType || '').toLowerCase() === 'movie' ? 'movie' : 'series';
+  const resolvedTmdbId = String(tmdbId || '').startsWith('kartoons-') ? tmdbId : (Number(tmdbId) || tmdbId);
+  const resolvedSeasonNumber = normalizedType === 'series' ? Number(seasonNumber || 1) : null;
+  const resolvedEpisodeNumber = normalizedType === 'series' ? (typeof episodeNumber === 'string' && episodeNumber.includes('.') ? episodeNumber : Number(episodeNumber || 1)) : null;
+  const resolvedPoster = poster_path || image || poster || '';
+  const resolvedBackdrop = backdrop_path || resolvedPoster;
+
+  return {
+    mediaType: normalizedType,
+    tmdbId: resolvedTmdbId,
+    seasonNumber: resolvedSeasonNumber,
+    episodeNumber: resolvedEpisodeNumber,
+    episodeTitle: episodeTitle || '',
+    kartoonsSlug: kartoonsSlug || '',
+    kartoonsEpisodeId: kartoonsEpisodeId || '',
+    isKartoons: Boolean(isKartoons || String(tmdbId || '').startsWith('kartoons-')),
+    isTrailer: Boolean(isTrailer),
+    imdbId: imdbId || '',
+    title: title || '',
+    originalTitle: originalTitle || originalName || '',
+    originalName: originalName || originalTitle || '',
+    seriesTitle: seriesTitle || '',
+    year: Number(year) || null,
+    youtubeTrailerKey: youtubeTrailerKey || '',
+    poster_path: resolvedPoster,
+    backdrop_path: resolvedBackdrop,
+    image: resolvedPoster,
+    resumeTime: Number(resumeTime) || 0,
+    fallbackSources: typeof resolvedTmdbId === 'number' && !isNaN(resolvedTmdbId) ? buildLegacyPlayerSources({
+      mediaType: normalizedType,
+      tmdbId: resolvedTmdbId,
+      seasonNumber: resolvedSeasonNumber,
+      episodeNumber: typeof resolvedEpisodeNumber === 'number' ? resolvedEpisodeNumber : parseInt(resolvedEpisodeNumber) || 1,
+      title: title || seriesTitle || originalTitle || '',
+      youtubeTrailerKey,
+      isTrailer: Boolean(isTrailer)
+    }) : []
+  };
+}
+
+/**
+ * Matches incoming API sources with local fallback sources to populate the player UI.
+ */
+export function buildPlayerSourceSlots(incomingSources = [], fallbackSources = [], isLoading = false) {
+  const pool = [...incomingSources, ...fallbackSources].filter(Boolean);
+  const used = new Set();
+
+  return PLAYER_SOURCE_SLOTS.map((slot) => {
+    const foundIndex = pool.findIndex((source, index) => {
+      if (used.has(index)) return false;
+      if (slot.key && (source.key === slot.key || source.id === slot.key)) return true;
+      return slot.match ? slot.match(source) : false;
+    });
+    const found = foundIndex >= 0 ? pool[foundIndex] : null;
+    if (foundIndex >= 0) used.add(foundIndex);
+
+    const url = firstPlayableUrl(found);
+    const isMissing = !url;
+    const isPending = Boolean(found?.pending) || (isLoading && isMissing);
+
+    return {
+      ...(found || {}),
+      id: found?.id || slot.id,
+      key: found?.key || slot.key || slot.id,
+      label: slot.label,
+      url,
+      urls: found?.urls || (url ? [url] : []),
+      embeddable: found?.embeddable !== false,
+      pending: isPending,
+      disabled: isPending || isMissing
+    };
+  });
+}
+
+// ==========================================
+// GRID & UI CALCULATIONS
+// ==========================================
+
+export function getDrawerColumnCount() {
+  const width = window.innerWidth;
+  if (width >= 1600) return 5;
+  if (width >= 1280) return 4;
+  if (width >= 900) return 3;
+  if (width >= 600) return 2;
+  return 1;
+}
+
+export function getOverlayColumnCount() {
+  const width = window.innerWidth;
+  if (width >= 1024) return 4;
+  if (width >= 768) return 3;
+  if (width >= 640) return 2;
+  return 1;
+}
+
+export function getHomeGridColumns(width = window.innerWidth) {
+  if (width >= 1280) return 7;
+  if (width >= 1024) return 6;
+  if (width >= 768) return 5;
+  if (width >= 640) return 4;
+  return 3;
+}
+
+export function getTvHomeGridColumns(width = typeof window !== 'undefined' ? window.innerWidth : 1920) {
+  if (width >= 1600) return 9;
+  if (width >= 1100) return 8;
+  if (width >= 800) return 7;
+  return 6;
+}
+
+export function splitTrendingIntoColumns(items) {
+  const columns = [[], [], []];
+  items.forEach((item, index) => {
+    const columnIndex = index % 3;
+    if (columns[columnIndex].length < 12) {
+      columns[columnIndex].push(item);
+    }
+  });
+  return columns;
+}
+
+// ==========================================
+// NATIVE DEVICE HACKS
+// ==========================================
+
+/**
+ * Checks if the application is running inside a native Capacitor Android Wrapper.
+ */
+export function isAndroidApp() {
+  try {
+    return Capacitor?.getPlatform?.() === 'android';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Interfaces with a native Java/Kotlin plugin to physically zoom the Android webview.
+ */
+export const setNativeScale = async (scale) => {
+  if (isAndroidApp()) {
+    try {
+      const { Capacitor: Cap } = window;
+      if (Cap && Cap.registerPlugin) {
+        const ZoomPlugin = Cap.registerPlugin('ZoomPlugin');
+        if (ZoomPlugin) {
+          await ZoomPlugin.setScale({ scale });
+        }
+      }
+    } catch (e) {
+      console.log('ZoomPlugin error:', e);
+    }
+  }
+};
+
+/**
+ * Hack to forcefully bypass React Router and trigger a raw HTML5 history navigation.
+ */
+export function navigateWithoutReload(to, options = {}) {
+  if (typeof window.soulstashNavigate === 'function') {
+    window.soulstashNavigate(to, options);
+    return;
+  }
+  if (options.replace) {
+    window.history.replaceState(null, '', to);
+  } else {
+    window.history.pushState(null, '', to);
+  }
+  try {
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  } catch {
+    window.dispatchEvent(new Event('popstate'));
+  }
+}
+
+/**
+ * Returns true if a movie or series has not yet been released.
+ * Uses: release date > current date + 1 day (so if released today, it is considered released and NOT upcoming).
+ */
+export function isUnreleasedTitle(content) {
+  const dateStr = content?.release_date || content?.first_air_date;
+  if (!dateStr || typeof dateStr !== 'string') return false;
+
+  const parts = dateStr.split('-');
+  if (parts.length < 3) return false;
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const relDate = new Date(year, month, day);
+  if (isNaN(relDate.getTime())) return false;
+
+  const now = new Date();
+  const threshold = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 23, 59, 59, 999);
+  return relDate.getTime() > threshold.getTime();
+}
+
+/**
+ * Picks the best YouTube video from a TMDB videos list (`results`).
+ * Order: Trailer, then Teaser/Clip, then anything else. Inside a group the higher quality
+ * (TMDB `size`: 1080 > 720 ...) wins, then official uploads, then the newest upload.
+ * Returns { key, name, size, type } or null.
+ */
+export function pickBestTrailer(videos) {
+  const list = (Array.isArray(videos) ? videos : []).filter((v) => v && v.site === 'YouTube' && v.key);
+  if (!list.length) return null;
+  const rank = (v) => (v.type === 'Trailer' ? 0 : (v.type === 'Teaser' || v.type === 'Clip') ? 1 : 2);
+  const time = (v) => { const t = Date.parse(v.published_at || ''); return Number.isFinite(t) ? t : 0; };
+  const best = [...list].sort((a, b) =>
+    rank(a) - rank(b)
+    || (Number(b.size) || 0) - (Number(a.size) || 0)
+    || (b.official ? 1 : 0) - (a.official ? 1 : 0)
+    || time(b) - time(a)
+  )[0];
+  return { key: best.key, name: best.name || 'Trailer', size: Number(best.size) || 0, type: best.type || '' };
+}
+
+/**
+ * Finds the best YouTube trailer from TMDB metadata (content.videos.results).
+ */
+export function findTrailerVideo(content) {
+  return pickBestTrailer(content?.videos?.results);
+}
+

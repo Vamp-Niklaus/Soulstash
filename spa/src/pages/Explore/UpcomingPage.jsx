@@ -1,0 +1,140 @@
+import React, { useRef, useEffect, useMemo } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { apiFetch } from '../../api/client.js';
+import { useAuthSession } from '../../hooks/index.js';
+import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
+import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
+import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
+
+export function UpcomingPage() {
+  const { user } = useAuthSession();
+  const adminMode = Number(user?.adminMode ?? (user?.showAdult ? 1 : 0));
+
+  const fetchUpcoming = async ({ pageParam = 1 }) => {
+    return apiFetch(`/api/upcoming?page=${pageParam}`);
+  };
+
+  const {
+    data,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    status,
+    refetch
+  } = useInfiniteQuery({
+    queryKey: ['upcoming', adminMode],
+    queryFn: fetchUpcoming,
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages, lastPageParam) => {
+      const pageList = Array.isArray(lastPage?.results) ? lastPage.results : (Array.isArray(lastPage?.movies) ? lastPage.movies : (Array.isArray(lastPage) ? lastPage : []));
+      if (!pageList.length) {
+        return undefined;
+      }
+      const currentPageNum = Number(lastPageParam) || allPages.length;
+      const reportedPages = Number(lastPage?.total_pages || lastPage?.pagination?.pages);
+      const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
+      if (currentPageNum < totalPages) {
+        return currentPageNum + 1;
+      }
+      return undefined;
+    },
+  });
+
+  useEffect(() => {
+    document.title = 'Upcoming | Soulstash';
+  }, []);
+
+  const items = useMemo(() => {
+    if (!data) return [];
+    const seen = new Set();
+    const deduped = [];
+    for (const page of data.pages) {
+      const list = Array.isArray(page?.results) ? page.results : (Array.isArray(page?.movies) ? page.movies : (Array.isArray(page) ? page : []));
+      for (const item of list) {
+        if (!item?.poster_path || !String(item.poster_path).trim()) continue;
+        const itemId = Number(item?.id || item?.movieId || item?.seriesId);
+        const mediaType = ['series', 'tv'].includes(String(item?.media_type || '').toLowerCase()) || item?.first_air_date ? 'series' : 'movie';
+        const itemKey = `${mediaType}:${itemId}`;
+        if (itemId && !seen.has(itemKey)) {
+          seen.add(itemKey);
+          deduped.push(item);
+        }
+      }
+    }
+    return deduped;
+  }, [data]);
+
+  // Sentinel observer — attaches cleanly via useEffect every time page state updates
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: '800px' }
+    );
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, items.length]);
+
+  if (status === 'pending') {
+    return (
+      <section className="content-section">
+        <GridSkeleton count={14} />
+      </section>
+    );
+  }
+
+  return (
+    <section className="content-section">
+      {status === 'error' ? (
+        <div className="app-error">
+          <p>{error?.message || 'Unable to load upcoming titles.'}</p>
+          <button
+            type="button"
+            className="mt-4 rounded-full bg-white/10 px-5 py-2 text-white transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white"
+            onClick={() => refetch()}
+          >
+            Try again
+          </button>
+        </div>
+      ) : items.length ? (
+        <>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
+            {items.map((item, index) => (
+              <ContentCard key={`${item.id}-${index}`} item={item} isUpcoming={true} />
+            ))}
+          </div>
+
+          {hasNextPage && (
+            <div ref={sentinelRef} className="load-more-zone min-h-[40px] flex items-center justify-center py-4">
+              {isFetchingNextPage && (
+                <div className="load-more-indicator" role="status" aria-live="polite">
+                  <span className="load-more-indicator__spinner" aria-hidden="true" />
+                  <span>Loading more</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!hasNextPage && items.length >= 10 && (
+            <p className="mt-8 text-center text-xs text-white/30">All upcoming titles loaded</p>
+          )}
+        </>
+      ) : (
+        <div className="app-empty">
+          <p>No upcoming titles found.</p>
+        </div>
+      )}
+    </section>
+  );
+}

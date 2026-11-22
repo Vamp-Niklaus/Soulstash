@@ -1,0 +1,194 @@
+import { useState, useEffect, useRef } from 'react';
+import { getOverlayColumnCount } from '../utils/formatters.js';
+
+export const TAB_VALUES = ['content', 'cast', 'users', 'collections'];
+
+export function useOverlaySearchKeyboardNav({ open, onClose, query, tab, setTab, activeResults, openItem, overlayInputRef, clearBtnRef }) {
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const resultButtonsRef = useRef([]); // holds HTML Elements to .focus() 
+  const tabButtonsRef = useRef([]); // 'content', 'cast', 'users'
+
+  const focusedIndexRef = useRef(-1);
+  focusedIndexRef.current = focusedIndex;
+  const activeResultsRef = useRef([]); // holds Data (Javascript Objects) to Enter
+  activeResultsRef.current = activeResults;
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const setTabRef = useRef(setTab);
+  setTabRef.current = setTab;
+  const openItemRef = useRef(openItem);
+  openItemRef.current = openItem;
+
+  useEffect(() => {
+    if (resultButtonsRef.current.length > activeResults.length) {
+      resultButtonsRef.current = resultButtonsRef.current.slice(0, activeResults.length);
+    }
+  }, [activeResults]);
+  
+  useEffect(() => { setFocusedIndex(-1); }, [query]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handleOverlayKeys(event) {
+      if (event.key === 'Escape') { onCloseRef.current(); return; }
+
+      const resultsList = activeResultsRef.current;
+      const index = focusedIndexRef.current;
+      const cols = getOverlayColumnCount();
+      const activeTabIdx = TAB_VALUES.indexOf(tabRef.current);
+
+      const activeEl = document.activeElement;
+      const isCloseBtn = activeEl?.getAttribute('aria-label') === 'Search' || activeEl?.getAttribute('aria-label') === 'Close search';
+
+      if (isCloseBtn) {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          event.stopPropagation();
+          overlayInputRef.current?.focus();
+        } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return; // Let native enter/space handle closing
+      }
+
+      if (index === -1) {
+        handleFromSearchInput(event);
+      } else if (index === -7) {
+        handleFromClearButton(event);
+      } else if (index < -1) {
+        handleFromTabs(event, index);
+      } else {
+        handleFromResultsGrid(event, index);
+      }
+
+      function focusCloseButton() {
+        const closeBtn = Array.from(document.querySelectorAll('button[aria-label="Search"], button[aria-label="Close search"]'))
+          .find(b => b.offsetWidth > 0 || b.offsetHeight > 0);
+        
+        if (closeBtn) {
+          closeBtn.focus();
+          setFocusedIndex(-6);
+        }
+      }
+
+      function handleFromSearchInput(event) {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          event.stopPropagation();
+          tabButtonsRef.current[activeTabIdx]?.focus();
+        } else if (event.key === 'ArrowRight') {
+          const input = overlayInputRef.current;
+          if (input && input.selectionStart === input.value.length) {
+            event.preventDefault();
+            event.stopPropagation();
+            clearBtnRef?.current?.focus();
+          } else {
+            event.stopPropagation();
+          }
+        } else if (event.key === 'ArrowLeft') {
+          event.stopPropagation();
+        } else if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          event.stopPropagation();
+          focusCloseButton();
+        }
+      }
+
+      function handleFromClearButton(event) {
+        if (event.key.startsWith('Arrow')) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        if (event.key === 'ArrowLeft') {
+          overlayInputRef?.current?.focus();
+        } else if (event.key === 'ArrowDown') {
+          tabButtonsRef.current[activeTabIdx]?.focus();
+        } else if (event.key === 'ArrowUp') {
+          focusCloseButton();
+        }
+      }
+
+      function handleFromTabs(event, index) {
+        if (event.key.startsWith('Arrow')) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        const currentTabIdx = -index - 2;
+        if (event.key === 'ArrowRight') {
+          if (currentTabIdx < TAB_VALUES.length - 1) {
+            tabButtonsRef.current[currentTabIdx + 1]?.focus();
+          }
+        } else if (event.key === 'ArrowLeft') {
+          if (currentTabIdx > 0) {
+            tabButtonsRef.current[currentTabIdx - 1]?.focus();
+          }
+        } else if (event.key === 'ArrowUp') {
+          overlayInputRef?.current?.focus();
+        } else if (event.key === 'ArrowDown') {
+          const firstCard = resultButtonsRef.current[0] || document.querySelector('.tv-focus-card');
+          if (firstCard) {
+            firstCard.focus();
+            firstCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }
+      }
+
+      function handleFromResultsGrid(event, index) {
+        if (event.key.startsWith('Arrow') || event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+
+        const getCard = (i) => resultButtonsRef.current[i] || document.querySelectorAll('.tv-focus-card')?.[i];
+
+        if (event.key === 'ArrowDown') {
+          const nextIndex = index + cols;
+          if (nextIndex < resultsList.length) {
+            const card = getCard(nextIndex);
+            card?.focus();
+            card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          } else if (index < resultsList.length - 1) {
+            const lastIdx = resultsList.length - 1;
+            const card = getCard(lastIdx);
+            card?.focus();
+            card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        } else if (event.key === 'ArrowUp') {
+          const prevIndex = index - cols;
+          if (prevIndex < 0) {
+            tabButtonsRef.current[activeTabIdx]?.focus();
+          } else {
+            const card = getCard(prevIndex);
+            card?.focus();
+            card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        } else if (event.key === 'ArrowRight') {
+          if (index < resultsList.length - 1) {
+            const card = getCard(index + 1);
+            card?.focus();
+          }
+        } else if (event.key === 'ArrowLeft') {
+          if (index > 0) {
+            const card = getCard(index - 1);
+            card?.focus();
+          }
+        } else if (event.key === 'Enter') {
+          const item = resultsList[index];
+          if (item) {
+            openItemRef.current(item);
+          }
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleOverlayKeys, true);
+    return () => window.removeEventListener('keydown', handleOverlayKeys, true);
+  }, [open, overlayInputRef, clearBtnRef]);
+
+  return { focusedIndex, setFocusedIndex, resultButtonsRef, tabButtonsRef, TAB_VALUES };
+}

@@ -1,0 +1,73 @@
+import { useState, useEffect } from 'react';
+import { getCachedUserCollections, normalizeCollections, hasCollectionCache } from '../utils/collectionsCache.js';
+import { loadRatingsTable } from '../utils/ratingsCache.js';
+import { loadUserCollections } from '../utils/collectionsApi.js';
+import { getToken } from '../api/client.js';
+
+export function useLiveCollections() {
+  const [collections, setCollections] = useState(() => normalizeCollections(getCachedUserCollections()));
+  const [loading, setLoading] = useState(() => !hasCollectionCache() && !!getToken());
+
+  useEffect(() => {
+    function applyCollections(nextCollections) {
+      setCollections(normalizeCollections(nextCollections));
+      setLoading(false);
+    }
+
+    // Always sync from cache immediately — zero flicker on navigation
+    const cached = getCachedUserCollections();
+    if (cached?.length) applyCollections(cached);
+
+    if (getToken()) {
+      loadRatingsTable().catch(() => {});
+
+      if (!hasCollectionCache()) {
+        // Truly no cache at all (first load / logged-out) — must show loading state
+        setLoading(true);
+      }
+
+      // Always fetch latest from server in background to sync any changes made
+      // on other devices (e.g. collection created on mobile)
+      loadUserCollections()
+        .then((fresh) => {
+          if (Array.isArray(fresh) && fresh.length) {
+            applyCollections(fresh);
+          }
+        })
+        .catch(() => setLoading(false));
+    }
+
+    const updateEventName = window.CollectionStore?.COLLECTIONS_UPDATED_EVENT || 'soulstash:collections-updated';
+
+    function handleCollectionsUpdated(event) {
+      applyCollections(event.detail?.collections || getCachedUserCollections());
+    }
+
+    function handleStorage(event) {
+      if (!event.key || !event.key.startsWith('ss_collections_')) return;
+      applyCollections(getCachedUserCollections());
+    }
+
+    function handleAuthChanged() {
+      if (getToken()) {
+        setLoading(true);
+        loadUserCollections()
+          .then(applyCollections)
+          .catch(() => setLoading(false));
+      } else {
+        applyCollections([]);
+      }
+    }
+
+    window.addEventListener(updateEventName, handleCollectionsUpdated);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('soulstash:auth-changed', handleAuthChanged);
+    return () => {
+      window.removeEventListener(updateEventName, handleCollectionsUpdated);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('soulstash:auth-changed', handleAuthChanged);
+    };
+  }, []);
+
+  return { collections, loading };
+}

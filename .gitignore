@@ -1,0 +1,119 @@
+# ============================================================
+# DEPENDENCIES
+# ============================================================
+node_modules/
+
+# ============================================================
+# BUILD OUTPUTS
+# ============================================================
+spa/dist/
+dist/
+public/sw.js
+src-tauri/target/
+backend-go/server.exe
+backend-go/server
+
+# ============================================================
+# ANDROID
+# ============================================================
+android/.gradle/
+android/.idea/
+android/local.properties
+android/**/build/
+android/capacitor-cordova-android-plugins/
+android/capacitor.settings.gradle
+android/app/capacitor.build.gradle
+android/app/src/main/assets/
+android/app/src/androidTest/
+android/app/src/test/
+
+# ============================================================
+# SIGNING KEYS — NEVER COMMIT
+# ============================================================
+*.keystore
+*.jks
+
+# ============================================================
+# ENVIRONMENT / SECRETS
+# ============================================================
+.env
+.env.*
+!.env.example
+!backend-go/.env.example
+backend-go/.env
+.env2
+environment
+
+# ============================================================
+# GO BUILD CACHE (local CI artefacts — huge, not source)
+# ============================================================
+.tmp-go-build-cache/
+.tmp-go-build-cache-admin/
+backend-go/.tmp-*/
+
+# ============================================================
+# AI / AGENT INTERNALS — not public
+# ============================================================
+.agent/
+MCP/
+graphify-out/
+CLAUDE.md
+PROGRESS.md
+backend-go/PROGRESS.md
+
+# ============================================================
+# OLD NODE.JS BACKEND (now at Soulstash-node repo)
+# ============================================================
+old-backend-no-longer-used/
+
+# ============================================================
+# INTERNAL SCRIPTS, DOCS, COLLECTIONS, INTEGRATIONS
+# ============================================================
+scripts/
+docs/
+collections/
+integrations/
+Kartoons/
+
+# ============================================================
+# RELEASE ARTIFACTS (built binaries, zips)
+# ============================================================
+*.apk
+*.exe
+*.sig
+release-*/
+release-apk/
+
+# ============================================================
+# LOGS & OS FILES
+# ============================================================
+*.log
+.DS_Store
+Thumbs.db
+.cache/
+.vite/
+
+# ============================================================
+# TAURI
+# ============================================================
+src-tauri/icons/android/
+
+# ============================================================
+# MISC JUNK (old files from early dev)
+# ============================================================
+New Text Document.txt
+*.html
+!spa/index.html
+!spa/public/**/*.html
+dropIndexScript.js
+fix_tvshows_db.js
+fixdb.js
+extra_files/
+source_docs/
+spa/public/test.html
+SPA-README.md
+render.yaml
+.render.yml
+requirements.txt
+.tmp-local-player-page.png
+%USERPROFILE%/
