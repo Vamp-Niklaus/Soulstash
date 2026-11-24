@@ -28,10 +28,10 @@ export function TrendingPage() {
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages, lastPageParam) => {
       const pageList = Array.isArray(lastPage?.results) ? lastPage.results : (Array.isArray(lastPage?.movies) ? lastPage.movies : (Array.isArray(lastPage) ? lastPage : []));
-      if (!pageList.length) {
+      const currentPageNum = Number(lastPageParam) || allPages.length;
+      if (!pageList.length && currentPageNum >= 50 && adminMode !== 2) {
         return undefined;
       }
-      const currentPageNum = Number(lastPageParam) || allPages.length;
       const reportedPages = Number(lastPage?.total_pages || lastPage?.pagination?.pages);
       const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
       if (currentPageNum < totalPages) {
@@ -62,7 +62,42 @@ export function TrendingPage() {
     return deduped;
   }, [data]);
 
-  // Sentinel observer — attaches cleanly via useEffect every time page state updates
+  // Always keep at least 2 extra pages ahead in memory initially
+  useEffect(() => {
+    if (!data?.pages?.length || !hasNextPage || isFetchingNextPage) return;
+    if (data.pages.length < 3) {
+      fetchNextPage();
+    }
+  }, [data?.pages?.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  // Advance trigger: when user scrolls near the card that is 2 pages before the end, trigger fetch for the next page
+  const triggerRef = useRef(null);
+  const triggerIndex = useMemo(() => {
+    if (!items.length || !data?.pages?.length) return -1;
+    const avgPerPage = Math.max(14, Math.round(items.length / data.pages.length));
+    return Math.max(0, items.length - avgPerPage * 2);
+  }, [items.length, data?.pages?.length]);
+
+  useEffect(() => {
+    const node = triggerRef.current;
+    if (!node || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: '1000px' }
+    );
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, triggerIndex]);
+
+  // Sentinel observer — backup fallback at the very bottom
   const sentinelRef = useRef(null);
   useEffect(() => {
     const node = sentinelRef.current;
@@ -112,7 +147,12 @@ export function TrendingPage() {
         <>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
             {items.map((item, index) => (
-              <ContentCard key={`${item.media_type || 'media'}-${item.id}-${index}`} item={item} />
+              <div
+                key={`${item.media_type || 'media'}-${item.id}-${index}`}
+                ref={index === triggerIndex ? triggerRef : null}
+              >
+                <ContentCard item={item} />
+              </div>
             ))}
           </div>
 

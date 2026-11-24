@@ -117,8 +117,8 @@ export function AdminPage() {
 
   // Cycle: 0 -> 1 -> 2 -> 0
   const ADMIN_MODES = [
-    { label: 'Filter On', desc: 'Adult content hidden', icon: 'fa-shield-alt', color: 'text-yellow-400' },
-    { label: 'All Content', desc: 'Normal + Adult shown', icon: 'fa-eye', color: 'text-green-400' },
+    { label: 'Filter On', desc: 'Adult content hidden', icon: 'fa-shield-alt', color: 'text-green-400' },
+    { label: 'All Content', desc: 'Normal + Adult shown', icon: 'fa-eye', color: 'text-yellow-400' },
     { label: 'Adult Only', desc: 'Only adult content', icon: 'fa-fire', color: 'text-red-400' },
   ];
   const currentMode = ADMIN_MODES[adminMode] || ADMIN_MODES[0];
