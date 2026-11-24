@@ -18,7 +18,7 @@ import { useParams, Link, useLocation } from 'react-router-dom';
 import { useAuthSession } from '../../hooks/index.js';
 import { useDetailPage } from '../../hooks/useDetailPage.js';
 import { toast } from '../../utils/toast.js';
-import { getLastWatchedForSeries } from '../../utils/watchProgress.js';
+import { getLastWatchedForSeries, saveLastViewedEpisode } from '../../utils/watchProgress.js';
 
 import { DetailPageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { CastCard } from '../../components/ui/Cards/CastCard.jsx';
@@ -273,6 +273,8 @@ export function DetailPage({ type }) {
       return;
     }
 
+
+    saveLastViewedEpisode(content?.id || id, episode.season_number, episode.episode_number);
 
     page.setPlayerRequest(
       createPlayerRequest({

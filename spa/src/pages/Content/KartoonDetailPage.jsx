@@ -15,7 +15,7 @@ import { CollectionFormModal } from '../../components/ui/Modals/CollectionFormMo
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { toast } from '../../utils/toast.js';
 import { createEmptyCollectionDraft } from '../../utils/formatters.js';
-import { getLastWatchedForSeries, getSavedProgress } from '../../utils/watchProgress.js';
+import { getLastWatchedForSeries, getLastViewedEpisode, saveLastViewedEpisode, getSavedProgress } from '../../utils/watchProgress.js';
 import { HOME_GRID_CLASS } from '../../utils/constants.js';
 
 const GENRE_TAG_MAP = {
@@ -87,7 +87,12 @@ export function KartoonDetailPage() {
             setShow(item);
             if (kind === 'series') {
               const seasons = Array.isArray(item.seasons) ? item.seasons : [];
-              const firstSeason = Number(seasons[0]?.seasonNumber) || 1;
+              const lastWatched = getLastWatchedForSeries(slug) || getLastWatchedForSeries(`kartoons-${slug}`) || getLastViewedEpisode(slug);
+              const targetSeasonNum = lastWatched?.seasonNumber != null ? Number(lastWatched.seasonNumber) : null;
+              const matchedSeason = targetSeasonNum != null
+                ? seasons.find((s) => Number(s.seasonNumber) === targetSeasonNum)
+                : null;
+              const firstSeason = matchedSeason ? Number(matchedSeason.seasonNumber) : (Number(seasons[0]?.seasonNumber) || 1);
               setSeasonNumber(firstSeason);
             }
             document.title = `${item.title || 'Kartoons'} | Soulstash`;
@@ -292,6 +297,7 @@ export function KartoonDetailPage() {
     if (!show || contentKind !== 'series') return;
     const epNum = Number(ep?.episode_number || ep?.episodeNumber || 1);
     const sNum = Number(ep?.season_number || seasonNumber || 1);
+    saveLastViewedEpisode(slug, sNum, epNum);
     const posterVal = show.poster || show.image || show.coverImage || '';
     const backdropVal = show.backdrop || posterVal;
     setPlayerRequest({

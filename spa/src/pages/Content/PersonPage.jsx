@@ -252,19 +252,22 @@ export function PersonCreditsFilterControls({
   );
 }
 
+// Module-level in-memory cache for person credits across navigation
+const personCreditsMemoryCache = new Map();
+
 export function PersonPage() {
   const { id } = useParams();
   const location = useLocation();
   const queryClient = useQueryClient();
 
-  const [credits, setCredits] = useState([]);
+  const [credits, setCredits] = useState(() => personCreditsMemoryCache.get(String(id)) || []);
   const [bioExpanded, setBioExpanded] = useState(false);
   const [contentType, setContentType] = useSessionState(`person-page:${location.pathname}:contentType`, 'all');
   const [sortBy, setSortBy] = useSessionState(`person-page:${location.pathname}:sortBy`, 'year-desc');
   const [quickFilter, setQuickFilter] = useSessionState(`person-page:${location.pathname}:quickFilter`, 'all');
   const [collectionFilter, setCollectionFilter] = useSessionState(`person-page:${location.pathname}:collectionFilter`, '');
   const [userCollections, setUserCollections] = useState([]);
-  const [creditsLoading, setCreditsLoading] = useState(true);
+  const [creditsLoading, setCreditsLoading] = useState(() => !personCreditsMemoryCache.has(String(id)));
   const [creditsError, setCreditsError] = useState('');
   const [retryTick, setRetryTick] = useState(0);
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -423,7 +426,13 @@ export function PersonPage() {
     const controller = new AbortController();
 
     async function load() {
-      setCreditsLoading(true);
+      const cached = personCreditsMemoryCache.get(String(id));
+      if (cached && cached.length) {
+        setCredits(cached);
+        setCreditsLoading(false);
+      } else {
+        setCreditsLoading(true);
+      }
       setCreditsError('');
       try {
         let creditsResolved = false;
@@ -446,6 +455,7 @@ export function PersonPage() {
             uniqueCredits.push(item);
           }
 
+          personCreditsMemoryCache.set(String(id), uniqueCredits);
           setCredits(uniqueCredits);
           setUserCollections(normalizeCollections(getCachedUserCollections()));
           setCreditsLoading(false);
@@ -690,6 +700,12 @@ export function PersonPage() {
               <div className="min-h-[220px]"></div>
             )}
           </>
+        ) : creditsLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 py-2">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i} className="aspect-[2/3] rounded-2xl bg-white/[0.05] animate-pulse" />
+            ))}
+          </div>
         ) : (
           <div className="empty-state">No credits available.</div>
         )}

@@ -1,8 +1,92 @@
 import { apiFetch, getToken } from '../api/client.js';
 
 const STORAGE_KEY = 'soulstash_continue_watching';
+const WATCHED_EPISODES_KEY = 'soulstash_watched_episodes';
+const LAST_VIEWED_SERIES_KEY_PREFIX = 'soulstash_last_viewed_series_';
 const MIN_TIME_SECONDS = 5;
 const COMPLETION_THRESHOLD = 0.90; // 90% watched = completed
+
+export function normalizeSeriesEpisodeKey(seriesId, seasonNumber, episodeNumber) {
+  if (!seriesId || seasonNumber == null || episodeNumber == null) return '';
+  const sId = String(seriesId).toLowerCase().replace(/^kartoons-/, '');
+  return `${sId}_s${seasonNumber}_e${episodeNumber}`;
+}
+
+export function markEpisodeWatched(seriesId, seasonNumber, episodeNumber) {
+  const epKey = normalizeSeriesEpisodeKey(seriesId, seasonNumber, episodeNumber);
+  if (!epKey) return;
+  try {
+    const raw = localStorage.getItem(WATCHED_EPISODES_KEY);
+    let list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) list = [];
+    if (!list.includes(epKey)) {
+      list.push(epKey);
+      if (list.length > 1000) list = list.slice(list.length - 1000);
+      localStorage.setItem(WATCHED_EPISODES_KEY, JSON.stringify(list));
+      window.dispatchEvent(new CustomEvent('soulstash:watched-episodes-updated', { detail: { epKey, watched: true } }));
+    }
+  } catch (_) {}
+}
+
+export function unmarkEpisodeWatched(seriesId, seasonNumber, episodeNumber) {
+  const epKey = normalizeSeriesEpisodeKey(seriesId, seasonNumber, episodeNumber);
+  if (!epKey) return;
+  try {
+    const raw = localStorage.getItem(WATCHED_EPISODES_KEY);
+    let list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return;
+    const nextList = list.filter((k) => k !== epKey);
+    localStorage.setItem(WATCHED_EPISODES_KEY, JSON.stringify(nextList));
+    window.dispatchEvent(new CustomEvent('soulstash:watched-episodes-updated', { detail: { epKey, watched: false } }));
+  } catch (_) {}
+}
+
+export function getWatchedEpisodes(seriesId) {
+  try {
+    const raw = localStorage.getItem(WATCHED_EPISODES_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return new Set();
+    if (!seriesId) return new Set(list);
+    const cleanId = String(seriesId).toLowerCase().replace(/^kartoons-/, '');
+    const prefix = `${cleanId}_`;
+    return new Set(list.filter((k) => k.startsWith(prefix)));
+  } catch (_) {
+    return new Set();
+  }
+}
+
+export function isEpisodeWatched(seriesId, seasonNumber, episodeNumber) {
+  const epKey = normalizeSeriesEpisodeKey(seriesId, seasonNumber, episodeNumber);
+  if (!epKey) return false;
+  const watched = getWatchedEpisodes(seriesId);
+  return watched.has(epKey);
+}
+
+export function saveLastViewedEpisode(seriesId, seasonNumber, episodeNumber) {
+  if (!seriesId || seasonNumber == null) return;
+  const cleanId = String(seriesId).toLowerCase().replace(/^kartoons-/, '');
+  try {
+    const data = {
+      seriesId: cleanId,
+      seasonNumber: Number(seasonNumber),
+      episodeNumber: episodeNumber != null ? Number(episodeNumber) : 1,
+      updatedAt: Date.now()
+    };
+    localStorage.setItem(`${LAST_VIEWED_SERIES_KEY_PREFIX}${cleanId}`, JSON.stringify(data));
+    window.dispatchEvent(new CustomEvent('soulstash:last-viewed-updated', { detail: data }));
+  } catch (_) {}
+}
+
+export function getLastViewedEpisode(seriesId) {
+  if (!seriesId) return null;
+  const cleanId = String(seriesId).toLowerCase().replace(/^kartoons-/, '');
+  try {
+    const raw = localStorage.getItem(`${LAST_VIEWED_SERIES_KEY_PREFIX}${cleanId}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 export function getProgressItemKey(item) {
   if (!item) return '';
@@ -174,6 +258,9 @@ export function advanceToNextEpisodeOrRemove(item) {
   }
   const s = Number(item.seasonNumber ?? item.season ?? 1) || 1;
   const e = Number(item.episodeNumber ?? item.episode ?? 1) || 1;
+  const targetId = item.id || item.tmdbId || item.seriesId || item.kartoons_slug || item.slug;
+  markEpisodeWatched(targetId, s, e);
+  saveLastViewedEpisode(targetId, s, e + 1);
   saveNextEpisodeProgress(item, s, e + 1);
 }
 
@@ -188,11 +275,17 @@ export function saveWatchProgress(item, currentTime, duration) {
 
   const isCompleted = dur > 0 && (time / dur >= COMPLETION_THRESHOLD || time >= dur - 30);
 
-  if (isCompleted && isSeriesItem(item)) {
+  if (isSeriesItem(item)) {
     const s = Number(item.seasonNumber ?? item.season ?? 1) || 1;
     const e = Number(item.episodeNumber ?? item.episode ?? 1) || 1;
-    saveNextEpisodeProgress(item, s, e + 1);
-    return;
+    const targetId = item.id || item.tmdbId || item.seriesId || item.kartoons_slug || item.slug;
+    if (isCompleted) {
+      markEpisodeWatched(targetId, s, e);
+      saveLastViewedEpisode(targetId, s, e + 1);
+      saveNextEpisodeProgress(item, s, e + 1);
+      return;
+    }
+    saveLastViewedEpisode(targetId, s, e);
   }
 
   try {
