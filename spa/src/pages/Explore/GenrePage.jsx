@@ -2,7 +2,7 @@ import { apiFetch } from '../../api/client.js';
 import { KARTOONS_PROXY } from '../../api/kartoons.js';
 import React, { useRef, useEffect, useMemo } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthSession } from '../../hooks/index.js';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
@@ -30,6 +30,7 @@ const GENRE_CHIP_IDS = ['anime', 'cartoon', 28, 12, 16, 35, 80, 18, 10751, 14, 2
 
 export function GenrePage() {
   const { id, name } = useParams();
+  const queryClient = useQueryClient();
   const { user } = useAuthSession();
   const adminMode = Number(user?.adminMode ?? (user?.showAdult ? 1 : 0));
 
@@ -57,6 +58,25 @@ export function GenrePage() {
     refetch,
   } = useInfiniteQuery({
     queryKey: ['genre', genreId, adminMode],
+    initialData: () => {
+      // Seed first page directly from Home page shelf cache if available
+      const shelfData = queryClient.getQueryData(['moviesByGenre', genreId, adminMode])
+        || queryClient.getQueryData(['moviesByGenre', genreId]);
+      if (shelfData) {
+        const rawList = Array.isArray(shelfData) ? shelfData : (shelfData.results || shelfData.movies || []);
+        if (rawList.length > 0) {
+          return {
+            pages: [{
+              movies: rawList,
+              results: rawList,
+              pagination: shelfData.pagination || { page: 1, limit: rawList.length, total: 500, pages: 50, next_tmdb_page: 4, has_more: true }
+            }],
+            pageParams: [{ page: 1, tmdb_page: 1 }]
+          };
+        }
+      }
+      return undefined;
+    },
     queryFn: async ({ pageParam = { page: 1, tmdb_page: 1 } }) => {
       const pageNum = typeof pageParam === 'object' ? pageParam.page : pageParam;
       const tmdbPage = typeof pageParam === 'object' ? pageParam.tmdb_page : null;
@@ -153,15 +173,25 @@ export function GenrePage() {
       const currentPageNum = typeof lastPageParam === 'object' ? Number(lastPageParam.page) : (Number(lastPageParam) || allPages.length);
       const reportedPages = Number(lastPage?.total_pages || lastPage?.pagination?.pages);
       const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
+
+      const hasMoreBackend = lastPage?.pagination?.has_more;
+      if (hasMoreBackend === false) {
+        return undefined;
+      }
+      const nextTmdbPage = lastPage?.pagination?.next_tmdb_page;
+      if (nextTmdbPage && nextTmdbPage >= 500) {
+        return undefined;
+      }
+
+      if (adminMode === 2) {
+        // Mode 2 (adult): continue until all TMDB pages finished (500 max)
+        return {
+          page: currentPageNum + 1,
+          tmdb_page: nextTmdbPage || (currentPageNum * 4 + 1)
+        };
+      }
+
       if (currentPageNum < totalPages) {
-        if (allPages.length >= 2) {
-          const lastOne = allPages[allPages.length - 1]?.results || allPages[allPages.length - 1]?.movies || [];
-          const secondLast = allPages[allPages.length - 2]?.results || allPages[allPages.length - 2]?.movies || [];
-          if (lastOne.length === 0 && secondLast.length === 0) {
-            return undefined;
-          }
-        }
-        const nextTmdbPage = lastPage?.pagination?.next_tmdb_page;
         return {
           page: currentPageNum + 1,
           tmdb_page: nextTmdbPage || (currentPageNum * 3 + 1)
@@ -200,7 +230,7 @@ export function GenrePage() {
     }
   }, [items.length]);
 
-  // Always prefetch next 2 pages in advance
+  // Always keep at least 2 extra pages ahead in memory initially
   useEffect(() => {
     if (!data?.pages?.length || !hasNextPage || isFetchingNextPage) return;
     if (data.pages.length < 3) {
@@ -208,7 +238,34 @@ export function GenrePage() {
     }
   }, [data?.pages?.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Sentinel observer — attaches cleanly via useEffect every time page state updates
+  // Advance trigger: when user scrolls near the card that is 2 pages before the end, trigger fetch for the next page
+  const triggerRef = useRef(null);
+  const triggerIndex = useMemo(() => {
+    if (!items.length || !data?.pages?.length) return -1;
+    const avgPerPage = Math.max(14, Math.round(items.length / data.pages.length));
+    return Math.max(0, items.length - avgPerPage * 2);
+  }, [items.length, data?.pages?.length]);
+
+  useEffect(() => {
+    const node = triggerRef.current;
+    if (!node || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: '800px' }
+    );
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, triggerIndex]);
+
+  // Sentinel observer — bottom fallback
   const sentinelRef = useRef(null);
   useEffect(() => {
     const node = sentinelRef.current;
@@ -220,7 +277,7 @@ export function GenrePage() {
           fetchNextPage();
         }
       },
-      { rootMargin: '1600px' }
+      { rootMargin: '1200px' }
     );
     observer.observe(node);
 
@@ -236,7 +293,7 @@ export function GenrePage() {
     return <Navigate to={`/genre/${genreId}/${encodeURIComponent(canonicalGenreName)}`} replace />;
   }
 
-  if (isLoading && !isError) {
+  if (isLoading && !isError && (!data || !data.pages.length)) {
     return (
       <section className="content-section">
         <div className="mb-5 flex items-center justify-between gap-4">
@@ -285,7 +342,11 @@ export function GenrePage() {
         <>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-3 lg:gap-4">
             {items.map((item, index) => (
-              <ContentCard key={`${item.id}-${index}`} item={item} />
+              <ContentCard
+                key={`${item.id}-${index}`}
+                item={item}
+                ref={index === triggerIndex ? triggerRef : null}
+              />
             ))}
           </div>
 

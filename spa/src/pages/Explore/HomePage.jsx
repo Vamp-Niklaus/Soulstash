@@ -5,7 +5,7 @@ import { apiFetch, getToken } from '../../api/client.js';
 import { broadcastCollections, getCachedUserCollections, normalizeCollections } from '../../utils/collectionsCache.js';
 import { loadUserCollections } from '../../utils/collectionsApi.js';
 import { homeTrendingCache } from '../../utils/trendingCache.js';
-import { useHomeTwoRowLimit } from '../../hooks/index.js';
+import { useHomeTwoRowLimit, useAuthSession } from '../../hooks/index.js';
 import { HOME_GRID_CLASS, HOME_TRENDING_TTL } from '../../utils/constants.js';
 import { HomePageSkeleton } from '../../components/ui/Skeletons/index.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
@@ -17,8 +17,11 @@ import { preloadImages } from '../../utils/preload.js';
 
 export function HomePage() {
   const navigate = useNavigate();
+  const { user } = useAuthSession();
+  const adminMode = Number(user?.adminMode ?? (user?.showAdult ? 1 : 0));
+
   const { data, isLoading: loading, error: queryError, refetch } = useQuery({
-    queryKey: ['homePageData'],
+    queryKey: ['homePageData', adminMode],
     queryFn: async () => {
       const [homeData, genresData] = await Promise.all([
         apiFetch('/api/home').catch(() => ({ trending: [], genres: [], categories: {} })),

@@ -7,9 +7,12 @@ import { HOME_GRID_CLASS } from '../../utils/constants.js';
 import { ContentCard } from '../../components/ui/Cards/ContentCard.jsx';
 import { HomeShelfHeader } from './HomeShelfHeader.jsx';
 import { preloadImages } from '../../utils/preload.js';
+import { useAuthSession } from '../../hooks/index.js';
 
 export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
   const navigate = useNavigate();
+  const { user } = useAuthSession();
+  const adminMode = Number(user?.adminMode ?? (user?.showAdult ? 1 : 0));
   const genreId = genre.id || genre;
   const displayLimit = limit || 14; // Apply limit for 2 rows on desktop
   const [failedCardIds, setFailedCardIds] = useState(() => new Set());
@@ -25,7 +28,7 @@ export function LazyCategoryShelf({ genre, limit, preloadedMovies }) {
   }, []);
 
   const { data: fetchedMovies, isLoading } = useQuery({
-    queryKey: ['moviesByGenre', genreId],
+    queryKey: ['moviesByGenre', genreId, adminMode],
     queryFn: async () => {
       const gLower = String(genreId).toLowerCase();
       const isValidImage = (item) => {
