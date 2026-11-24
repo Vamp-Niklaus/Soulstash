@@ -57,7 +57,9 @@ export function GenrePage() {
     refetch,
   } = useInfiniteQuery({
     queryKey: ['genre', genreId, adminMode],
-    queryFn: async ({ pageParam = 1 }) => {
+    queryFn: async ({ pageParam = { page: 1, tmdb_page: 1 } }) => {
+      const pageNum = typeof pageParam === 'object' ? pageParam.page : pageParam;
+      const tmdbPage = typeof pageParam === 'object' ? pageParam.tmdb_page : null;
       const gLower = String(genreId).toLowerCase();
       const isValidImage = (item) => {
         const p = item?.image || item?.coverImage || item?.poster_path;
@@ -73,7 +75,7 @@ export function GenrePage() {
       };
 
       if (gLower === 'anime' || gLower === 'kartoons-anime') {
-        const res = await fetch(`${KARTOONS_PROXY}/shows?page=${pageParam}&category=Anime`);
+        const res = await fetch(`${KARTOONS_PROXY}/shows?page=${pageNum}&category=Anime`);
         const json = await res.json().catch(() => ({}));
         const raw = (Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []))
           .filter(isValidImage);
@@ -93,13 +95,13 @@ export function GenrePage() {
         }));
         return {
           movies,
-          pagination: { page: pageParam, pages: json?.pagination?.totalPages || 50 }
+          pagination: { page: pageNum, pages: json?.pagination?.totalPages || 50 }
         };
       }
       if (gLower === 'cartoon' || gLower === 'kartoons-cartoon') {
         const [showsRes, moviesRes] = await Promise.all([
-          fetch(`${KARTOONS_PROXY}/shows?page=${pageParam}&category=Cartoon`).catch(() => null),
-          fetch(`${KARTOONS_PROXY}/movies?page=${pageParam}&category=Cartoon`).catch(() => null)
+          fetch(`${KARTOONS_PROXY}/shows?page=${pageNum}&category=Cartoon`).catch(() => null),
+          fetch(`${KARTOONS_PROXY}/movies?page=${pageNum}&category=Cartoon`).catch(() => null)
         ]);
         const sJson = showsRes?.ok ? await showsRes.json().catch(() => ({})) : {};
         const mJson = moviesRes?.ok ? await moviesRes.json().catch(() => ({})) : {};
@@ -140,14 +142,15 @@ export function GenrePage() {
 
         return {
           movies: [...mappedShows, ...mappedMovies],
-          pagination: { page: pageParam, pages: Math.max(sJson?.pagination?.totalPages || 1, mJson?.pagination?.totalPages || 1, 50) }
+          pagination: { page: pageNum, pages: Math.max(sJson?.pagination?.totalPages || 1, mJson?.pagination?.totalPages || 1, 50) }
         };
       }
-      return apiFetch(`/api/movies?genre=${genreId}&limit=20&page=${pageParam}`);
+      const tmdbQuery = tmdbPage ? `&tmdb_page=${tmdbPage}` : '';
+      return apiFetch(`/api/movies?genre=${genreId}&limit=20&page=${pageNum}${tmdbQuery}`);
     },
-    initialPageParam: 1,
+    initialPageParam: { page: 1, tmdb_page: 1 },
     getNextPageParam: (lastPage, allPages, lastPageParam) => {
-      const currentPageNum = Number(lastPageParam) || allPages.length;
+      const currentPageNum = typeof lastPageParam === 'object' ? Number(lastPageParam.page) : (Number(lastPageParam) || allPages.length);
       const reportedPages = Number(lastPage?.total_pages || lastPage?.pagination?.pages);
       const totalPages = Math.max(reportedPages > 1 ? reportedPages : 500, 50);
       if (currentPageNum < totalPages) {
@@ -158,7 +161,11 @@ export function GenrePage() {
             return undefined;
           }
         }
-        return currentPageNum + 1;
+        const nextTmdbPage = lastPage?.pagination?.next_tmdb_page;
+        return {
+          page: currentPageNum + 1,
+          tmdb_page: nextTmdbPage || (currentPageNum * 3 + 1)
+        };
       }
       return undefined;
     },
