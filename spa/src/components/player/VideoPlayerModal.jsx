@@ -46,7 +46,7 @@ import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
 
 // Assume buildPlayerSourceSlots is imported
 import { buildPlayerSourceSlots, firstPlayableUrl, sourceKeyText } from '../../utils/playerUtils.js';
-import { saveWatchProgress, removeWatchProgress, getSavedProgress } from '../../utils/watchProgress.js';
+import { saveWatchProgress, removeWatchProgress, advanceToNextEpisodeOrRemove, getSavedProgress } from '../../utils/watchProgress.js';
 
 import { loadHlsJs, startHlsSession, safePlay } from './hlsSession.js';
 
@@ -396,8 +396,22 @@ export function VideoPlayerModal({ request, onClose }) {
         duration = Number(data.duration);
       }
 
+      // Check for episode change events from internal player embeds
+      const epData = data?.data || data;
+      const detectedEp = Number(epData?.episode ?? epData?.episodeNumber ?? epData?.ep);
+      const detectedSeason = Number(epData?.season ?? epData?.seasonNumber ?? epData?.s);
+      if (detectedEp && Number.isFinite(detectedEp) && detectedEp > 0) {
+        if (request?.episodeNumber && Number(request.episodeNumber) !== detectedEp) {
+          request.episodeNumber = detectedEp;
+          if (detectedSeason && Number.isFinite(detectedSeason)) {
+            request.seasonNumber = detectedSeason;
+          }
+          saveWatchProgress(request, 1, duration || 1800);
+        }
+      }
+
       if (isEnded) {
-        removeWatchProgress(request);
+        advanceToNextEpisodeOrRemove(request);
         return;
       }
 
@@ -2141,7 +2155,7 @@ export function VideoPlayerModal({ request, onClose }) {
                       saveWatchProgress(request, v.currentTime, v.duration);
                     }
                   }}
-                  onEnded={() => removeWatchProgress(request)}
+                  onEnded={() => advanceToNextEpisodeOrRemove(request)}
                   onWaiting={() => {
                     setIsStreamLoading(true);
                     setIsDirectVideoPlaying(false);

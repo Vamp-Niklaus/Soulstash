@@ -493,13 +493,49 @@ export function filteredCollectionMovies(collection, filters, watchedIds) {
   });
 }
 
+export function getRatingTierInfo(item) {
+  const imdb = getValidImdbRating(item?.imdb_rating);
+  if (imdb != null) {
+    return { tier: 1, type: 'imdb', val: imdb };
+  }
+  const tmdb = getValidVoteAverage(item?.vote_average);
+  if (tmdb != null && tmdb <= 8.2) {
+    return { tier: 2, type: 'tmdb', val: tmdb };
+  }
+  return { tier: 3, type: 'none', val: null };
+}
+
 export function compareRatingsForSort(a, b, direction = 'desc') {
-  const ratingA = getPreferredRating(a);
-  const ratingB = getPreferredRating(b);
-  if (ratingA == null && ratingB == null) return 0;
-  if (ratingA == null) return 1;
-  if (ratingB == null) return -1;
-  return direction === 'asc' ? ratingA - ratingB : ratingB - ratingA;
+  const infoA = getRatingTierInfo(a);
+  const infoB = getRatingTierInfo(b);
+
+  if (direction === 'asc') {
+    // Reverse rating: no rated at top, then TMDB, then IMDb (each sorted ascending)
+    const ascTierRank = { none: 1, tmdb: 2, imdb: 3 };
+    const rankA = ascTierRank[infoA.type];
+    const rankB = ascTierRank[infoB.type];
+
+    if (rankA !== rankB) {
+      return rankA - rankB;
+    }
+    if (infoA.val != null && infoB.val != null) {
+      return infoA.val - infoB.val;
+    }
+    return 0;
+  }
+
+  // Default: desc (Top rating at top: IMDb first, then TMDB, then unrated)
+  const descTierRank = { imdb: 1, tmdb: 2, none: 3 };
+  const rankA = descTierRank[infoA.type];
+  const rankB = descTierRank[infoB.type];
+
+  if (rankA !== rankB) {
+    return rankA - rankB;
+  }
+  if (infoA.val != null && infoB.val != null) {
+    return infoB.val - infoA.val;
+  }
+  return 0;
 }
 
 export function filterLabel(filters) {

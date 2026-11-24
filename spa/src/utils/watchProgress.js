@@ -70,8 +70,8 @@ export function getContinueWatchingList() {
         if (isBroken) return false;
         const time = Number(entry.currentTime) || 0;
         const duration = Number(entry.duration) || 0;
-        if (time < MIN_TIME_SECONDS) return false;
-        if (duration > 0) {
+        if (time < MIN_TIME_SECONDS && !entry.isNextEpisode) return false;
+        if (duration > 0 && !entry.isNextEpisode) {
           const ratio = time / duration;
           if (ratio >= COMPLETION_THRESHOLD || time >= duration - 30) return false;
         }
@@ -91,6 +91,92 @@ export function getSavedProgress(item) {
   return found || null;
 }
 
+export function isSeriesItem(item) {
+  if (!item) return false;
+  const mt = String(item.media_type || item.type || item.mediaType || '').toLowerCase();
+  if (mt === 'series' || mt === 'tv') return true;
+  return Boolean(item.seasonNumber != null || item.episodeNumber != null || item.season != null || item.episode != null);
+}
+
+export function saveNextEpisodeProgress(item, nextSeason, nextEpisode) {
+  if (!item) return;
+  const s = Number(nextSeason ?? item.seasonNumber ?? item.season ?? 1) || 1;
+  const e = Number(nextEpisode ?? item.episodeNumber ?? item.episode ?? 1) || 1;
+  const nextItem = {
+    ...item,
+    seasonNumber: s,
+    episodeNumber: e,
+  };
+  const key = getProgressItemKey(nextItem);
+  if (!key) return;
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    let list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) list = [];
+
+    const groupKey = getSeriesGroupKey(key);
+    list = list.filter((x) => getSeriesGroupKey(x.key) !== groupKey);
+
+    const rawPoster = item.poster_path || item.image || item.coverImage || '';
+    const cleanPoster = (rawPoster && typeof rawPoster === 'string' && rawPoster !== 'null' && rawPoster !== '/null' && rawPoster !== 'undefined' && !rawPoster.startsWith('data:image/svg+xml')) ? rawPoster : '';
+    const rawBackdrop = item.backdrop_path || item.backdrop || item.coverImage || item.image || '';
+    const cleanBackdrop = (rawBackdrop && typeof rawBackdrop === 'string' && rawBackdrop !== 'null' && rawBackdrop !== '/null' && rawBackdrop !== 'undefined' && !rawBackdrop.startsWith('data:image/svg+xml')) ? rawBackdrop : cleanPoster;
+    const finalPoster = cleanPoster || cleanBackdrop;
+    const title = item.title || item.name || item.seriesTitle || 'Unknown';
+    const rawTmdb = item.tmdbId || (typeof item.id === 'number' || /^\d+$/.test(String(item.id)) ? item.id : null);
+    const isTmdb = Boolean(rawTmdb && String(rawTmdb) !== '0');
+    const resolvedId = isTmdb ? rawTmdb : (item.id || item.kartoons_slug || item.slug);
+    const resolvedSlug = item.kartoons_slug || item.kartoonsSlug || item.slug || '';
+
+    list.unshift({
+      key,
+      id: resolvedId,
+      tmdbId: isTmdb ? rawTmdb : null,
+      title,
+      name: title,
+      seriesTitle: item.seriesTitle || item.name || '',
+      seasonNumber: s,
+      episodeNumber: e,
+      poster_path: finalPoster,
+      image: finalPoster,
+      backdrop_path: cleanBackdrop,
+      media_type: 'Series',
+      is_kartoons: !isTmdb && Boolean(item.is_kartoons || item.isKartoons || String(item.id || '').startsWith('kartoons-')),
+      kartoons_slug: resolvedSlug,
+      currentTime: 0,
+      duration: Math.floor(Number(item.duration) || 1800),
+      progress: 0,
+      isNextEpisode: true,
+      updatedAt: Date.now()
+    });
+
+    if (list.length > 30) list = list.slice(0, 30);
+    const savedEntry = list[0];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    window.dispatchEvent(new CustomEvent('soulstash:continue-watching-updated'));
+
+    if (getToken() && savedEntry) {
+      apiFetch('/api/auth/watch-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(savedEntry)
+      }).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+export function advanceToNextEpisodeOrRemove(item) {
+  if (!item) return;
+  if (!isSeriesItem(item)) {
+    removeWatchProgress(item);
+    return;
+  }
+  const s = Number(item.seasonNumber ?? item.season ?? 1) || 1;
+  const e = Number(item.episodeNumber ?? item.episode ?? 1) || 1;
+  saveNextEpisodeProgress(item, s, e + 1);
+}
+
 export function saveWatchProgress(item, currentTime, duration) {
   if (!item) return;
   const key = getProgressItemKey(item);
@@ -101,6 +187,13 @@ export function saveWatchProgress(item, currentTime, duration) {
   if (time < MIN_TIME_SECONDS) return;
 
   const isCompleted = dur > 0 && (time / dur >= COMPLETION_THRESHOLD || time >= dur - 30);
+
+  if (isCompleted && isSeriesItem(item)) {
+    const s = Number(item.seasonNumber ?? item.season ?? 1) || 1;
+    const e = Number(item.episodeNumber ?? item.episode ?? 1) || 1;
+    saveNextEpisodeProgress(item, s, e + 1);
+    return;
+  }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

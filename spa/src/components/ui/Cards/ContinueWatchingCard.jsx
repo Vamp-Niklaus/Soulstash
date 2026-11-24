@@ -36,7 +36,9 @@ export const ContinueWatchingCard = React.forwardRef(function ContinueWatchingCa
   const posterSrc = isBroken ? FALLBACK_POSTER : imageUrl(rawPoster, 'w342');
   const title = entry.title || entry.name || 'Unknown';
   const progressPercent = Math.min(100, Math.max(0, Math.round((entry.progress || 0) * 100)));
-  const remainingText = formatRemaining(entry.currentTime, entry.duration);
+  const remainingText = entry.isNextEpisode || (!entry.currentTime && entry.episodeNumber)
+    ? `Up Next: E${entry.episodeNumber}`
+    : formatRemaining(entry.currentTime, entry.duration);
 
   const handleClick = (e) => {
     // If remove button was clicked, don't navigate
