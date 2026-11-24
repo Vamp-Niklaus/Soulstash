@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../api/client.js';
+import { getValidImdbRating, getValidVoteAverage } from '../utils/formatters.js';
 
 export function useMediaDetails(id, type) {
   const {
@@ -36,20 +37,17 @@ export function useMediaDetails(id, type) {
         try {
           const mediaType = type === 'series' ? 'Series' : 'Movie';
           const rating = await apiFetch(`/api/ratings/${mediaType}/${detailResult.id}`);
-          const imdbRating = Number(rating?.imdb_rating);
-          const voteAverage = Number(rating?.vote_average);
+          const imdbRating = getValidImdbRating(rating?.imdb_rating);
+          const voteAverage = getValidVoteAverage(rating?.vote_average);
           
-          if (
-            (Number.isFinite(imdbRating) && imdbRating > 0) ||
-            (Number.isFinite(voteAverage) && voteAverage > 0)
-          ) {
-            detailResult.imdb_rating = Number.isFinite(imdbRating) && imdbRating > 0
-              ? imdbRating
-              : detailResult.imdb_rating;
-            detailResult.vote_average = Number.isFinite(voteAverage) && voteAverage > 0
-              ? voteAverage
-              : detailResult.vote_average;
-            detailResult.imdb_id = rating?.imdbID || detailResult.imdb_id || '';
+          if (imdbRating != null) {
+            detailResult.imdb_rating = imdbRating;
+          }
+          if (voteAverage != null) {
+            detailResult.vote_average = voteAverage;
+          }
+          if (rating?.imdbID) {
+            detailResult.imdb_id = rating.imdbID;
           }
         } catch (e) {
           // silently ignore — TMDB rating is the fallback

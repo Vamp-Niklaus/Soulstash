@@ -329,7 +329,8 @@ export function DetailPage({ type }) {
     content.content_rating || 'N/A';
 
   const imdbRating = getValidImdbRating(content.imdb_rating);
-  const tmdbRating = getValidVoteAverage(content.vote_average);
+  const rawTmdbRating = getValidVoteAverage(content.vote_average);
+  const tmdbRating = rawTmdbRating != null && rawTmdbRating <= 8.2 ? rawTmdbRating : null;
   const displayRating = imdbRating ?? tmdbRating;
   const ratingSource = imdbRating != null ? 'IMDB' : tmdbRating != null ? 'TMDB' : null;
 
@@ -345,7 +346,7 @@ export function DetailPage({ type }) {
           : formatRuntime(content.runtime);
       return r !== 'N/A' ? r : '';
     })(),
-    displayRating ? `${ratingSource} ${displayRating.toFixed(1)}` : 'No rating'
+    displayRating && ratingSource ? `${ratingSource} ${displayRating.toFixed(1)}` : null
   ].filter(Boolean);
 
   // Director / creator stat

@@ -54,7 +54,7 @@ export function mediaTypeFromItem(item) {
  */
 export function getValidImdbRating(value) {
   const rating = Number(value);
-  if (!Number.isFinite(rating) || rating <= 0 || rating === 10 || rating >= 9.4) return null;
+  if (!Number.isFinite(rating) || rating <= 0 || rating >= 9.4 || rating >= 10) return null;
   return rating;
 }
 
@@ -63,15 +63,19 @@ export function getValidImdbRating(value) {
  */
 export function getValidVoteAverage(value) {
   const rating = Number(value);
-  if (!Number.isFinite(rating) || rating <= 0 || rating === 10 || rating >= 9.4) return null;
+  if (!Number.isFinite(rating) || rating <= 0 || rating >= 9.4 || rating >= 10) return null;
   return rating;
 }
 
 /**
- * Prefers the IMDB rating if available, otherwise falls back to TMDB vote average.
+ * Prefers the IMDB rating if available, otherwise falls back to TMDB vote average only if <= 8.2.
  */
 export function getPreferredRating(item) {
-  return getValidImdbRating(item?.imdb_rating) ?? getValidVoteAverage(item?.vote_average);
+  const imdb = getValidImdbRating(item?.imdb_rating);
+  if (imdb != null) return imdb;
+  const tmdb = getValidVoteAverage(item?.vote_average);
+  if (tmdb != null && tmdb <= 8.2) return tmdb;
+  return null;
 }
 
 /**
