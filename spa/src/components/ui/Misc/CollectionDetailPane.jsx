@@ -262,7 +262,10 @@ export function CollectionDetailPane({
         </>
       ) : (
         <div className="w-full aspect-[21/9] min-h-[200px] md:min-h-[156px] rounded-[26px] mb-0 relative overflow-hidden shadow-[0_18px_40px_rgba(0,0,0,0.24)]">
-          <img alt="collection banner" className="absolute inset-0 h-full w-full object-cover"
+          <img
+            key={collection.banner || collection.name}
+            alt="collection banner"
+            className="absolute inset-0 h-full w-full object-cover"
             src={
               collection.banner
                 ? (collection.banner.includes('image.tmdb.org/t/p/')

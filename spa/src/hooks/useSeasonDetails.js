@@ -1,13 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../api/client.js';
 import { getLastWatchedForSeries, getLastViewedEpisode } from '../utils/watchProgress.js';
 
 export function useSeasonDetails(id, type, content) {
-  const [selectedSeason, setSelectedSeason] = useState(null);
-  
+  const [selectedSeason, setSelectedSeasonState] = useState(null);
+  const manualSeasonRef = useRef(false);
+
+  const setSelectedSeason = useCallback((seasonNum) => {
+    manualSeasonRef.current = true;
+    setSelectedSeasonState(seasonNum);
+  }, []);
+
   useEffect(() => {
-    if (type === 'series' && Array.isArray(content?.seasons) && content.seasons.length) {
+    manualSeasonRef.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    if (type !== 'series' || !Array.isArray(content?.seasons) || !content.seasons.length) {
+      setSelectedSeasonState(null);
+      return;
+    }
+
+    const resolveSeason = () => {
       const seriesId = id || content?.id;
       const lastWatched = getLastWatchedForSeries(seriesId) || getLastViewedEpisode(seriesId);
       const targetSeasonNum = lastWatched?.seasonNumber != null ? Number(lastWatched.seasonNumber) : null;
@@ -15,15 +30,29 @@ export function useSeasonDetails(id, type, content) {
         ? content.seasons.find((s) => Number(s.season_number) === targetSeasonNum)
         : null;
 
-      const initialSeason =
+      return (
         matchedSeason?.season_number ??
         content.seasons.find((s) => Number(s.season_number) > 0)?.season_number ??
         content.seasons[0]?.season_number ??
-        null;
-      setSelectedSeason(initialSeason);
-    } else {
-      setSelectedSeason(null);
-    }
+        null
+      );
+    };
+
+    setSelectedSeasonState(resolveSeason());
+
+    const handleSyncUpdate = () => {
+      if (!manualSeasonRef.current) {
+        const synced = resolveSeason();
+        if (synced != null) setSelectedSeasonState(synced);
+      }
+    };
+
+    window.addEventListener('soulstash:continue-watching-updated', handleSyncUpdate);
+    window.addEventListener('soulstash:last-viewed-updated', handleSyncUpdate);
+    return () => {
+      window.removeEventListener('soulstash:continue-watching-updated', handleSyncUpdate);
+      window.removeEventListener('soulstash:last-viewed-updated', handleSyncUpdate);
+    };
   }, [type, content, id]);
 
   const seriesTitle = content?.name || content?.title || content?.original_name || '';

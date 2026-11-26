@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { saveWatchProgress, removeWatchProgress, getSavedProgress } from '../../utils/watchProgress.js';
+import { saveWatchProgress, advanceToNextEpisodeOrRemove, getSavedProgress } from '../../utils/watchProgress.js';
 import { fetchKartoonsStremioStreams } from '../../api/kartoons.js';
 
 // Hls.js is loaded globally by the existing player infrastructure.
@@ -325,7 +325,7 @@ export function KartoonWatchModal({ title = '', streamType, streamId, subtitle =
                 saveWatchProgress(kartoonItem, v.currentTime, v.duration);
               }
             }}
-            onEnded={() => removeWatchProgress(kartoonItem)}
+            onEnded={() => advanceToNextEpisodeOrRemove(kartoonItem)}
           />
         </div>
       </div>

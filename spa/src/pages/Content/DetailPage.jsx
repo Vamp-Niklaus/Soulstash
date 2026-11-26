@@ -196,7 +196,10 @@ export function DetailPage({ type }) {
           poster_path: posterVal,
           backdrop_path: backdropVal,
           image: posterVal,
-          resumeTime: resume
+          resumeTime: resume,
+          runtime: (Array.isArray(content?.episode_run_time) && content.episode_run_time[0]) || content?.runtime || null,
+          seasonEpisodeCount: Number(page.selectedSeason) === targetSeason ? (page.seasonDetails?.episodes?.length || null) : null,
+          seasons: content?.seasons
         })
       );
     }
@@ -294,7 +297,10 @@ export function DetailPage({ type }) {
         year: yearVal,
         poster_path: posterVal,
         backdrop_path: backdropVal,
-        image: posterVal
+        image: posterVal,
+        runtime: episode?.runtime || (Array.isArray(content?.episode_run_time) && content.episode_run_time[0]) || content?.runtime || null,
+        seasonEpisodeCount: page.seasonDetails?.episodes?.length || null,
+        seasons: content?.seasons
       })
     );
   }, [content, id, kartoonsSlug, page]);

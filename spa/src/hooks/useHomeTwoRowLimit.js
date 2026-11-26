@@ -12,6 +12,10 @@ export function useHomeTwoRowLimit() {
       // In TV mode: exactly 1 row per genre
       return getTvHomeGridColumns(width) * 1;
     }
+    if (width < 768) {
+      // Mobile: 1 horizontal scrollable row (~3 visible + 7 off-screen = 10 total)
+      return 10;
+    }
     // Desktop: 2 rows
     return getHomeGridColumns(width) * 2;
   }, [isTvLayout]);

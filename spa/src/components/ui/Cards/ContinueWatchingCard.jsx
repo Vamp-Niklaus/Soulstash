@@ -93,7 +93,7 @@ export const ContinueWatchingCard = React.forwardRef(function ContinueWatchingCa
               e.stopPropagation();
               onRemove(entry);
             }}
-            className="absolute top-2 right-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white/70 hover:bg-black hover:text-white transition-opacity opacity-0 group-hover:opacity-100 focus:opacity-100"
+            className="absolute top-2 right-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white/80 hover:bg-black hover:text-white transition-opacity opacity-85 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
             title="Remove from Continue Watching"
             aria-label="Remove from Continue Watching"
           >

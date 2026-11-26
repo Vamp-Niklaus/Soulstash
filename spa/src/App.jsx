@@ -11,6 +11,7 @@ import { UpdateNotificationModal } from './components/ui/Modals/UpdateNotificati
 
 // 3. Authentication & State
 import { getToken, getCurrentUsername } from './api/client.js';
+import { syncAccountWatchProgress } from './utils/watchProgress.js';
 
 // 4. TV Remote
 import { useTvFocus } from './utils/tvNav.js';
@@ -57,6 +58,45 @@ export function AppShell() {
 
   //  TV / remote D-pad navigation 
   useTvFocus(location);
+
+  // Sync Continue Watching & Watched Episodes across devices when logged in
+  useEffect(() => {
+    const triggerSync = (force = false) => {
+      if (getToken()) {
+        syncAccountWatchProgress(force).catch(() => {});
+      }
+    };
+
+    triggerSync(true);
+
+    const handleAuthChanged = () => triggerSync(true);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') triggerSync(false);
+    };
+    const handleFocus = () => triggerSync(false);
+
+    window.addEventListener('soulstash:auth-changed', handleAuthChanged);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    let appStateHandle = null;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) triggerSync(false);
+      })
+        .then((h) => { appStateHandle = h; })
+        .catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener('soulstash:auth-changed', handleAuthChanged);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+      if (appStateHandle && typeof appStateHandle.remove === 'function') {
+        appStateHandle.remove();
+      }
+    };
+  }, []);
 
   // Automatically reset scroll position on route change (except when returning to pages with preserved scroll)
   useEffect(() => {

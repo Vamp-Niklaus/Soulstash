@@ -149,20 +149,14 @@ export function CollectionsSidebar({
                     onDrop={!isFixed ? (event) => page.handleCollectionDrop(event, collectionId) : undefined}
                     onDragEnd={!isFixed ? page.resetCollectionDragState : undefined}
                     onClick={() => {
-                      page.navigate('/user/' + page.username + '/collections/' + encodeURIComponent(collection.name));
-                      if (window.innerWidth < 1024) {
-                        window.history.pushState({ soulstashCollectionsMobileDetail: true }, '', window.location.href);
-                        page.setMobileSidebarVisible(false);
-                      }
+                      const navOpts = window.innerWidth < 1024 ? { state: { mobileDetail: true } } : undefined;
+                      page.navigate('/user/' + page.username + '/collections/' + encodeURIComponent(collection.name), navOpts);
                     }}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
                         event.preventDefault();
-                        page.navigate('/user/' + page.username + '/collections/' + encodeURIComponent(collection.name));
-                        if (window.innerWidth < 1024) {
-                          window.history.pushState({ soulstashCollectionsMobileDetail: true }, '', window.location.href);
-                          page.setMobileSidebarVisible(false);
-                        }
+                        const navOpts = window.innerWidth < 1024 ? { state: { mobileDetail: true } } : undefined;
+                        page.navigate('/user/' + page.username + '/collections/' + encodeURIComponent(collection.name), navOpts);
                       }
                     }}
                   >

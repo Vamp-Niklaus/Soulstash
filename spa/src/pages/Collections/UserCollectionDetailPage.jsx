@@ -251,15 +251,18 @@ export function UserCollectionDetailPage() {
 
   useEffect(() => {
     // Mirrors exactly what DetailHero does for movie/series pages.
-    const hasCollection = !!collection?.name;
+    // Skip when rendered inside CollectionsLayout (which manages the artwork theme itself).
+    const hasCollection = !inLayout && !!collection?.name;
+    document.body.style.removeProperty('--collection-artwork-image');
+    document.body.style.removeProperty('--collection-tint');
     if (!hasCollection) {
-      document.body.style.removeProperty('--collection-artwork-image');
-      document.body.style.removeProperty('--collection-tint');
       document.body.classList.remove('collection-artwork-theme');
       return () => {
-        document.body.style.removeProperty('--collection-artwork-image');
-        document.body.style.removeProperty('--collection-tint');
-        document.body.classList.remove('collection-artwork-theme');
+        if (!inLayout) {
+          document.body.style.removeProperty('--collection-artwork-image');
+          document.body.style.removeProperty('--collection-tint');
+          document.body.classList.remove('collection-artwork-theme');
+        }
       };
     }
 
@@ -318,11 +321,13 @@ export function UserCollectionDetailPage() {
 
     return () => {
       cancelled = true;
-      document.body.style.removeProperty('--collection-artwork-image');
-      document.body.style.removeProperty('--collection-tint');
-      document.body.classList.remove('collection-artwork-theme');
+      if (!inLayout) {
+        document.body.style.removeProperty('--collection-artwork-image');
+        document.body.style.removeProperty('--collection-tint');
+        document.body.classList.remove('collection-artwork-theme');
+      }
     };
-  }, [singleCollectionBg, collection?.name]);
+  }, [inLayout, singleCollectionBg, collection?.name]);
 
   useEffect(() => {
     console.log('[Soulstash][React] UserCollectionDetailPage mounted', {
@@ -468,6 +473,7 @@ export function UserCollectionDetailPage() {
       {isMatching ? (
         <div className="pb-6">
           <CollectionDetailPane
+            key={collection?.name || decodedCollectionName}
             username={username}
             collection={collection}
             filters={filters}
@@ -475,6 +481,7 @@ export function UserCollectionDetailPage() {
             watchedIds={watchedIds}
             onOpenDrawer={() => setDrawerOpen(true)}
             onRemoveFromCollection={handleRemoveFromCollection}
+            onBackToCollections={inLayout && location.state?.mobileDetail ? () => navigate(-1) : undefined}
             isOwner={isOwner}
             useBannerAsBackdrop={!inLayout}
             showPublishControls={isOwner}

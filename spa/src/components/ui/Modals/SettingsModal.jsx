@@ -9,18 +9,25 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { toast } from '../../../utils/toast.js';
 import { useAuthSession } from '../../../hooks/useAuthSession.js';
 import { clearAuthSession } from '../../../api/client.js';
-import { clearAllWatchProgress } from '../../../utils/watchProgress.js';
-import { clearSearchHistory } from '../../../utils/formatters.js';
-import { useQueryClient } from '@tanstack/react-query';
 
 // Native Android plugin (ApkUpdaterPlugin.java): downloads the APK and opens the installer.
 const ApkUpdater = registerPlugin('ApkUpdater');
+
+function compareVersions(left, right) {
+  const parse = (value) => (String(value || '').match(/\d+(?:\.\d+)*/)?.[0] || '').split('.').map((part) => Number(part) || 0);
+  const a = parse(left);
+  const b = parse(right);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0) ? 1 : -1;
+  }
+  return 0;
+}
 
 async function fetchLatestPublishedRelease(repository, assetExtension = '') {
   const response = await fetch(`https://api.github.com/repos/Vamp-Niklaus/${repository}/releases?per_page=20`, {
     headers: { Accept: 'application/vnd.github.v3+json' }
   });
-  if (!response.ok) throw new Error(`GitHub release lookup failed (${response.status})`);
+  if (!response.ok) throw new Error(`Release lookup failed (${response.status})`);
   const releases = await response.json();
   if (!Array.isArray(releases)) return null;
   const published = releases.filter((release) => !release.draft && !release.prerelease);
@@ -41,57 +48,41 @@ export function SettingsModal({
   isLandscape = true
 }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const auth = useAuthSession();
+  const bundledVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.18';
   const [apkDownloadInfo, setApkDownloadInfo] = useState(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
   const [windowsExeInfo, setWindowsExeInfo] = useState(null);
-  const [currentVersion, setCurrentVersion] = useState(
-    typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.15'
-  );
+  const [currentVersion, setCurrentVersion] = useState(bundledVersion);
+  const [installing, setInstalling] = useState(false);
+  const [installProgress, setInstallProgress] = useState(null);
+  const tauriUpdateRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
     async function resolveAppVersion() {
+      let resolved = bundledVersion;
       if (Capacitor.isNativePlatform()) {
         try {
           const info = await CapApp.getInfo();
           if (!cancelled && info?.version) {
-            const formatted = info.version.startsWith('v') ? info.version : `v${info.version}`;
-            setCurrentVersion(formatted);
-            return;
+            const nativeVer = info.version.startsWith('v') ? info.version : `v${info.version}`;
+            if (compareVersions(nativeVer, resolved) >= 0) {
+              resolved = nativeVer;
+            }
           }
         } catch (err) {
           console.warn('Could not read native app version:', err);
         }
       }
-      if (typeof __APP_VERSION__ !== 'undefined' && !cancelled) {
-        setCurrentVersion(__APP_VERSION__);
+      if (!cancelled) {
+        setCurrentVersion(resolved);
       }
     }
     resolveAppVersion();
     return () => { cancelled = true; };
-  }, []);
-  const [installing, setInstalling] = useState(false);
-  const [installProgress, setInstallProgress] = useState(null);
-  const [cacheCleared, setCacheCleared] = useState(false);
-  const tauriUpdateRef = useRef(null);
-
-  const handleClearCache = () => {
-    clearAllWatchProgress();
-    clearSearchHistory();
-    try {
-      localStorage.removeItem('soulstash_search_history');
-      localStorage.removeItem('ss_search_history');
-      sessionStorage.clear();
-      queryClient.clear();
-    } catch (_) {}
-    window.dispatchEvent(new CustomEvent('soulstash:search-cleared'));
-    setCacheCleared(true);
-    toast('Continue Watching, search history, and cache cleared successfully', 'success');
-    setTimeout(() => setCacheCleared(false), 3000);
-  };
+  }, [bundledVersion]);
 
   const isNative = Capacitor.isNativePlatform();
   const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -100,7 +91,6 @@ export function SettingsModal({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  // Back-button history trap: pressing back on Android or browser closes ONLY the Settings modal
   useEffect(() => {
     if (!open) return;
 
@@ -135,7 +125,6 @@ export function SettingsModal({
     };
   }, [open]);
 
-  // Resolve the latest Android APK and Windows EXE release assets.
   useEffect(() => {
     let cancelled = false;
     if (!open || isNative || isTauri) {
@@ -149,22 +138,16 @@ export function SettingsModal({
         if (cancelled) return;
         setApkDownloadInfo(apk ? { url: apk.browser_download_url, name: apk.name } : { available: false });
         setWindowsExeInfo(exe ? { available: true, url: exe.browser_download_url, name: exe.name, tagName: release?.tag_name || release?.name || '' } : { available: false });
-      } catch (err) {
-        if (!cancelled) { setApkDownloadInfo({ available: false }); setWindowsExeInfo({ available: false }); }
+      } catch {
+        if (!cancelled) {
+          setApkDownloadInfo({ available: false });
+          setWindowsExeInfo({ available: false });
+        }
       }
     }
     checkReleaseAssets();
     return () => { cancelled = true; };
   }, [open, isNative, isTauri]);
-
-  const compareVersions = (left, right) => {
-    const parse = (value) => (value.match(/\d+(?:\.\d+)*/)?.[0] || '').split('.').map((part) => Number(part) || 0);
-    const a = parse(left); const b = parse(right);
-    for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
-      if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0) ? 1 : -1;
-    }
-    return 0;
-  };
 
   const handleCheckUpdate = async () => {
     setCheckingUpdate(true);
@@ -181,61 +164,51 @@ export function SettingsModal({
               tagName: `v${update.version}`,
               downloadUrl: '',
               inApp: true,
-              publishedAt: update.date ? new Date(update.date).toLocaleDateString() : '',
-              body: update.body || '',
               assetExtension: '.exe'
             });
-            toast(`New update available: v${update.version}`, 'success');
+            toast(`Update v${update.version} available`, 'success');
           } else {
             setUpdateInfo({ checked: true, isLatest: true, tagName: currentVersion, downloadUrl: '', assetExtension: '.exe' });
-            toast(`You are running the latest version (${currentVersion})`, 'success');
+            toast(`Up to date (${currentVersion})`, 'success');
           }
           return;
         } catch (err) {
-          // latest.json missing or unreachable: fall back to the GitHub release lookup below.
           console.warn('Tauri updater check failed, falling back to release lookup:', err);
         }
       }
-      const releaseRepo = 'Soulstash';
+
       const assetExtension = isTauri ? '.exe' : '.apk';
-      const data = await fetchLatestPublishedRelease(releaseRepo, assetExtension);
+      const data = await fetchLatestPublishedRelease('Soulstash', assetExtension);
       if (!data) {
         setUpdateInfo({ checked: true, noRelease: true });
-        toast(isTauri ? 'No Windows installer has been published yet.' : 'No Android package has been published yet.', 'info');
+        toast('No release package found', 'info');
         return;
       }
+
       const latestTag = data.tag_name || data.name || '';
       const versionComparison = latestTag ? compareVersions(latestTag, currentVersion) : 0;
       const isNewer = versionComparison > 0;
-
-      const apkAsset = Array.isArray(data.assets)
+      const asset = Array.isArray(data.assets)
         ? data.assets.find((a) => a.name?.toLowerCase().endsWith(assetExtension))
         : null;
-      const downloadUrl = apkAsset?.browser_download_url || '';
 
       setUpdateInfo({
         checked: true,
         isNewer,
         isLatest: versionComparison === 0,
         tagName: latestTag,
-        downloadUrl,
-        publishedAt: data.published_at ? new Date(data.published_at).toLocaleDateString() : '',
-        body: data.body || '',
+        downloadUrl: asset?.browser_download_url || '',
         assetExtension
       });
+
       if (isNewer) {
-        toast(`New update available: ${latestTag}`, 'success');
-      } else if (versionComparison === 0) {
-        toast(`You are running the latest version (${currentVersion})`, 'success');
+        toast(`Update ${latestTag} available`, 'success');
       } else {
-        toast(`You are running ${currentVersion}, newer than the latest published release (${latestTag})`, 'success');
+        toast(`Up to date (${currentVersion})`, 'success');
       }
-    } catch (err) {
-      setUpdateInfo({
-        checked: true,
-        error: true
-      });
-      toast('Could not fetch release info. Please try again.', 'info');
+    } catch {
+      setUpdateInfo({ checked: true, error: true });
+      toast('Could not check updates', 'info');
     } finally {
       setCheckingUpdate(false);
     }
@@ -243,14 +216,12 @@ export function SettingsModal({
 
   const handleDownloadUrl = async (url) => {
     if (!url) return;
-    toast('Starting download... Check your browser or downloads notification.', 'info');
+    toast('Starting download', 'info');
     if (isTauri) {
-      try { await openUrl(url); return; }
-      catch (err) { console.warn('Could not open download in the system browser:', err); }
+      try { await openUrl(url); return; } catch {}
     }
     if (isNative) {
-      try { await AppLauncher.openUrl({ url }); return; }
-      catch (err) { console.warn('Could not open download in the system browser:', err); }
+      try { await AppLauncher.openUrl({ url }); return; } catch {}
     }
     try {
       const a = document.createElement('a');
@@ -260,7 +231,7 @@ export function SettingsModal({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-    } catch (e) {
+    } catch {
       window.location.href = url;
     }
   };
@@ -273,7 +244,7 @@ export function SettingsModal({
     try {
       if (isTauri) {
         const update = tauriUpdateRef.current;
-        if (!update) throw new Error('No update is ready to install');
+        if (!update) throw new Error('No update ready');
         let total = 0;
         let received = 0;
         await update.downloadAndInstall((event) => {
@@ -283,27 +254,26 @@ export function SettingsModal({
             if (total > 0) setInstallProgress(Math.min(100, Math.round((received * 100) / total)));
           } else if (event.event === 'Finished') setInstallProgress(100);
         });
-        toast('Update installed. The app will restart.', 'success');
+        toast('Update installed. Restarting...', 'success');
         return;
       }
 
       if (isNative) {
         const url = updateInfo?.downloadUrl;
-        if (!url) throw new Error('No APK is attached to this release');
+        if (!url) throw new Error('No APK found');
         listener = await ApkUpdater.addListener('downloadProgress', (p) => {
           if (typeof p?.percent === 'number') setInstallProgress(p.percent);
         });
         const result = await ApkUpdater.downloadAndInstall({ url, fileName: 'soulstash-update.apk' });
         if (result?.needsPermission) {
-          toast('Allow "Install unknown apps" for Soulstash, then tap Update again.', 'info');
+          toast('Allow "Install unknown apps", then retry.', 'info');
           await ApkUpdater.openInstallPermission();
         } else {
-          toast('Tap Install in the Android prompt to finish updating.', 'success');
+          toast('Confirm install on prompt.', 'success');
         }
       }
-    } catch (err) {
-      console.warn('In-app update failed:', err);
-      toast('In-app update failed. Opening the download instead.', 'info');
+    } catch {
+      toast('Opening browser download instead', 'info');
       if (updateInfo?.downloadUrl) await handleDownloadUrl(updateInfo.downloadUrl);
     } finally {
       if (listener?.remove) listener.remove();
@@ -315,12 +285,10 @@ export function SettingsModal({
   const openExternalWebsite = async () => {
     const url = 'https://soulstash.onrender.com/';
     if (isTauri) {
-      try { await openUrl(url); return; }
-      catch (err) { console.warn('Could not open the system browser:', err); }
+      try { await openUrl(url); return; } catch {}
     }
     if (isNative) {
-      try { await AppLauncher.openUrl({ url }); return; }
-      catch (err) { console.warn('Could not open the system browser:', err); }
+      try { await AppLauncher.openUrl({ url }); return; } catch {}
     }
     window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -329,61 +297,54 @@ export function SettingsModal({
 
   const content = (
     <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200"
-      style={{
-        background: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(8px)'
-      }}
+      data-open-modal="true"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4 select-none bg-black/75 backdrop-blur-md"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md rounded-[24px] border border-white/10 bg-[#121418] p-5 sm:p-6 shadow-2xl text-white flex flex-col gap-5 max-h-[90vh] overflow-y-auto filter-scrollbar"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        className="relative w-full max-w-[400px] rounded-[22px] border border-white/[0.08] bg-[#101114] p-5 text-white shadow-[0_24px_64px_rgba(0,0,0,0.65)] flex flex-col gap-5 max-h-[88vh] overflow-y-auto filter-scrollbar"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-white/10">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white">
-              <i className="fas fa-sliders-h text-sm"></i>
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">App Settings</h2>
-              <p className="text-[11px] text-white/50">Preferences &amp; Downloads</p>
-            </div>
+            <h2 className="text-[17px] font-semibold tracking-tight text-white">Settings</h2>
+            <span className="rounded-md bg-white/[0.06] px-2 py-0.5 font-mono text-[11px] text-white/55">
+              {currentVersion}
+            </span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+            aria-label="Close settings"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:text-white transition-colors"
           >
             <i className="fas fa-times text-xs"></i>
           </button>
         </div>
 
-        {/* Section 1: Navigation & UI Mode (6 Options based on device orientation) */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
-              Navigation &amp; UI Mode
-            </span>
-            <span className="text-[10px] text-amber-400 font-medium px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/20">
-              Current: {isVertical ? '📱 Vertical' : '🖥️ Landscape'}
-            </span>
-          </div>
+        {/* Layout */}
+        <section className="flex flex-col gap-3">
+          <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+            Layout
+          </span>
 
-          {/* 1A: Vertical Orientation Layout (3 options) */}
-          <div className="flex flex-col gap-1.5 p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-white/70">
-                Vertical / Portrait (Height &gt; Width)
-              </span>
-              {isVertical && <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider">Active Now</span>}
+          {/* Portrait */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-white/80 font-medium">Portrait</span>
+              {isVertical && (
+                <span className="text-[10px] text-white/45">Active</span>
+              )}
             </div>
-            <div className="grid grid-cols-3 gap-1.5 text-xs">
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/[0.04] p-1 border border-white/[0.05]">
               {[
-                { id: 'auto', label: 'Auto Detect', desc: 'Mobile or Tablet', icon: 'fa-magic' },
-                { id: 'mobile', label: 'Mobile Mode', desc: 'Search & bottom nav', icon: 'fa-mobile-alt' },
-                { id: 'desktop', label: 'Desktop Mode', desc: 'Top header navbar', icon: 'fa-desktop' }
+                { id: 'auto', label: 'Auto' },
+                { id: 'mobile', label: 'Mobile' },
+                { id: 'desktop', label: 'Desktop' }
               ].map((item) => {
                 const active = verticalPreference === item.id;
                 return (
@@ -392,40 +353,34 @@ export function SettingsModal({
                     type="button"
                     onClick={() => {
                       if (setVerticalPreference) setVerticalPreference(item.id);
-                      toast(`Vertical layout set to ${item.label}`);
+                      toast(`Portrait: ${item.label}`);
                     }}
-                    className={`flex flex-col items-start gap-1 p-2 rounded-xl border text-left transition-all ${
+                    className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${
                       active
-                        ? 'border-amber-400 bg-amber-400/15 text-white font-bold shadow-md'
-                        : 'border-white/5 bg-white/[0.03] text-white/70 hover:bg-white/[0.08] hover:text-white'
+                        ? 'bg-white text-black'
+                        : 'text-white/60 hover:text-white'
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 w-full">
-                      <i className={`fas ${item.icon} text-xs ${active ? 'text-amber-400' : 'text-white/40'}`}></i>
-                      <span className="text-[11px] font-semibold leading-tight">{item.label}</span>
-                    </div>
-                    <span className="text-[9px] font-normal text-white/40 leading-tight">
-                      {item.desc}
-                    </span>
+                    {item.label}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* 1B: Landscape Orientation Layout (3 options) */}
-          <div className="flex flex-col gap-1.5 p-2.5 rounded-2xl bg-white/[0.02] border border-white/5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-white/70">
-                Landscape / Rotated / TV (Width &ge; Height)
-              </span>
-              {isLandscape && <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider">Active Now</span>}
+          {/* Landscape */}
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-white/80 font-medium">Landscape</span>
+              {isLandscape && (
+                <span className="text-[10px] text-white/45">Active</span>
+              )}
             </div>
-            <div className="grid grid-cols-3 gap-1.5 text-xs">
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/[0.04] p-1 border border-white/[0.05]">
               {[
-                { id: 'auto', label: 'Auto Detect', desc: 'Desktop or Smart TV', icon: 'fa-magic' },
-                { id: 'desktop', label: 'Desktop Mode', desc: 'Top header navbar', icon: 'fa-desktop' },
-                { id: 'tv', label: 'TV Mode', desc: 'Left vertical sidebar', icon: 'fa-tv' }
+                { id: 'auto', label: 'Auto' },
+                { id: 'desktop', label: 'Desktop' },
+                { id: 'tv', label: 'TV' }
               ].map((item) => {
                 const active = landscapePreference === item.id;
                 return (
@@ -434,237 +389,180 @@ export function SettingsModal({
                     type="button"
                     onClick={() => {
                       if (setLandscapePreference) setLandscapePreference(item.id);
-                      toast(`Landscape layout set to ${item.label}`);
+                      toast(`Landscape: ${item.label}`);
                     }}
-                    className={`flex flex-col items-start gap-1 p-2 rounded-xl border text-left transition-all ${
+                    className={`rounded-lg py-1.5 text-xs font-medium transition-colors ${
                       active
-                        ? 'border-amber-400 bg-amber-400/15 text-white font-bold shadow-md'
-                        : 'border-white/5 bg-white/[0.03] text-white/70 hover:bg-white/[0.08] hover:text-white'
+                        ? 'bg-white text-black'
+                        : 'text-white/60 hover:text-white'
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 w-full">
-                      <i className={`fas ${item.icon} text-xs ${active ? 'text-amber-400' : 'text-white/40'}`}></i>
-                      <span className="text-[11px] font-semibold leading-tight">{item.label}</span>
-                    </div>
-                    <span className="text-[9px] font-normal text-white/40 leading-tight">
-                      {item.desc}
-                    </span>
+                    {item.label}
                   </button>
                 );
               })}
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Section 3: App Updates (Native App) OR Download App (Website) */}
+        <div className="h-px bg-white/[0.07]" />
+
+        {/* Updates (Native/Desktop) OR Apps (Web) */}
         {isNative || isTauri ? (
-          <div className="flex flex-col gap-2.5 pt-2 border-t border-white/10">
+          <section className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
-                  Soulstash App Update
-                </span>
-                <p className="text-[11px] text-white/50">Current version: <span className="font-mono text-white/80">{currentVersion}</span></p>
+              <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+                App
+              </span>
+              <button
+                type="button"
+                onClick={openExternalWebsite}
+                className="text-xs text-white/55 hover:text-white transition-colors"
+              >
+                Web app ↗
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.03] px-3.5 py-2.5">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-white/60">Installed</span>
+                <span className="font-mono font-medium text-white">{currentVersion}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={checkingUpdate}
-                  onClick={handleCheckUpdate}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 px-3 py-1.5 text-xs font-semibold text-white transition-all disabled:opacity-50"
-                >
-                  <i className={`fas fa-cloud-download-alt text-xs ${checkingUpdate ? 'animate-bounce' : ''}`}></i>
-                  <span>{checkingUpdate ? 'Checking...' : 'Check Update'}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={checkingUpdate}
+                onClick={handleCheckUpdate}
+                className="rounded-lg bg-white/[0.08] hover:bg-white/[0.15] px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-50"
+              >
+                {checkingUpdate ? 'Checking...' : 'Check updates'}
+              </button>
             </div>
 
             {updateInfo && (
-              <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-xs flex flex-col gap-2">
+              <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-2.5 text-xs flex items-center justify-between gap-3">
                 {updateInfo.noRelease ? (
-                  <div className="flex items-center justify-between text-amber-300">
-                    <span>{isTauri ? 'Windows installer coming soon.' : 'No Android release is available yet.'}</span>
-                  </div>
+                  <span className="text-white/60">No release found.</span>
                 ) : updateInfo.error ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-white/70">Could not check for updates. Please try again.</span>
-                  </div>
+                  <span className="text-white/60">Could not reach update server.</span>
                 ) : updateInfo.isNewer ? (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between text-emerald-400 font-semibold">
-                      <span>New Version Available: {updateInfo.tagName}</span>
-                      <span className="text-[10px] text-white/40">{updateInfo.publishedAt}</span>
-                    </div>
+                  <>
+                    <span className="text-white font-medium">{updateInfo.tagName} available</span>
                     {updateInfo.downloadUrl || updateInfo.inApp ? (
-                      <button type="button" disabled={installing} onClick={handleInstallUpdate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-black font-bold py-2.5 text-xs transition-colors shadow-lg active:scale-98 cursor-pointer">
-                        <i className={`fas ${installing ? 'fa-spinner fa-spin' : 'fa-download'}`}></i><span>{installing ? (installProgress != null ? `Downloading... ${installProgress}%` : 'Preparing...') : 'Update Now'}</span>
+                      <button
+                        type="button"
+                        disabled={installing}
+                        onClick={handleInstallUpdate}
+                        className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-white/90 transition-colors disabled:opacity-60"
+                      >
+                        {installing
+                          ? (installProgress != null ? `${installProgress}%` : 'Installing...')
+                          : 'Update'}
                       </button>
-                    ) : <p className="text-amber-300 text-center">No {isTauri ? 'EXE installer' : 'APK'} is attached to this release.</p>}
-                    <p className="text-[10px] text-white/40 text-center leading-tight">{isTauri ? 'The update downloads and installs inside the app, then it restarts.' : 'The update downloads inside the app. Tap Install in the Android prompt to finish.'}</p>
-                  </div>
-                ) : updateInfo.isLatest ? (
-                  <div className="flex items-center justify-between text-white/80 py-1">
-                    <div className="flex items-center gap-2">
-                      <i className="fas fa-check-circle text-emerald-400"></i>
-                      <span>You are running the latest version (<span className="font-mono text-white">{currentVersion}</span>)</span>
-                    </div>
-                    {updateInfo.downloadUrl && <button type="button" onClick={() => handleDownloadUrl(updateInfo.downloadUrl)} className="text-[11px] text-amber-400 hover:underline font-medium">Re-download {isTauri ? 'installer' : 'APK'}</button>}
-                  </div>
+                    ) : null}
+                  </>
                 ) : (
-                  <div className="flex items-center justify-between text-white/80 py-1">
-                    <span>The installed build ({currentVersion}) is newer than the latest release ({updateInfo.tagName}).</span>
-                    {updateInfo.downloadUrl && <button type="button" onClick={() => handleDownloadUrl(updateInfo.downloadUrl)} className="text-[11px] text-amber-400 hover:underline font-medium">Download {isTauri ? 'installer' : 'APK'}</button>}
-                  </div>
+                  <>
+                    <span className="text-white/70">Up to date ({currentVersion})</span>
+                    {updateInfo.downloadUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadUrl(updateInfo.downloadUrl)}
+                        className="text-white/55 hover:text-white underline underline-offset-2"
+                      >
+                        Download
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             )}
-
-            {/* Visit Website Link parallel to App info */}
-            <div className="flex items-center justify-between pt-1 text-xs">
-              <span className="text-[11px] text-white/50">Online web streaming:</span>
-              <button type="button" data-tv-allow-popup onClick={openExternalWebsite} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-1.5 text-xs font-semibold text-amber-400 transition-colors">
-                <i className="fas fa-globe text-xs"></i>
-                <span>Visit Website</span>
-              </button>
-            </div>
-          </div>
+          </section>
         ) : (
-          /* Web Browser View: Display Download App options for Android and Windows + Live Web status */
-          <div className="flex flex-col gap-2.5 pt-2 border-t border-white/10 text-xs">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-semibold text-white/80 uppercase tracking-wider text-[11px]">
-                  Download Soulstash App
-                </span>
-                <p className="text-[10px] text-white/40">Download the available app for your device</p>
-              </div>
-
-            </div>
-
-            {/* Download Buttons: Android APK & Windows EXE */}
-            <div className="grid grid-cols-2 gap-2 mt-1">
-              {/* Android APK Download */}
+          <section className="flex flex-col gap-2.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
+              Apps
+            </span>
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => handleDownloadUrl(apkDownloadInfo?.url)}
                 disabled={!apkDownloadInfo?.url}
-                className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-white transition-all text-center"
+                className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.09] disabled:opacity-40 py-2.5 px-3 text-xs font-medium text-white transition-colors"
               >
-                <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
-                  <i className="fab fa-android text-sm"></i>
-                  <span>Android (APK)</span>
-                </div>
-                <span className="text-[10px] text-white/50">
-                  {apkDownloadInfo === null ? 'Checking availability...' : apkDownloadInfo?.url ? 'Direct APK Download' : 'Unavailable'}
-                </span>
+                <i className="fab fa-android text-sm text-white/75"></i>
+                <span>{apkDownloadInfo === null ? 'Android...' : 'Android APK'}</span>
               </button>
 
-              {/* Windows EXE Download / Coming Soon */}
               {windowsExeInfo?.available ? (
                 <button
                   type="button"
                   onClick={() => handleDownloadUrl(windowsExeInfo.url)}
-                  className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 text-white transition-all text-center"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.09] py-2.5 px-3 text-xs font-medium text-white transition-colors"
                 >
-                  <div className="flex items-center gap-1.5 text-sky-400 font-bold text-xs">
-                    <i className="fab fa-windows text-sm"></i>
-                    <span>Windows (.exe)</span>
-                  </div>
-                  <span className="text-[10px] text-white/50">Download App</span>
+                  <i className="fab fa-windows text-sm text-white/75"></i>
+                  <span>Windows</span>
                 </button>
               ) : (
-                <div className="flex flex-col items-center justify-center gap-1 p-2.5 rounded-xl border border-white/5 bg-white/[0.03] text-white/40 text-center">
-                  <div className="flex items-center gap-1.5 text-white/60 font-medium text-xs">
-                    <i className="fab fa-windows text-sm text-white/40"></i>
-                    <span>Windows (.exe)</span>
-                  </div>
-                  <span className="text-[9px] text-amber-400/70 font-semibold uppercase tracking-wider">Coming Soon</span>
+                <div className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.05] bg-white/[0.02] py-2.5 px-3 text-xs text-white/35">
+                  <i className="fab fa-windows text-sm"></i>
+                  <span>Windows (Soon)</span>
                 </div>
               )}
             </div>
-
-            {/* Links info row */}
-            <div className="flex items-center justify-between text-[10px] text-white/40 pt-1">
-              <span>{apkDownloadInfo?.url ? 'Android APK available now' : 'Android APK unavailable'}</span>
-              <span>{windowsExeInfo?.available ? `Windows ${windowsExeInfo.tagName || 'download available'}` : 'Windows download coming soon'}</span>
-            </div>
-          </div>
+          </section>
         )}
 
-        {/* Section: Storage & Cache */}
-        <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
-              Storage & Cache
-            </span>
-            <span className="text-[10px] text-white/40">Continue Watching & Temp Data</span>
-          </div>
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.02] border border-white/5">
-            <div className="flex flex-col pr-2">
-              <span className="text-xs font-medium text-white/80">Clear Continue Watching</span>
-              <span className="text-[10px] text-white/40 leading-tight">Remove all saved continue movies and reset memory cache</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleClearCache}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 active:scale-95 px-3 py-1.5 text-xs font-semibold text-red-300 transition-all cursor-pointer whitespace-nowrap"
-            >
-              <i className={`fas ${cacheCleared ? 'fa-check text-emerald-400' : 'fa-trash-alt'} text-xs`}></i>
-              <span>{cacheCleared ? 'Cleared!' : 'Clear Cache'}</span>
-            </button>
-          </div>
-        </div>
+        <div className="h-px bg-white/[0.07]" />
 
-        {/* Section 4: Account Actions */}
-        <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+        {/* Account */}
+        <section className="flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-white/80 uppercase tracking-wider">
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/45">
               Account
             </span>
-            <span className="text-[10px] text-white/40">
-              {auth?.isLoggedIn ? `@${auth.username}` : 'Not Signed In'}
+            <span className="text-xs text-white/55">
+              {auth?.isLoggedIn ? `@${auth.username}` : 'Guest'}
             </span>
           </div>
 
           {auth?.isLoggedIn ? (
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {
                   onClose();
                   navigate(`/user/${auth.username}`);
                 }}
-                className="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-medium text-white transition-colors"
+                className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.09] py-2 text-xs font-medium text-white transition-colors"
               >
-                <i className="fas fa-user text-amber-400"></i>
-                <span>My Profile</span>
+                <i className="fas fa-user text-[11px] text-white/70"></i>
+                <span>Profile</span>
               </button>
               <button
                 type="button"
                 onClick={() => {
                   clearAuthSession();
                   onClose();
-                  toast('Logged out successfully');
+                  toast('Signed out');
                   navigate('/login');
                 }}
-                className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-400 transition-colors"
+                className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] hover:bg-red-500/15 hover:text-red-300 hover:border-red-500/25 py-2 text-xs font-medium text-white/75 transition-colors"
               >
-                <i className="fas fa-sign-out-alt"></i>
-                <span>Log Out</span>
+                <i className="fas fa-sign-out-alt text-[11px]"></i>
+                <span>Sign out</span>
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {
                   onClose();
                   navigate('/login');
                 }}
-                className="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-white/10 bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition-colors"
+                className="flex items-center justify-center rounded-xl bg-white py-2 text-xs font-semibold text-black hover:bg-white/90 transition-colors"
               >
-                <i className="fas fa-sign-in-alt"></i>
-                <span>Sign In</span>
+                Sign in
               </button>
               <button
                 type="button"
@@ -672,16 +570,13 @@ export function SettingsModal({
                   onClose();
                   navigate('/register');
                 }}
-                className="flex-1 inline-flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-amber-400/40 bg-amber-400/15 hover:bg-amber-400/25 text-xs font-semibold text-amber-300 transition-colors"
+                className="flex items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.09] py-2 text-xs font-medium text-white transition-colors"
               >
-                <i className="fas fa-user-plus"></i>
-                <span>Sign Up</span>
+                Create account
               </button>
             </div>
           )}
-        </div>
-
-
+        </section>
       </div>
     </div>
   );

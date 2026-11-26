@@ -2,17 +2,19 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SectionHeader } from '../../components/ui/SectionHeader.jsx';
 import { ContinueWatchingCard } from '../../components/ui/Cards/ContinueWatchingCard.jsx';
+import { ConfirmModal } from '../../components/ui/Modals/ConfirmModal.jsx';
 import {
   getContinueWatchingList,
   removeWatchProgress,
+  clearAllWatchProgress,
   syncAccountWatchProgress
 } from '../../utils/watchProgress.js';
-import { HOME_GRID_CLASS } from '../../utils/constants.js';
 
 export function ContinueWatchingPage() {
   const navigate = useNavigate();
   const [list, setList] = useState(() => getContinueWatchingList());
   const [failedCardIds, setFailedCardIds] = useState(() => new Set());
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   useEffect(() => {
     document.title = 'Continue Watching | Soulstash';
@@ -30,17 +32,8 @@ export function ContinueWatchingPage() {
   }, []);
 
   const visibleItems = useMemo(() => {
-    return list.filter((item) => (item?.poster_path || item?.image) && !failedCardIds.has(item.id || item.key));
+    return list.filter((item) => (item?.poster_path || item?.image || item?.backdrop_path || item?.backdrop) && !failedCardIds.has(item.id || item.key));
   }, [list, failedCardIds]);
-
-  const handleClearAll = () => {
-    if (window.confirm('Clear all items from your Continue Watching history?')) {
-      for (const item of visibleItems) {
-        removeWatchProgress(item);
-      }
-      setList([]);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -49,8 +42,8 @@ export function ContinueWatchingPage() {
         {visibleItems.length > 0 && (
           <button
             type="button"
-            onClick={handleClearAll}
-            className="text-xs font-semibold text-white/50 hover:text-red-400 transition-colors px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10"
+            onClick={() => setConfirmClearOpen(true)}
+            className="text-xs font-semibold text-white/60 hover:text-red-400 transition-colors px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10"
           >
             Clear all
           </button>
@@ -78,7 +71,7 @@ export function ContinueWatchingPage() {
           </button>
         </div>
       ) : (
-        <div className={HOME_GRID_CLASS}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-4">
           {visibleItems.map((entry) => (
             <ContinueWatchingCard
               key={entry.key || `continue-page-${entry.id}`}
@@ -92,6 +85,20 @@ export function ContinueWatchingPage() {
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmClearOpen}
+        title="Clear Continue Watching?"
+        message="This removes titles from Continue Watching. Your watched episodes history will stay saved."
+        confirmLabel="Clear all"
+        danger
+        onConfirm={() => {
+          clearAllWatchProgress();
+          setList([]);
+          setConfirmClearOpen(false);
+        }}
+        onClose={() => setConfirmClearOpen(false)}
+      />
     </div>
   );
 }

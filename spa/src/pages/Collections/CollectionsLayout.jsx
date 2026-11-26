@@ -15,8 +15,11 @@ function OwnerCollectionsLayout() {
   const page = useUserCollectionsPage();
   const { navigate } = page;
 
+  const showDetailPane = !page.isCompactCollectionsView || !page.mobileSidebarVisible;
+
   // Derive a poster path from the selected collection (banner or first movie poster)
   const bgPosterPath = useMemo(() => {
+    if (!showDetailPane) return null;
     const coll = page.selectedCollection;
     if (!coll) return null;
     if (page.selectedCollectionName && coll.name !== page.selectedCollectionName && coll._id !== page.selectedCollectionName) {
@@ -30,14 +33,14 @@ function OwnerCollectionsLayout() {
     const firstWithPoster = movies.find(m => m.poster_path);
     const item = firstWithPoster || movies[0];
     return item?.poster_path || null;
-  }, [page.selectedCollection, page.selectedCollectionName]);
+  }, [showDetailPane, page.selectedCollection, page.selectedCollectionName]);
 
-  // Apply body class + CSS vars — EXACTLY like DetailHero does for movie/series pages.
+  // Apply body class + CSS vars — only when collection detail pane is actually active.
   useEffect(() => {
-    const hasCollection = !!page.selectedCollection;
+    const hasCollection = showDetailPane && !!page.selectedCollection;
+    document.body.style.removeProperty('--collection-artwork-image');
+    document.body.style.removeProperty('--collection-tint');
     if (!hasCollection) {
-      document.body.style.removeProperty('--collection-artwork-image');
-      document.body.style.removeProperty('--collection-tint');
       document.body.classList.remove('collection-artwork-theme');
       return () => {
         document.body.style.removeProperty('--collection-artwork-image');
@@ -84,9 +87,6 @@ function OwnerCollectionsLayout() {
       };
       img.onerror = () => { /* keep dark fallback */ };
       img.src = `${imageUrl(bgPosterPath, 'w92')}?tint=1`;
-    } else {
-      document.body.style.removeProperty('--collection-artwork-image');
-      document.body.style.removeProperty('--collection-tint');
     }
 
     document.body.classList.add('collection-artwork-theme');
@@ -97,7 +97,7 @@ function OwnerCollectionsLayout() {
       document.body.style.removeProperty('--collection-tint');
       document.body.classList.remove('collection-artwork-theme');
     };
-  }, [bgPosterPath, page.selectedCollection]);
+  }, [showDetailPane, bgPosterPath, page.selectedCollection]);
 
   return (
     <div className="w-full max-w-none px-2 sm:px-5 md:px-4 lg:px-5 xl:px-5 2xl:px-8">
@@ -107,14 +107,16 @@ function OwnerCollectionsLayout() {
           <CollectionsSidebar page={page} />
         </div>
 
-        {/* Main Content Pane */}
-        <main className={`${page.isCompactCollectionsView && page.mobileSidebarVisible ? 'hidden' : 'block'} min-w-0 flex-1 w-full`}>
-          <div className="pb-6">
-            <div className="max-w-none">
-              <Outlet context={{ inLayout: true }} />
+        {/* Main Content Pane — unmounted while mobile sidebar is visible so previous collection never flickers */}
+        {showDetailPane ? (
+          <main className="block min-w-0 flex-1 w-full">
+            <div className="pb-6">
+              <div className="max-w-none">
+                <Outlet context={{ inLayout: true }} />
+              </div>
             </div>
-          </div>
-        </main>
+          </main>
+        ) : null}
       </div>
 
       {/* Modals and Drawers */}

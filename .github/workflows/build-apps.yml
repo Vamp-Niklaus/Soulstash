@@ -71,6 +71,15 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm ci
 
+      - name: Sync Tauri version from package.json
+        shell: pwsh
+        run: |
+          $version = "${{ needs.check-version.outputs.version }}"
+          $confPath = "src-tauri/tauri.conf.json"
+          $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+          $conf.version = $version
+          $conf | ConvertTo-Json -Depth 10 | Set-Content $confPath -Encoding utf8
+
       - name: Build Windows installer (signed for in-app updates)
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -154,6 +163,11 @@ jobs:
 
       - name: Install JavaScript dependencies
         run: npm ci
+
+      - name: Sync Android versionName from package.json
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          sed -i "s/versionName \"[^\"]*\"/versionName \"${VERSION}\"/" android/app/build.gradle
 
       - name: Build web assets and sync Capacitor
         run: |

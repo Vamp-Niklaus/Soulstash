@@ -39,12 +39,15 @@ export function UpdateNotificationModal() {
     let cancelled = false;
 
     async function checkLocalNotification() {
-      let currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.15';
+      let currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.18';
       if (Capacitor.isNativePlatform()) {
         try {
           const info = await CapApp.getInfo();
           if (info?.version) {
-            currentVersion = info.version.startsWith('v') ? info.version : `v${info.version}`;
+            const nativeVer = info.version.startsWith('v') ? info.version : `v${info.version}`;
+            if (compareVersions(nativeVer, currentVersion) > 0) {
+              currentVersion = nativeVer;
+            }
           }
         } catch (_) {}
       }

@@ -46,7 +46,7 @@ import { PlayerErrorBoundary } from './PlayerErrorBoundary.jsx';
 
 // Assume buildPlayerSourceSlots is imported
 import { buildPlayerSourceSlots, firstPlayableUrl, sourceKeyText } from '../../utils/playerUtils.js';
-import { saveWatchProgress, removeWatchProgress, advanceToNextEpisodeOrRemove, getSavedProgress } from '../../utils/watchProgress.js';
+import { saveWatchProgress, removeWatchProgress, advanceToNextEpisodeOrRemove, getSavedProgress, markEpisodeWatched, saveNextEpisodeProgress } from '../../utils/watchProgress.js';
 
 import { loadHlsJs, startHlsSession, safePlay } from './hlsSession.js';
 
@@ -400,13 +400,17 @@ export function VideoPlayerModal({ request, onClose }) {
       const epData = data?.data || data;
       const detectedEp = Number(epData?.episode ?? epData?.episodeNumber ?? epData?.ep);
       const detectedSeason = Number(epData?.season ?? epData?.seasonNumber ?? epData?.s);
-      if (detectedEp && Number.isFinite(detectedEp) && detectedEp > 0) {
-        if (request?.episodeNumber && Number(request.episodeNumber) !== detectedEp) {
+      if (detectedEp && Number.isFinite(detectedEp) && detectedEp > 0 && request?.episodeNumber) {
+        const prevEp = Number(request.episodeNumber);
+        const prevSeason = Number(request.seasonNumber || 1);
+        const nextSeason = detectedSeason && Number.isFinite(detectedSeason) && detectedSeason > 0 ? detectedSeason : prevSeason;
+        if (prevEp !== detectedEp || prevSeason !== nextSeason) {
+          const seriesId = request.id || request.tmdbId || request.kartoonsSlug;
+          markEpisodeWatched(seriesId, prevSeason, prevEp);
           request.episodeNumber = detectedEp;
-          if (detectedSeason && Number.isFinite(detectedSeason)) {
-            request.seasonNumber = detectedSeason;
-          }
-          saveWatchProgress(request, 1, duration || 1800);
+          request.seasonNumber = nextSeason;
+          saveNextEpisodeProgress(request, nextSeason, detectedEp);
+          latestPlaybackTimeRef.current = 0;
         }
       }
 

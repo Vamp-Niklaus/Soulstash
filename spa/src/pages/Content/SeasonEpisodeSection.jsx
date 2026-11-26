@@ -50,6 +50,7 @@ export function SeasonEpisodeSection({
       setWatchedSet(getWatchedEpisodes(seriesId));
       setLastWatched(getLastWatchedForSeries(seriesId) || getLastViewedEpisode(seriesId));
     };
+    updateState();
     window.addEventListener('soulstash:watched-episodes-updated', updateState);
     window.addEventListener('soulstash:continue-watching-updated', updateState);
     window.addEventListener('soulstash:last-viewed-updated', updateState);
@@ -87,7 +88,7 @@ export function SeasonEpisodeSection({
     }, 200);
 
     return () => clearTimeout(timer);
-  }, [selectedSeason, seasonLoading, seasonDetails?.episodes, seriesId, episodeScrollerRef]);
+  }, [selectedSeason, seasonLoading, seasonDetails?.episodes, seriesId, episodeScrollerRef, lastWatched?.seasonNumber, lastWatched?.episodeNumber]);
 
   const visibleSeasonList = [...(Array.isArray(content.seasons) ? content.seasons : [])].sort((a, b) => Number(a?.season_number) - Number(b?.season_number)).filter(
     (s) => Number(s?.season_number) > 0

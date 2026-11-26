@@ -912,7 +912,10 @@ export function createPlayerRequest({
   backdrop_path,
   image,
   poster,
-  resumeTime
+  resumeTime,
+  runtime,
+  seasonEpisodeCount,
+  seasons
 }) {
   const normalizedType = String(mediaType || '').toLowerCase() === 'movie' ? 'movie' : 'series';
   const resolvedTmdbId = String(tmdbId || '').startsWith('kartoons-') ? tmdbId : (Number(tmdbId) || tmdbId);
@@ -922,6 +925,7 @@ export function createPlayerRequest({
   const resolvedBackdrop = backdrop_path || resolvedPoster;
 
   return {
+    id: resolvedTmdbId,
     mediaType: normalizedType,
     tmdbId: resolvedTmdbId,
     seasonNumber: resolvedSeasonNumber,
@@ -942,6 +946,9 @@ export function createPlayerRequest({
     backdrop_path: resolvedBackdrop,
     image: resolvedPoster,
     resumeTime: Number(resumeTime) || 0,
+    runtime: Number(runtime) || null,
+    seasonEpisodeCount: Number(seasonEpisodeCount) || null,
+    seasons: Array.isArray(seasons) ? seasons : null,
     fallbackSources: typeof resolvedTmdbId === 'number' && !isNaN(resolvedTmdbId) ? buildLegacyPlayerSources({
       mediaType: normalizedType,
       tmdbId: resolvedTmdbId,

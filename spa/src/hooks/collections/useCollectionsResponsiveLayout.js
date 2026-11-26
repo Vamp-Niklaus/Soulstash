@@ -1,36 +1,25 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 const compactBreakpoint = 1024;
-const isCompactViewport = () => window.innerWidth < compactBreakpoint;
+const isCompactViewport = () => (typeof window !== 'undefined' ? window.innerWidth < compactBreakpoint : false);
 
 export function useCollectionsResponsiveLayout(selectedCollectionName) {
+  const location = useLocation();
   const [isCompactCollectionsView, setIsCompactCollectionsView] = useState(isCompactViewport);
-  const [mobileSidebarVisible, setMobileSidebarVisible] = useState(isCompactViewport);
 
   useEffect(() => {
     const handleResize = () => {
-      const compact = isCompactViewport();
-      setIsCompactCollectionsView(compact);
-      setMobileSidebarVisible((current) => (!compact || !selectedCollectionName ? true : current));
+      setIsCompactCollectionsView(isCompactViewport());
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [selectedCollectionName]);
+  }, []);
 
-  useEffect(() => {
-    if (!isCompactCollectionsView || !selectedCollectionName) setMobileSidebarVisible(true);
-  }, [isCompactCollectionsView, selectedCollectionName]);
+  // Derive mobile detail vs sidebar visibility atomically from router location state so clicking
+  // a collection transitions URL + visibility in a single render with zero previous-collection flicker.
+  const mobileDetailActive = Boolean(location.state?.mobileDetail && selectedCollectionName);
+  const mobileSidebarVisible = isCompactCollectionsView ? !mobileDetailActive : false;
 
-  useEffect(() => {
-    if (!isCompactCollectionsView) return undefined;
-    const handlePopState = (event) => {
-      if (selectedCollectionName && !mobileSidebarVisible && !event.state?.soulstashCollectionsMobileDetail) {
-        setMobileSidebarVisible(true);
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [isCompactCollectionsView, mobileSidebarVisible, selectedCollectionName]);
-
-  return { isCompactCollectionsView, mobileSidebarVisible, setMobileSidebarVisible };
+  return { isCompactCollectionsView, mobileSidebarVisible };
 }

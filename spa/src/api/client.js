@@ -72,10 +72,15 @@ export function saveAuthSession(token, user) {
   emitAuthChange();
 }
 
-export function clearAuthSession() {
+export function clearAuthSession(clearWatch = true) {
   clearClientDataCaches();
   localStorage.removeItem('userToken');
   localStorage.removeItem('user');
+  if (clearWatch) {
+    import('../utils/watchProgress.js')
+      .then(({ clearLocalAccountWatchData }) => clearLocalAccountWatchData?.())
+      .catch(() => {});
+  }
   emitAuthChange();
 }
 
@@ -95,7 +100,7 @@ async function handleApiError(response) {
   );
 
   if (authenticationFailure) {
-    clearAuthSession();
+    clearAuthSession(false);
     if (!['/login', '/register'].includes(window.location.pathname)) {
       window.dispatchEvent(new CustomEvent('soulstash:unauthorized'));
     }

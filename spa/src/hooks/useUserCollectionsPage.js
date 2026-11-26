@@ -23,7 +23,10 @@ export function useUserCollectionsPage() {
   const [visibilityFilter, setVisibilityFilter] = useSessionState(`${stateKeyBase}:visibility`, 'all');
   const { collectionName } = useParams();
   const selectedCollectionName = collectionName ? decodeURIComponent(collectionName) : '';
-  const setSelectedCollectionName = (name) => navigate(`/user/${username}/collections/${encodeURIComponent(name)}`);
+  const setSelectedCollectionName = (name, options) => {
+    const navOpts = options ?? (typeof window !== 'undefined' && window.innerWidth < 1024 ? { state: { mobileDetail: true } } : undefined);
+    navigate(`/user/${username}/collections/${encodeURIComponent(name)}`, navOpts);
+  };
   const [filters, setFilters] = useSessionState(`${stateKeyBase}:filters`, { contentType: 'all', anime: 'all', sortBy: 'recent', hideWatched: false });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);

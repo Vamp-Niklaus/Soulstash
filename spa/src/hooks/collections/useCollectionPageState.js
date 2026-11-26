@@ -53,7 +53,7 @@ export function useCollectionPageState({ collections, query, visibilityFilter, s
 
   useEffect(() => {
     if (!selectedCollectionName && filteredCollections.length && window.innerWidth >= 1024) {
-      setSelectedCollectionName(filteredCollections[0].name);
+      setSelectedCollectionName(filteredCollections[0].name, { replace: true });
     }
   }, [filteredCollections, selectedCollectionName, setSelectedCollectionName]);
 

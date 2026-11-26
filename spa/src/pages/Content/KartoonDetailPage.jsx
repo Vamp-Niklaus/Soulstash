@@ -313,9 +313,11 @@ export function KartoonDetailPage() {
       isKartoons: true,
       poster_path: posterVal,
       backdrop_path: backdropVal,
-      image: posterVal
+      image: posterVal,
+      seasonEpisodeCount: episodes?.length || null,
+      seasons: seasonsList
     });
-  }, [show, slug, seasonNumber, tmdbMatch, contentKind]);
+  }, [show, slug, seasonNumber, tmdbMatch, contentKind, episodes?.length, seasonsList]);
 
   const handlePlayClick = useCallback((customResumeTime = null, customSeason = null, customEpisode = null) => {
     if (!show) return;
@@ -364,9 +366,11 @@ export function KartoonDetailPage() {
       poster_path: posterVal,
       backdrop_path: backdropVal,
       image: posterVal,
-      resumeTime: resume
+      resumeTime: resume,
+      seasonEpisodeCount: Number(seasonNumber) === targetSeason ? (episodes?.length || null) : null,
+      seasons: seasonsList
     });
-  }, [show, slug, seasonNumber, seasonDetails, tmdbMatch, contentKind]);
+  }, [show, slug, seasonNumber, seasonDetails, tmdbMatch, contentKind, episodes?.length, seasonsList]);
 
   useEffect(() => {
     if (autoPlayTriggeredRef.current || !show) return;
