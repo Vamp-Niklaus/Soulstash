@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { COLLECTION_NAME_MAX_LENGTH } from '../../utils/constants.js';
+import { buildCollectionItemPayload } from '../../utils/collectionsApi.js';
 import { confirmTrashItem, getCachedUserCollections, restoreTrashItem } from '../../utils/collectionsCache.js';
 import { toast } from '../../utils/toast.js';
 
@@ -7,15 +8,7 @@ const getItemId = (item) => Number(item.movieId || item.seriesId || item.id || i
 const getErrorMessage = (error) => error.message === 'Failed to fetch' ? 'Network error' : error.message;
 
 function collectionPayload(item, mediaType) {
-  const shared = {
-    title: item.title || item.name || 'Unknown',
-    poster_path: item.poster_path || '',
-    release_date: item.release_date || (mediaType === 'Series' ? item.first_air_date || '' : ''),
-    media_type: mediaType
-  };
-  return mediaType === 'Series'
-    ? { ...shared, seriesId: Number(item._id || item.id) }
-    : { ...shared, movieId: Number(item._id || item.id) };
+  return buildCollectionItemPayload(item, mediaType);
 }
 
 export function useCollectionPageActions({ collections, selectedCollection, selectedCollectionName, setSelectedCollectionName, createDraft, setCreateDraft, setCreateModalOpen, editDraft, setEditDraft, editTargetId, setEditTargetId, setEditModalOpen, setLocalCollectionOrder, orderedCollections, mutations, setOpenCollectionMenuId }) {

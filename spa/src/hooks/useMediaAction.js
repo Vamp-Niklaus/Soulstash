@@ -4,6 +4,7 @@ import { useLiveCollections } from './index.js';
 import { apiFetch, getToken } from '../api/client.js';
 import { toast } from '../utils/toast.js';
 import { broadcastCollections } from '../utils/collectionsCache.js';
+import { buildCollectionItemPayload } from '../utils/collectionsApi.js';
 import { getCollectionStatus, createEmptyCollectionDraft } from '../utils/formatters.js';
 
 export function useMediaAction(id, type, content) {
@@ -78,17 +79,16 @@ export function useMediaAction(id, type, content) {
       }
 
       const isSeries = type === 'series';
-      const idKey = isSeries ? 'seriesId' : 'movieId';
       const alreadySaved = targetCollection === 'Watched' ? status.watched : status.watchlist;
 
-      const payload = {
-        [idKey]: resolvedId,
-        id: resolvedId,
-        title: content?.title || content?.name,
-        poster_path: content?.poster_path || '',
-        release_date: content?.release_date || content?.first_air_date || '',
-        media_type: isSeries ? 'Series' : 'Movie'
-      };
+      const payload = buildCollectionItemPayload(
+        {
+          ...(content || {}),
+          id: resolvedId,
+          ...(isSeries ? { seriesId: resolvedId } : { movieId: resolvedId })
+        },
+        isSeries ? 'Series' : 'Movie'
+      );
 
       setPendingAction(targetCollection);
       
@@ -165,23 +165,15 @@ export function useMediaAction(id, type, content) {
             c.movies.some((m) => String(m.movieId || m.seriesId || m.id || '') === String(resolvedId));
         });
 
-      const payload = type === 'series'
-        ? {
-            seriesId: resolvedId,
-            id: resolvedId,
-            title,
-            poster_path: content.poster_path || '',
-            release_date: content.first_air_date || '',
-            media_type: 'Series'
-          }
-        : {
-            movieId: resolvedId,
-            id: resolvedId,
-            title,
-            poster_path: content.poster_path || '',
-            release_date: content.release_date || '',
-            media_type: 'Movie'
-          };
+      const payload = buildCollectionItemPayload(
+        {
+          ...content,
+          title,
+          id: resolvedId,
+          ...(type === 'series' ? { seriesId: resolvedId } : { movieId: resolvedId })
+        },
+        type === 'series' ? 'Series' : 'Movie'
+      );
 
       setPendingAction(targetCollection.name);
       const collId = targetCollection._id || targetCollection.name;

@@ -39,7 +39,7 @@ export function UpdateNotificationModal() {
     let cancelled = false;
 
     async function checkLocalNotification() {
-      let currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.18';
+      let currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.19';
       if (Capacitor.isNativePlatform()) {
         try {
           const info = await CapApp.getInfo();

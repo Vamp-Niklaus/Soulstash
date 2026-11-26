@@ -9,7 +9,7 @@
  *   - client.js            →  for authenticated fetch helpers
  */
 
-import { getToken, API_BASE_URL, apiFetch, streamApiFetch } from '../api/client.js';
+import { getToken, API_BASE_URL, apiFetch } from '../api/client.js';
 import {
   readCollectionsCache,
   updateCollectionsCache,
@@ -20,13 +20,12 @@ import {
   setLastKnownCollectionVersion
 } from './collectionsCache.js';
 import {
-  loadRatingsTable,
-  ratingsCacheKey,
   mergeRatingsTableCache
 } from './ratingsCache.js';
 import {
   contentIdFromItem,
   mediaTypeFromItem,
+  normalizeMediaType,
   getValidImdbRating,
   getValidVoteAverage
 } from './formatters.js';
@@ -153,84 +152,75 @@ export async function refreshCollectionsView() {
 
 // ---------------------------------------------------------------------------
 // Background rating enrichment
-// For items in a collection that are missing IMDB/vote_average ratings,
-// this streams the results back one item at a time from the backend
-// so the UI updates as results arrive rather than waiting for the whole batch.
+// ---------------------------------------------------------------------------
+// Background collection rating enrichment (lazy POST after initial render)
 // ---------------------------------------------------------------------------
 
-export async function enrichCollectionRatingsInBackground(
-  collection,
-  logPrefix = '[Soulstash][React]'
-) {
-  if (!collection?._id) return null;
+const SENTINEL_REFRESH_MS = 14 * 24 * 60 * 60 * 1000;
+const inFlightEnrichRequests = new Map();
 
-  // Only enrich items that are actually missing ratings
-  const needsEnrich = (collection.movies || []).filter(
-    (item) =>
-      item?.rating_lookup_attempted !== true &&
-      (getValidImdbRating(item?.imdb_rating) == null ||
-        getValidVoteAverage(item?.vote_average) == null)
-  );
+function isRatingCheckExpired(item) {
+  if (!item?.rating_checked_at) return false;
+  const checkedMs = Date.parse(item.rating_checked_at);
+  return Number.isFinite(checkedMs) && Date.now() - checkedMs > SENTINEL_REFRESH_MS;
+}
 
-  if (!needsEnrich.length) {
-    console.log(
-      `${logPrefix} enrichCollectionRatingsInBackground SKIP - all ratings present collection="${collection.name}"`
-    );
-    return null;
+export function buildCollectionItemPayload(item, mediaTypeOverride) {
+  const resolvedMediaType = normalizeMediaType(mediaTypeOverride || mediaTypeFromItem(item) || 'Movie') || 'Movie';
+  const isSeries = resolvedMediaType === 'Series';
+  const rawId = item?.movieId || item?.seriesId || item?.id || item?._id || 0;
+  const numericId = Number(rawId);
+  const resolvedId = Number.isFinite(numericId) && numericId > 0 ? numericId : rawId;
+
+  const validImdb = getValidImdbRating(item?.imdb_rating);
+  const validVote = getValidVoteAverage(item?.vote_average);
+  const releaseDate = item?.release_date || (isSeries ? item?.first_air_date || '' : '') || '';
+
+  const payload = {
+    id: resolvedId,
+    ...(isSeries ? { seriesId: resolvedId } : { movieId: resolvedId }),
+    title: item?.title || item?.name || 'Unknown',
+    poster_path: item?.poster_path || '',
+    backdrop_path: item?.backdrop_path || '',
+    release_date: releaseDate,
+    ...(isSeries && item?.first_air_date ? { first_air_date: item.first_air_date } : {}),
+    media_type: resolvedMediaType
+  };
+
+  if (validImdb != null) payload.imdb_rating = validImdb;
+  if (validVote != null) payload.vote_average = validVote;
+  if (item?.imdb_id || item?.imdbID) payload.imdb_id = item.imdb_id || item.imdbID;
+  if (item?.rating_lookup_attempted === true) payload.rating_lookup_attempted = true;
+  if (item?.rating_checked_at) payload.rating_checked_at = item.rating_checked_at;
+  return payload;
+}
+
+export function itemNeedsRatingEnrichment(item) {
+  const contentId = contentIdFromItem(item);
+  if (!contentId || (typeof contentId === 'string' && contentId.startsWith('kartoons'))) {
+    return false;
   }
+  const hasImdb = getValidImdbRating(item?.imdb_rating) != null;
+  const hasVote = getValidVoteAverage(item?.vote_average) != null;
+  if (hasImdb && hasVote) return false;
+  if (item?.rating_lookup_attempted !== true) return true;
+  if (!hasImdb && isRatingCheckExpired(item)) return true;
+  return false;
+}
 
-  console.log(
-    `${logPrefix} enrichCollectionRatingsInBackground START collection="${collection.name}" needsEnrich=${needsEnrich.length}/${collection.movies?.length || 0}`
-  );
-
-  const cachedRatings = await loadRatingsTable();
-  const ratingsByKey = new Map(
-    (cachedRatings || []).map((item) => [ratingsCacheKey(item.tmdbID, item.mediaType), item])
-  );
-
-  // Only ask the backend for items not already in our local ratings cache
-  const needsBackendEnrich = needsEnrich.filter(
-    (item) => !ratingsByKey.has(ratingsCacheKey(contentIdFromItem(item), mediaTypeFromItem(item)))
-  );
-
-  if (needsBackendEnrich.length) {
-    // Stream results back item-by-item \u2014 each resolved rating is merged into
-    // the local cache immediately so already-resolved titles show up while
-    // the rest are still being looked up.
-    await streamApiFetch('/api/ratings/imdb/enrich', {
-      method: 'POST',
-      body: JSON.stringify({
-        items: needsBackendEnrich.map((item) => ({
-          contentId: contentIdFromItem(item),
-          mediaType: mediaTypeFromItem(item)
-        }))
-      }),
-      onEvent(event) {
-        if (event?.type !== 'item' || !event.item) return;
-        mergeRatingsTableCache([event.item]);
-        ratingsByKey.set(ratingsCacheKey(event.item.tmdbID, event.item.mediaType), event.item);
-      }
-    });
-  }
-
-  // Build the enriched items array
-  const items = needsEnrich
+function buildEnrichRequestItems(items) {
+  return (items || [])
     .map((item) => {
       const contentId = contentIdFromItem(item);
       if (!contentId) return null;
-      const mediaType = mediaTypeFromItem(item);
-      const ratingMatch = ratingsByKey.get(ratingsCacheKey(contentId, mediaType));
-      const imdb_rating = getValidImdbRating(ratingMatch?.imdb_rating);
-      const vote_average =
-        getValidVoteAverage(ratingMatch?.vote_average) ?? getValidVoteAverage(item?.vote_average);
-
+      const mediaType = mediaTypeFromItem(item) || 'Movie';
+      const validVote = getValidVoteAverage(item?.vote_average);
       return {
+        id: Number(contentId) || contentId,
         contentId,
         mediaType,
-        vote_average: vote_average ?? null,
-        imdb_rating: imdb_rating ?? null,
-        imdb_id: ratingMatch?.imdbID || item?.imdb_id || '',
-        rating_lookup_attempted: ratingMatch?.lookup_attempted === true,
+        ...(validVote != null ? { vote_average: validVote } : {}),
+        ...(item?.imdb_id || item?.imdbID ? { imdb_id: item.imdb_id || item.imdbID } : {}),
         poster_path: item?.poster_path || '',
         release_date: item?.release_date || '',
         first_air_date: item?.first_air_date || '',
@@ -238,20 +228,87 @@ export async function enrichCollectionRatingsInBackground(
       };
     })
     .filter(Boolean);
+}
 
+export async function enrichCollectionRatingsInBackground(
+  collection,
+  logPrefix = '[Soulstash][React]'
+) {
+  const colIdentifier = collection?._id || collection?.name;
+  if (!colIdentifier || !getToken()) return null;
+
+  const needsEnrich = (collection.movies || []).filter(itemNeedsRatingEnrichment);
+  if (!needsEnrich.length) {
+    return null;
+  }
+
+  const items = buildEnrichRequestItems(needsEnrich);
   if (!items.length) return null;
 
-  const response = await apiFetch(
-    `/api/user/collections/${encodeURIComponent(collection._id)}/enrich-metadata`,
+  const dedupKey = `owner:${colIdentifier}:${items.map((it) => `${it.mediaType}:${it.contentId}`).sort().join(',')}`;
+  if (inFlightEnrichRequests.has(dedupKey)) {
+    return inFlightEnrichRequests.get(dedupKey);
+  }
+
+  console.log(
+    `${logPrefix} enrichCollectionRatingsInBackground START collection="${collection.name}" needsEnrich=${items.length}/${collection.movies?.length || 0}`
+  );
+
+  const task = apiFetch(
+    `/api/user/collections/${encodeURIComponent(colIdentifier)}/enrich-metadata`,
     {
       method: 'POST',
       body: JSON.stringify({ items })
     }
-  );
+  )
+    .then((response) => {
+      const enrichedItems = Array.isArray(response?.extra?.items) ? response.extra.items : [];
+      if (enrichedItems.length) {
+        mergeRatingsTableCache(enrichedItems);
+      }
+      if (Array.isArray(response?.collections)) {
+        broadcastCollections(response.collections, response.collectionVersion);
+      }
+      console.log(
+        `${logPrefix} enrichCollectionRatingsInBackground DONE collection="${collection.name}" updatedCount=${enrichedItems.length}`
+      );
+      return response;
+    })
+    .finally(() => {
+      inFlightEnrichRequests.delete(dedupKey);
+    });
 
-  console.log(
-    `${logPrefix} enrichCollectionRatingsInBackground DONE collection="${collection.name}" updatedCount=${items.length}`
-  );
+  inFlightEnrichRequests.set(dedupKey, task);
+  return task;
+}
 
-  return response;
+export async function enrichPublicItemsRatingsInBackground(items) {
+  const needsEnrich = (items || []).filter(itemNeedsRatingEnrichment);
+  if (!needsEnrich.length) return [];
+
+  const payloadItems = buildEnrichRequestItems(needsEnrich);
+  if (!payloadItems.length) return [];
+
+  const dedupKey = `public:${payloadItems.map((it) => `${it.mediaType}:${it.contentId}`).sort().join(',')}`;
+  if (inFlightEnrichRequests.has(dedupKey)) {
+    return inFlightEnrichRequests.get(dedupKey);
+  }
+
+  const task = apiFetch('/api/ratings/imdb/enrich', {
+    method: 'POST',
+    body: JSON.stringify({ items: payloadItems })
+  })
+    .then((response) => {
+      const enriched = Array.isArray(response?.items) ? response.items : [];
+      if (enriched.length) {
+        mergeRatingsTableCache(enriched);
+      }
+      return enriched;
+    })
+    .finally(() => {
+      inFlightEnrichRequests.delete(dedupKey);
+    });
+
+  inFlightEnrichRequests.set(dedupKey, task);
+  return task;
 }

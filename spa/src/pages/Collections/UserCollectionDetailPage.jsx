@@ -1,11 +1,21 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, useParams, useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../../api/client.js';
 import { normalizeCollection, broadcastCollections } from '../../utils/collectionsCache.js';
-import { filteredCollectionMovies } from '../../utils/formatters.js';
+import {
+  buildCollectionItemPayload,
+  itemNeedsRatingEnrichment,
+  enrichCollectionRatingsInBackground,
+  enrichPublicItemsRatingsInBackground
+} from '../../utils/collectionsApi.js';
+import {
+  filteredCollectionMovies,
+  contentIdFromItem,
+  mediaTypeFromItem,
+  mergeImdbRatings
+} from '../../utils/formatters.js';
 import { useLiveCollections, useAuthSession, useSessionState } from '../../hooks/index.js';
-import { contentIdFromItem } from '../../utils/formatters.js';
 import { toast } from '../../utils/toast.js';
 import { CollectionDetailPane } from '../../components/ui/Misc/CollectionDetailPane.jsx';
 import { GridSkeleton } from '../../components/ui/Skeletons/index.js';
@@ -214,17 +224,71 @@ export function UserCollectionDetailPage() {
     [isOwner, watchedCollection]
   );
   
-  const collection = useMemo(
-    () =>
-      normalizeCollection(
-        (isTmdb
-          ? tmdbCollection
-          : isOwner
-            ? collections.find((item) => item.name === decodedCollectionName || item._id === decodedCollectionName)
-            : publicCollection) || null
-      ),
-    [collections, decodedCollectionName, isOwner, isTmdb, publicCollection, tmdbCollection]
-  );
+  const [publicEnrichedRatings, setPublicEnrichedRatings] = useState([]);
+  const enrichedSignaturesRef = useRef(new Set());
+
+  const collection = useMemo(() => {
+    const raw =
+      (isTmdb
+        ? tmdbCollection
+        : isOwner
+          ? collections.find((item) => item.name === decodedCollectionName || item._id === decodedCollectionName)
+          : publicCollection) || null;
+    if (!raw) return null;
+    if (!isOwner && publicEnrichedRatings.length && Array.isArray(raw.movies)) {
+      return normalizeCollection({
+        ...raw,
+        movies: mergeImdbRatings(raw.movies, publicEnrichedRatings)
+      });
+    }
+    return normalizeCollection(raw);
+  }, [collections, decodedCollectionName, isOwner, isTmdb, publicCollection, publicEnrichedRatings, tmdbCollection]);
+
+  useEffect(() => {
+    if (!collection?.name || !Array.isArray(collection.movies) || collection.movies.length === 0) {
+      return undefined;
+    }
+    const needsEnrich = collection.movies.filter(itemNeedsRatingEnrichment);
+    if (!needsEnrich.length) return undefined;
+
+    const colKey = collection._id || collection.name;
+    const itemSig = needsEnrich
+      .map((item) => `${mediaTypeFromItem(item) || 'Movie'}:${contentIdFromItem(item)}`)
+      .sort()
+      .join(',');
+    const signature = `${isOwner && !isTmdb && !isLetterboxd ? 'owner' : 'public'}:${colKey}:${itemSig}`;
+    if (enrichedSignaturesRef.current.has(signature)) return undefined;
+    enrichedSignaturesRef.current.add(signature);
+
+    let cancelled = false;
+    if (isOwner && !isTmdb && !isLetterboxd) {
+      enrichCollectionRatingsInBackground(collection)
+        .then((res) => {
+          if (cancelled || !res) return;
+          queryClient.invalidateQueries({ queryKey: ['collections'] });
+        })
+        .catch(() => {});
+    } else {
+      enrichPublicItemsRatingsInBackground(needsEnrich)
+        .then((enrichedItems) => {
+          if (cancelled || !Array.isArray(enrichedItems) || !enrichedItems.length) return;
+          setPublicEnrichedRatings((prev) => {
+            const byKey = new Map(prev.map((entry) => [`${entry.mediaType}:${entry.tmdbID}`, entry]));
+            for (const entry of enrichedItems) {
+              if (entry?.tmdbID && entry?.mediaType) {
+                byKey.set(`${entry.mediaType}:${entry.tmdbID}`, entry);
+              }
+            }
+            return Array.from(byKey.values());
+          });
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [collection, isOwner, isTmdb, isLetterboxd, queryClient]);
   
   const [filters, setFilters] = useSessionState(`collection-page:${location.pathname}:filters`, { contentType: 'all', anime: 'yes', sortBy: 'recent', hideWatched: false });
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -345,22 +409,7 @@ export function UserCollectionDetailPage() {
     const colId = collection?._id || collection?.name || decodedCollectionName;
     if (!colId) return;
 
-    const payload =
-      mediaType === 'Series'
-        ? {
-            seriesId: Number(item._id || item.id),
-            title: item.title || item.name || 'Unknown',
-            poster_path: item.poster_path || '',
-            release_date: item.release_date || item.first_air_date || '',
-            media_type: 'Series'
-          }
-        : {
-            movieId: Number(item._id || item.id),
-            title: item.title || item.name || 'Unknown',
-            poster_path: item.poster_path || '',
-            release_date: item.release_date || '',
-            media_type: 'Movie'
-          };
+    const payload = buildCollectionItemPayload(item, mediaType);
 
     const contentId = Number(payload.movieId || payload.seriesId);
     

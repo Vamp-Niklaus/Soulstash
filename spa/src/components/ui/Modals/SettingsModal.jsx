@@ -49,7 +49,7 @@ export function SettingsModal({
 }) {
   const navigate = useNavigate();
   const auth = useAuthSession();
-  const bundledVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.18';
+  const bundledVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'v4.2.19';
   const [apkDownloadInfo, setApkDownloadInfo] = useState(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState(null);
